@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 import asyncio
 from dotenv import load_dotenv
@@ -21,12 +22,6 @@ try:
     except ImportError:
         logger.warning("MultilingualModel not available, will not use turn detection")
         MultilingualModel = None
-        
-    try:
-        import openai  # Regular OpenAI package, not from livekit
-    except ImportError:
-        logger.warning("OpenAI package not available")
-        openai = None
 except ImportError as e:
     logger.error(f"Failed to import required packages: {e}")
     logger.error("Please install the missing packages")
@@ -102,15 +97,21 @@ async def entrypoint(ctx: agents.JobContext):
     session = None
     
     # Create agent session using Google's realtime model
-    model = google.beta.realtime.RealtimeModel(
-        model="gemini-2.0-flash-exp",
-        voice="Puck",
-        temperature=0.8,
-        instructions="You are a helpful assistant for TOEFL speaking practice.",
-        api_key=os.environ.get('GOOGLE_API_KEY'),
-    )
-    
-    session = AgentSession(llm=model)
+    try:
+        model = google.beta.realtime.RealtimeModel(
+            model="gemini-2.0-flash-exp",
+            voice="Puck",
+            temperature=0.8,
+            instructions="You are a helpful assistant for TOEFL speaking practice.",
+            api_key=os.environ.get('GOOGLE_API_KEY'),
+        )
+        
+        session = AgentSession(llm=model)
+        logger.info("Created agent session with Google's realtime model")
+    except Exception as e:
+        logger.error(f"Failed to create Google realtime model: {e}")
+        # Fallback to original session with commented code
+        logger.warning("Agent session creation failed")
     
     # Start the agent session in the specified room
     await session.start(

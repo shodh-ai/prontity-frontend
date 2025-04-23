@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { MicIcon, VideoIcon, XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,25 +8,76 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 
+import { useEffect, useState } from "react";
+
+// Define types for our question data
+type Highlight = {
+  text: string;
+  start: number;
+  end: number;
+};
+
+type Answer = {
+  text: string;
+  highlights: Highlight[];
+};
+
+type SessionData = {
+  title: string;
+  progress: number;
+  question: string;
+  answer: Answer;
+};
+
 export default function Home() {
-  // Data for the speaking practice session
-  const sessionData = {
+  // State for showing/hiding the answer
+  const [showAnswer, setShowAnswer] = useState(false);
+  
+  // State for the speaking practice session data
+  const [sessionData, setSessionData] = useState<SessionData>({
     title: "Speaking Practice Session",
     progress: 28, // 171px out of 610px ≈ 28%
-    question:
-      "With the rise of automation and artificial intelligence, there is a growing concern about the future of jobs and the relevance of traditional education. What measures do you think should be taken to ensure that education remains effective in preparing individuals for the workforce?",
+    question: "",
     answer: {
-      text: "In today's rapid evolving world, achieving a balance between traditional educational practices and innovative approaches is crucial for ensure effective learning outcomes. While tradition methods have provided a strong foundation for education over centuries, embrassing innovation is essential to meet the demands of the modern era. Traditional educational practices, such as lecture, textbooks, and standardized testings, offer stability and continuity in the learning process.",
-      highlights: [
-        { text: "innovative approaches", start: 85, end: 105 },
-        {
-          text: "Traditional educational practices, such as lecture, textbooks, and standardized testings,",
-          start: 237,
-          end: 323,
-        },
-      ],
+      text: "",
+      highlights: [],
     },
-  };
+  });
+  
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Fetch question from API
+  useEffect(() => {
+    async function fetchQuestion() {
+      try {
+        setLoading(true);
+        // You can randomize which question to fetch or specify a particular one
+        // For now, we'll fetch the first question (id: 1)
+        const response = await fetch("/api/questions");
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const question = data[0]; // Get the first question for now
+        
+        setSessionData(prev => ({
+          ...prev,
+          question: question.text,
+          answer: question.answer
+        }));
+        setLoading(false);
+      } catch (err) {
+        console.error("Failed to fetch question:", err);
+        setError("Failed to load question. Please try again.");
+        setLoading(false);
+      }
+    }
+    
+    fetchQuestion();
+  }, []);
 
   // Profiles data
   const profiles = [
@@ -76,51 +128,79 @@ export default function Home() {
                   <h3 className="opacity-60 font-semibold text-base">
                     Question
                   </h3>
-                  <p className="font-normal text-lg leading-[28.8px]">
-                    {sessionData.question}
-                  </p>
+                  {loading ? (
+                    <p className="font-normal text-lg leading-[28.8px]">Loading question...</p>
+                  ) : error ? (
+                    <p className="font-normal text-lg leading-[28.8px] text-red-500">{error}</p>
+                  ) : (
+                    <p className="font-normal text-lg leading-[28.8px]">
+                      {sessionData.question}
+                    </p>
+                  )}
                 </div>
 
                 {/* Separator */}
                 <Separator className="my-8 w-[800px]" />
 
-                {/* Answer section */}
-                <div className="flex flex-col w-[725px] items-start gap-3">
-                  <h3 className="opacity-60 font-semibold text-base">
-                    Answer
-                  </h3>
-                  <div className="relative w-[725px]">
-                    <p className="font-normal text-lg tracking-[-0.06px] leading-[27px]">
-                      {sessionData.answer.text
-                        .split(sessionData.answer.highlights[0].text)
-                        .map((part, index, array) => {
-                          if (index === 0) {
-                            return (
-                              <>
-                                {part}
-                                <span className="text-[#ee0d27] bg-[#ef0e27] bg-opacity-10 rounded">
-                                  {sessionData.answer.highlights[0].text}
-                                </span>
-                              </>
-                            );
-                          } else {
-                            const remainingText = part.split(
-                              sessionData.answer.highlights[1].text,
-                            );
-                            return (
-                              <>
-                                {remainingText[0]}
-                                <span className="text-[#ee0d27] bg-[#ef0e27] bg-opacity-10 rounded">
-                                  {sessionData.answer.highlights[1].text}
-                                </span>
-                                {remainingText[1]}
-                              </>
-                            );
-                          }
-                        })}
-                    </p>
+                {/* Show Answer Button */}
+                {!showAnswer && !loading && !error && (
+                  <div className="mt-4 mb-8">
+                    <Button 
+                      onClick={() => setShowAnswer(true)}
+                      className="bg-[#566fe9] text-white hover:bg-[#4056c9]"
+                    >
+                      Show Answer
+                    </Button>
                   </div>
-                </div>
+                )}
+
+                {/* Answer section - only shown if showAnswer is true */}
+                {showAnswer && (
+                  <div className="flex flex-col w-[725px] items-start gap-3">
+                    <h3 className="opacity-60 font-semibold text-base">
+                      Answer
+                    </h3>
+                    <div className="relative w-[725px]">
+                      {loading ? (
+                        <p className="font-normal text-lg tracking-[-0.06px] leading-[27px]">Loading answer...</p>
+                      ) : error ? (
+                        <p className="font-normal text-lg tracking-[-0.06px] leading-[27px] text-red-500">{error}</p>
+                      ) : sessionData.answer.text && sessionData.answer.highlights.length >= 2 ? (
+                        <p className="font-normal text-lg tracking-[-0.06px] leading-[27px]">
+                          {sessionData.answer.text
+                            .split(sessionData.answer.highlights[0].text)
+                            .map((part, index, array) => {
+                              if (index === 0) {
+                                return (
+                                  <React.Fragment key={`part-${index}`}>
+                                    {part}
+                                    <span className="text-[#ee0d27] bg-[#ef0e27] bg-opacity-10 rounded">
+                                      {sessionData.answer.highlights[0].text}
+                                    </span>
+                                  </React.Fragment>
+                                );
+                              } else {
+                                const remainingText = part.split(
+                                  sessionData.answer.highlights[1].text,
+                                );
+                                return (
+                                  <React.Fragment key={`part-${index}`}>
+                                    {remainingText[0]}
+                                    <span className="text-[#ee0d27] bg-[#ef0e27] bg-opacity-10 rounded">
+                                      {sessionData.answer.highlights[1].text}
+                                    </span>
+                                    {remainingText[1]}
+                                  </React.Fragment>
+                                );
+                              }
+                            })}
+                        </p>
+                      ) : (
+                        <p className="font-normal text-lg tracking-[-0.06px] leading-[27px]">{sessionData.answer.text || "No answer available"}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Controls */}
                 <div className="flex items-center gap-2 mt-24 justify-center">
@@ -145,7 +225,7 @@ export default function Home() {
               <div className="flex flex-col w-[200px] items-start gap-6 mr-8">
                 {profiles.map((profile, index) => (
                   <div
-                    key={index}
+                    key={`profile-${index}`}
                     className="relative w-[200px] h-[200px]"
                     style={{
                       backgroundImage: `url(${profile.image})`,

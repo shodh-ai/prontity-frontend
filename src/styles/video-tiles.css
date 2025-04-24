@@ -1,0 +1,160 @@
+/* Video container styling exactly as specified */
+.video-container {
+  /* Frame 1000011210 */
+  /* Auto layout */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0px;
+  gap: 24px;
+
+  position: absolute;
+  width: 200px;
+  height: 424px;
+  right: 152px; /* Use right positioning instead of left for better alignment */
+  top: 150px;
+  z-index: 5; /* Ensure it's above other elements */
+}
+
+/* User Tile */
+.user-tile {
+  /* Group 1000011007 */
+  width: 200px;
+  height: 200px;
+  position: relative;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+}
+
+.placeholder-bg {
+  /* Rectangle 63 */
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  left: 0px;
+  top: 0px;
+  border-radius: 12px;
+}
+
+.user-bg {
+  background: url('/user-placeholder.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+.video-element {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  left: 0px;
+  top: 0px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.user-label {
+  /* Frame 1000011152 */
+  /* Auto layout */
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 10px;
+  gap: 10px;
+
+  position: absolute;
+  width: 51px;
+  height: 29px;
+  left: 8px;
+  top: 163px;
+
+  background: #FFFFFF;
+  border-radius: 6px;
+
+  /* User text */
+  width: 31px;
+  height: 21px;
+
+  /* Label/Large */
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 150%;
+  /* identical to box height, or 21px */
+
+  color: #566FE9;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+}
+
+/* AI Tile */
+.ai-tile {
+  /* Group 1000011008 */
+  width: 200px;
+  height: 200px;
+  position: relative;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 1;
+  flex-grow: 0;
+}
+
+.ai-bg {
+  /* image 5 */
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  left: 0px;
+  top: 0px;
+  background: url('/ai-teacher-placeholder.jpg');
+  background-size: cover;
+  background-position: center;
+  border-radius: 12px;
+}
+
+.ai-label {
+  /* Frame 1000011151 */
+  /* Auto layout */
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 10px;
+  gap: 10px;
+
+  position: absolute;
+  width: 156px;
+  height: 29px;
+  left: 8px;
+  top: 163px;
+
+  background: #FFFFFF;
+  border-radius: 6px;
+
+  /* AI Speaking Teacher text */
+  width: 136px;
+  height: 21px;
+
+  /* Label/Large */
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 150%;
+  /* identical to box height, or 21px */
+
+  color: #566FE9;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+}

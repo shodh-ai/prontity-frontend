@@ -1,0 +1,157 @@
+/* Frame 1000011212 - Control Bar Container */
+.figma-controls, .lk-control-bar {
+  /* Auto layout */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0px;
+  gap: 8px;
+
+  position: absolute;
+  width: 160px;
+  height: 48px;
+  left: calc(50% - 160px/2);
+  top: 696px;
+}
+
+/* 2 State Button (Mic, Camera, etc) */
+.lk-button {
+  box-sizing: border-box;
+
+  /* Auto layout */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12px;
+  gap: 10px;
+
+  width: 48px;
+  height: 48px;
+
+  background: #FFFFFF;
+  border: 1px solid #566FE9;
+  border-radius: 6px;
+
+  /* Inside auto layout */
+  flex: none;
+  flex-grow: 0;
+}
+
+/* Button Icons */
+.lk-button svg {
+  width: 24px;
+  height: 24px;
+  
+  /* Inside auto layout */
+  flex: none;
+  order: 0;
+  flex-grow: 0;
+}
+
+/* SVG elements inside buttons */
+.lk-button svg path {
+  fill: #566FE9;
+}
+
+/* Mic ON state */
+.lk-button[data-lk-source="microphone"] svg {
+  position: relative;
+  left: 0%;
+  right: 0%;
+  top: 0%;
+  bottom: 0%;
+}
+
+/* Vector for mic icon */
+.lk-button[data-lk-source="microphone"] svg path {
+  position: relative;
+  left: 18.75%;
+  right: 18.75%;
+  top: 6.25%;
+  bottom: 3.12%;
+  
+  background: #566FE9;
+}
+
+/* Video camera button */
+.lk-button[data-lk-source="camera"] {
+  box-sizing: border-box;
+
+  /* Auto layout */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12px;
+  gap: 10px;
+
+  width: 48px;
+  height: 48px;
+
+  background: #FFFFFF;
+  border: 1px solid #566FE9;
+  border-radius: 6px;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 1;
+  flex-grow: 0;
+}
+
+/* Vector for camera icon */
+.lk-button[data-lk-source="camera"] svg path {
+  position: relative;
+  left: 6.25%;
+  right: 0%;
+  top: 21.88%;
+  bottom: 21.88%;
+  
+  background: #566FE9;
+}
+
+/* Leave button */
+.figma-button-leave {
+  box-sizing: border-box;
+
+  /* Auto layout */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12px;
+  gap: 10px;
+
+  width: 48px;
+  height: 48px;
+
+  background: #FFFFFF;
+  border: 1px solid #566FE9;
+  border-radius: 6px;
+
+  /* Inside auto layout */
+  flex: none;
+  order: 2;
+  flex-grow: 0;
+}
+
+/* Vector for leave button */
+.figma-button-leave svg {
+  position: relative;
+  left: 12.5%;
+  right: 9.37%;
+  top: 9.37%;
+  bottom: 12.5%;
+  
+  background: #566FE9;
+}
+
+/* Button group for nested controls */
+.lk-button-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Device menu button styles */
+.lk-button-menu {
+  border-radius: 6px;
+  border: 1px solid #566FE9;
+}
+

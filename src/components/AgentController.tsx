@@ -36,22 +36,38 @@ export default function AgentController({ roomName }: AgentControllerProps) {
     }
   }, [agentStatus, roomName]);
   
-  // Check initial status on component mount
+  // Check initial status and attempt auto-connect on component mount
   useEffect(() => {
-    const checkStatus = async () => {
+    const checkAndConnect = async () => {
       try {
         const response = await fetch(`/api/agent?room=${roomName}`);
         const data = await response.json();
-        setAgentStatus(data.status);
+        const currentStatus = data.status;
+        setAgentStatus(currentStatus);
+        
+        // If not connected or connecting, try to connect automatically
+        if (currentStatus !== 'connected' && currentStatus !== 'connecting') {
+            console.log('AgentController: Attempting to auto-connect agent...');
+            await connectAgent(); 
+        }
       } catch (err) {
-        console.error('Error checking agent status:', err);
+        console.error('AgentController: Error checking initial status or auto-connecting:', err);
+        // Optionally set an error state here if needed, though the connectAgent call will also set errors
       }
     };
     
-    checkStatus();
-  }, [roomName]);
+    checkAndConnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomName]); // Run only once on mount based on roomName
 
   const connectAgent = async () => {
+    // Avoid concurrent connection attempts
+    if (isLoading || agentStatus === 'connecting' || agentStatus === 'connected') {
+        console.log('AgentController: Connection attempt skipped (already connecting or connected, or loading). Status:', agentStatus, 'isLoading:', isLoading);
+        return;
+    }
+    
+    console.log('AgentController: Initiating agent connection...');
     setIsLoading(true);
     setError(null);
     
@@ -132,6 +148,7 @@ export default function AgentController({ roomName }: AgentControllerProps) {
       )}
       
       <div className="flex space-x-2">
+        {/* Buttons can be removed entirely if UI is never shown, but leaving for potential debug */}
         {agentStatus !== 'connected' && agentStatus !== 'connecting' && (
           <button
             onClick={connectAgent}

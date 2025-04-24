@@ -79,9 +79,9 @@ export async function POST(req: NextRequest) {
       
       // Use a non-blocking approach to start the agent
       // This way the API can return immediately and the agent runs in the background
-      // Activate the virtual environment in main directory and run our working implementation
-      const mainVenvPath = path.join(process.cwd(), '..', 'livekit-agent-server', 'main');
-      const command = `cd "${agentPath}" && source "${mainVenvPath}/bin/activate" && python3 "${agentPath}/main.py" connect --room "${room}" --participant-identity "${identity || 'ai-assistant'}"`;  
+      // Run the agent directly without trying to use a virtual environment
+      // This seems to be causing issues as the venv path may not exist
+      const command = `cd "${agentPath}" && python3 "${agentPath}/main.py" connect --room "${room}" --participant-identity "${identity || 'ai-assistant'}"`;  
       console.log(`Executing command: ${command}`);
       
       // Start agent without waiting for it to complete

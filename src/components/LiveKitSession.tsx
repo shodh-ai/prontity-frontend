@@ -1,18 +1,22 @@
 'use client';
 
 import {
-  ControlBar,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
   useTracks,
   RoomContext,
+  useLocalParticipant
 } from '@livekit/components-react';
 import { Room, Track } from 'livekit-client';
 import { useEffect, useState } from 'react';
 import AgentController from '@/components/AgentController';
+import CustomControls from '@/components/CustomControls';
+import VideoTiles from '@/components/VideoTiles';
 import '@livekit/components-styles';
 import '@/app/room/figma-styles.css';
+import '@/styles/custom-controls.css';
+import '@/styles/figma-exact.css';
 
 interface LiveKitSessionProps {
   roomName: string;
@@ -152,67 +156,53 @@ export default function LiveKitSession({
   return (
     <RoomContext.Provider value={roomInstance}>
       <div data-lk-theme="default" className="figma-room-container">
-        {/* Session title */}
-        <div className="figma-session-title">{sessionTitle}</div>
+        {/* Background elements are handled by ::before and ::after in CSS */}
         
-        {/* Question area */}
-        <div className="figma-question-container">
-          <div className="figma-question-label">Question</div>
-          <div className="figma-question-text">{questionText}</div>
-        </div>
+        {/* Backdrop blur */}
+        <div className="backdrop-blur"></div>
         
-        {/* Video conference area */}
-        <div className="figma-video-container">
-          <VideoConference />
-        </div>
-        
-        {/* Audio renderer */}
-        <RoomAudioRenderer volume={0.8} />
-        
-        {/* Hidden agent controller */}
-        <div style={{ display: 'none' }}>
-          <AgentController roomName={roomName} />
-        </div>
-        
-        {/* Control bar with separate leave button */}
-        <div className="figma-controls">
-          <ControlBar />
-          <button
-            className="figma-button figma-button-leave"
-            onClick={handleLeave}
-          >
-            Leave
-          </button>
+        {/* Main content area */}
+        <div className="main-content">
+          {/* Close icon in top right */}
+          <div className="close-icon" onClick={handleLeave}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6L18 18" stroke="#717171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          
+          {/* Session title */}
+          <div className="session-title">{sessionTitle}</div>
+          
+          {/* Progress indicator */}
+          <div className="progress-container">
+            <div className="progress-bg"></div>
+            <div className="progress-fill"></div>
+          </div>
+          
+          {/* Question container */}
+          <div className="question-container">
+            <div className="question-label">Question</div>
+            <div className="question-text">{questionText}</div>
+          </div>
+          
+          {/* Video tiles */}
+          <VideoTiles />
+          
+          {/* Audio renderer */}
+          <RoomAudioRenderer volume={0.8} />
+          
+          {/* Hidden agent controller */}
+          <div style={{ display: 'none' }}>
+            <AgentController roomName={roomName} />
+          </div>
+          
+          {/* Custom control buttons */}
+          <CustomControls onLeave={handleLeave} />
         </div>
       </div>
     </RoomContext.Provider>
   );
 }
 
-function VideoConference() {
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { onlySubscribed: false }
-  );
-  
-  return (
-    <div className="video-grid">
-      {tracks.map((track, index) => {
-        // Use a safe approach to get a unique key
-        const trackKey = track.publication?.trackSid || `track-${index}`;
-        // Check if participant exists to avoid additional runtime errors
-        const participantName = track.participant?.identity || 'Unknown';
-        
-        return (
-          <div key={trackKey} className="participant-tile">
-            <div className="participant-identity">{participantName}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// VideoConference component has been replaced by the VideoTiles component
 

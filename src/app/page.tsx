@@ -203,20 +203,22 @@ export default function Home() {
                 )}
 
                 {/* Controls */}
-                <div className="flex items-center gap-2 mt-24 justify-center">
+                <div className="flex items-center gap-2 mt-24 justify-center" style={{position: 'absolute', width: '160px', height: '48px', left: 'calc(50% - 160px/2)', top: '696px'}}>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="w-12 h-12 rounded-md border-[#566fe9]"
+                    className="w-12 h-12 border-[#566fe9] rounded-none"
+                    style={{boxSizing: 'border-box', display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '12px', gap: '10px', width: '48px', height: '48px', background: '#FFFFFF', border: '1px solid #566FE9', borderRadius: '0px'}}
                   >
-                    <MicIcon className="h-6 w-6" />
+                    <MicIcon className="h-6 w-6" style={{color: '#566FE9'}} />
                   </Button>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="w-12 h-12 rounded-md border-[#566fe9]"
+                    className="w-12 h-12 border-[#566fe9] rounded-none"
+                    style={{boxSizing: 'border-box', display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '12px', gap: '10px', width: '48px', height: '48px', background: '#FFFFFF', border: '1px solid #566FE9', borderRadius: '0px'}}
                   >
-                    <VideoIcon className="h-6 w-6" />
+                    <VideoIcon className="h-6 w-6" style={{color: '#566FE9'}} />
                   </Button>
                 </div>
               </div>

@@ -73,14 +73,15 @@ export async function POST(req: NextRequest) {
     // Start the agent process in background
     try {
       console.log(`Starting agent for room ${room}...`);
-      // Use exact absolute path that we know works
-      const toeflPath = '/Users/drsudhanshu/Downloads/project 2/livekit-agent-server/toefl';
-      console.log(`Toefl path: ${toeflPath}`);
+      // Use the path to our working full_implementation directory
+      const agentPath = path.join(process.cwd(), '..', 'livekit-agent-server', 'full_implementation');
+      console.log(`Agent path: ${agentPath}`);
       
       // Use a non-blocking approach to start the agent
       // This way the API can return immediately and the agent runs in the background
-      // Activate the virtual environment first to ensure all dependencies are available
-      const command = `cd "${toeflPath}" && source "${toeflPath}/v/bin/activate" && python3 "${toeflPath}/main_fixed.py" connect --room "${room}" --participant-identity "${identity || 'ai-assistant'}"`;  
+      // Activate the virtual environment in main directory and run our working implementation
+      const mainVenvPath = path.join(process.cwd(), '..', 'livekit-agent-server', 'main');
+      const command = `cd "${agentPath}" && source "${mainVenvPath}/bin/activate" && python3 "${agentPath}/main.py" connect --room "${room}" --participant-identity "${identity || 'ai-assistant'}"`;  
       console.log(`Executing command: ${command}`);
       
       // Start agent without waiting for it to complete

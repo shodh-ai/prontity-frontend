@@ -27,7 +27,15 @@ except ImportError as e:
     logger.error("Please install the missing packages")
     sys.exit(1)
 
+# Load environment variables from .env file
 load_dotenv()
+
+# Verify environment variables
+required_env_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+for var in required_env_vars:
+    if not os.getenv(var):
+        logger.error(f"Missing required environment variable: {var}")
+        logger.error(f"Current value: {os.getenv(var)}")
 
 
 class Assistant(Agent):
@@ -129,4 +137,28 @@ async def entrypoint(ctx: agents.JobContext):
 
 
 if __name__ == "__main__":
-    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint))
+    # Get LiveKit credentials from environment variables
+    livekit_url = os.getenv("LIVEKIT_URL")
+    livekit_api_key = os.getenv("LIVEKIT_API_KEY")
+    livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
+    
+    # Verify that the credentials are available
+    if not livekit_url or not livekit_api_key or not livekit_api_secret:
+        logger.error("LiveKit credentials are missing from environment variables")
+        logger.error("Please set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in your .env file")
+        sys.exit(1)
+        
+    logger.info(f"Using LiveKit URL: {livekit_url}")
+    
+    # Set the environment variables explicitly
+    os.environ["LIVEKIT_URL"] = livekit_url
+    os.environ["LIVEKIT_API_KEY"] = livekit_api_key
+    os.environ["LIVEKIT_API_SECRET"] = livekit_api_secret
+    
+    # Run the agent with the standard CLI interface
+    # The CLI will use the environment variables we've set
+    agents.cli.run_app(
+        agents.WorkerOptions(
+            entrypoint_fnc=entrypoint
+        )
+    )

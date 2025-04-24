@@ -52,8 +52,10 @@ export default function LiveKitSession({
   aiAssistantEnabled = true
 }: LiveKitSessionProps) {
   const [token, setToken] = useState('');
-  const [audioInitialized, setAudioInitialized] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [micHeartbeat, setMicHeartbeat] = useState<NodeJS.Timeout | null>(null);
   const [roomInstance] = useState(() => new Room({
     // Optimize video quality for the user's screen
     adaptiveStream: true,
@@ -109,6 +111,34 @@ export default function LiveKitSession({
     });
   }, [roomInstance]);
 
+  // Function to enable microphone with auto-reconnect
+  const enableMicrophone = useCallback(async () => {
+    try {
+      if (roomInstance) {
+        await roomInstance.localParticipant.setMicrophoneEnabled(true);
+        setAudioEnabled(true);
+        console.log('Microphone enabled');
+        
+        // Set up a heartbeat to keep the microphone active
+        const heartbeatInterval = setInterval(async () => {
+          if (roomInstance && !roomInstance.localParticipant.isMicrophoneEnabled) {
+            console.log('Microphone heartbeat - reconnecting microphone');
+            try {
+              await roomInstance.localParticipant.setMicrophoneEnabled(true);
+            } catch (err) {
+              console.error('Failed to reconnect microphone in heartbeat:', err);
+            }
+          }
+        }, 5000); // Check every 5 seconds
+        
+        // Store the interval ID for cleanup
+        setMicHeartbeat(heartbeatInterval);
+      }
+    } catch (error) {
+      console.error('Failed to enable microphone:', error);
+    }
+  }, [roomInstance]);
+
   // Function to initialize audio context after user interaction
   const initializeAudio = useCallback(() => {
     // Skip audio initialization if this page type doesn't need audio
@@ -150,12 +180,15 @@ export default function LiveKitSession({
             });
           }, 1000);
         }
+        
+        // Enable microphone after audio initialization
+        enableMicrophone();
       })
       .catch(err => {
         console.error('Error getting microphone permission:', err);
         alert('Microphone permission is required for this application. Please enable it in your browser settings.');
       });
-  }, [hideAudio]);
+  }, [hideAudio, enableMicrophone]);
 
   // Connect to LiveKit room when component mounts and audio is initialized
   useEffect(() => {
@@ -216,10 +249,15 @@ export default function LiveKitSession({
     // Cleanup when component unmounts
     return () => {
       mounted = false;
+      // Clear the microphone heartbeat if it exists
+      if (micHeartbeat) {
+        clearInterval(micHeartbeat);
+      }
+      
       roomInstance.disconnect();
       console.log('Disconnected from LiveKit room');
     };
-  }, [roomInstance, roomName, userName, audioInitialized, hideAudio]);
+  }, [roomInstance, roomName, userName, audioInitialized, hideAudio, micHeartbeat]);
 
   // Show audio initialization prompt if audio isn't initialized yet
   if (!audioInitialized && !hideAudio) {

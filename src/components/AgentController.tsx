@@ -13,6 +13,9 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Configure agent server URL
+  const AGENT_SERVER_URL = process.env.NEXT_PUBLIC_AGENT_SERVER_URL || 'http://localhost:8080';
+  
   // Define connectAgent with useCallback to avoid dependency cycle
   const connectAgent = useCallback(async () => {
     // Avoid concurrent connection attempts
@@ -27,7 +30,7 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
     
     // First ensure any previous agent is disconnected
     try {
-      await fetch(`/api/agent?room=${roomName}`, { method: 'DELETE' });
+      await fetch(`${AGENT_SERVER_URL}/disconnect-agent/${roomName}`, { method: 'POST' });
       console.log('AgentController: Cleaned up any previous agent connections');
     } catch (err) {
       // Ignore errors during cleanup
@@ -54,7 +57,8 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
       
       console.log(`AgentController: Connecting agent for ${pageType} page`);
       
-      const response = await fetch('/api/agent', {
+      // Connect agent using the agent server instead of the API route
+      const response = await fetch(`${AGENT_SERVER_URL}/connect-agent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -94,8 +98,8 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
       console.log('Starting agent status polling...');
       const intervalId = setInterval(async () => {
         try {
-          // Direct API call
-          const response = await fetch(`/api/agent?room=${roomName}`);
+          // Use agent server endpoint instead of API route
+          const response = await fetch(`${AGENT_SERVER_URL}/agent-status/${roomName}`);
           if (response.ok) {
             const data = await response.json();
             console.log('Agent polling result:', data);
@@ -107,15 +111,12 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
                 console.log(`Agent reported error, retry attempt ${retryCount}/${MAX_RETRIES}`);
                 // Attempt to reconnect
                 try {
-                  await fetch(`/api/agent?room=${roomName}`, { method: 'DELETE' });
-                  console.log('Cleaned up failed agent connection before retry');
-                  // Small delay before retry
-                  setTimeout(() => connectAgent(), 1000);
-                } catch (e) {
-                  console.error('Error during retry preparation:', e);
+                  await connectAgent();
+                } catch (reconnectErr) {
+                  console.error('Error during reconnect attempt:', reconnectErr);
                 }
               } else {
-                console.log('Agent connection failed after max retries');
+                clearInterval(intervalId);
                 setAgentStatus('error');
                 setError('Agent connection failed after multiple attempts');
                 setIsLoading(false);
@@ -148,8 +149,8 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
   useEffect(() => {
     const checkAgentStatus = async () => {
       try {
-        // Direct API call
-        const response = await fetch(`/api/agent?room=${roomName}`);
+        // Use agent server endpoint instead of API route
+        const response = await fetch(`${AGENT_SERVER_URL}/agent-status/${roomName}`);
         
         if (response.ok) {
           const data = await response.json();
@@ -175,9 +176,9 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
     setError(null);
     
     try {
-      // Direct API call
-      const response = await fetch(`/api/agent?room=${roomName}`, {
-        method: 'DELETE',
+      // Use agent server endpoint instead of API route
+      const response = await fetch(`${AGENT_SERVER_URL}/disconnect-agent/${roomName}`, {
+        method: 'POST',
       });
       
       const data = await response.json();

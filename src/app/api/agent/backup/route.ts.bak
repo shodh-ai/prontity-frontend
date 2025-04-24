@@ -73,8 +73,8 @@ export async function POST(req: NextRequest) {
     // Start the agent process in background
     try {
       console.log(`Starting agent for room ${room}...`);
-      // Use the path to our working full_implementation directory
-      const agentPath = path.join(process.cwd(), '..', 'livekit-agent-server', 'full_implementation');
+      // Use the absolute path to our working full_implementation directory
+      const agentPath = '/Users/drsudhanshu/Desktop/project/project-1/livekit-agent-server/full_implementation';
       console.log(`Agent path: ${agentPath}`);
       
       // First, get a token from our token service for the agent

@@ -57,6 +57,9 @@ const agentConfigurations: Record<PageType, AgentConfig> = {
 class AgentOrchestrator {
   private activeAgents: Map<string, { roomName: string, pageType: PageType }> = new Map();
   
+  // Agent server URL
+  private agentServerUrl = process.env.NEXT_PUBLIC_AGENT_SERVER_URL || 'http://localhost:8080';
+  
   /**
    * Start an agent for a specific room and page type
    */
@@ -79,8 +82,8 @@ class AgentOrchestrator {
         await this.stopAgent(roomName);
       }
       
-      // Start a new agent with the appropriate configuration
-      const response = await fetch('/api/agent', {
+      // Start a new agent with the appropriate configuration using the agent server
+      const response = await fetch(`${this.agentServerUrl}/connect-agent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -125,9 +128,9 @@ class AgentOrchestrator {
         }), { status: 200 });
       }
       
-      // Call the agent API to stop the agent
-      const response = await fetch(`/api/agent?room=${roomName}`, {
-        method: 'DELETE',
+      // Call the agent server to stop the agent
+      const response = await fetch(`${this.agentServerUrl}/disconnect-agent/${roomName}`, {
+        method: 'POST',
       });
       
       // Remove from active agents regardless of response
@@ -148,8 +151,8 @@ class AgentOrchestrator {
    */
   async getAgentStatus(roomName: string): Promise<Response> {
     try {
-      // Call the agent API to get status
-      return await fetch(`/api/agent?room=${roomName}`, {
+      // Call the agent server to get status
+      return await fetch(`${this.agentServerUrl}/agent-status/${roomName}`, {
         method: 'GET',
       });
     } catch (error) {

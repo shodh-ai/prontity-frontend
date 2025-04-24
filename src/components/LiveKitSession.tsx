@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ControlBar,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
@@ -9,10 +8,14 @@ import {
   RoomContext,
 } from '@livekit/components-react';
 import { Room, Track } from 'livekit-client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import AgentController from '@/components/AgentController';
+import CustomControls from '@/components/CustomControls';
+import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
 import '@/app/room/figma-styles.css';
+import '@/styles/custom-controls.css';
+import '@/styles/enhanced-room.css';
 
 interface LiveKitSessionProps {
   roomName: string;
@@ -79,7 +82,20 @@ export default function LiveKitSession({
     const connectToRoom = async () => {
       try {
         console.log(`Connecting to room: ${roomName} as ${userName}`);
-        const resp = await fetch(`/api/token?room=${roomName}&username=${userName}`);
+        
+        // Use the dedicated token service URL from config
+        const tokenUrl = getTokenEndpointUrl(roomName, userName);
+        
+        // Setup request options including API key header if configured
+        const fetchOptions: RequestInit = {
+          headers: {}
+        };
+        if (tokenServiceConfig.includeApiKeyInClient && tokenServiceConfig.apiKey) {
+          (fetchOptions.headers as Record<string, string>)['x-api-key'] = tokenServiceConfig.apiKey;
+        }
+        
+        // Fetch token from dedicated service
+        const resp = await fetch(tokenUrl, fetchOptions);
         
         if (!resp.ok) {
           throw new Error(`Failed to get token: ${resp.status} ${resp.statusText}`);
@@ -151,38 +167,41 @@ export default function LiveKitSession({
   // Return the LiveKit room UI
   return (
     <RoomContext.Provider value={roomInstance}>
-      <div data-lk-theme="default" className="figma-room-container">
-        {/* Session title */}
-        <div className="figma-session-title">{sessionTitle}</div>
+      <div data-lk-theme="default" className="enhanced-room-container">
+        {/* Background elements */}
+        <div className="bg-circle-1"></div>
+        <div className="bg-circle-2"></div>
+        <div className="backdrop-blur"></div>
         
-        {/* Question area */}
-        <div className="figma-question-container">
-          <div className="figma-question-label">Question</div>
-          <div className="figma-question-text">{questionText}</div>
-        </div>
+        {/* Main content */}
+        <div className="main-content">
+          {/* Progress indicator */}
+          <div className="progress-container">
+            <div className="progress-fill" style={{ width: '28%' }}></div>
+          </div>
+          
+          {/* Session title */}
+          <div className="session-title">
+            {sessionTitle}
+          </div>
         
-        {/* Video conference area */}
-        <div className="figma-video-container">
-          <VideoConference />
-        </div>
+          {/* Question area removed */}
         
-        {/* Audio renderer */}
-        <RoomAudioRenderer volume={0.8} />
-        
-        {/* Hidden agent controller */}
-        <div style={{ display: 'none' }}>
-          <AgentController roomName={roomName} />
-        </div>
-        
-        {/* Control bar with separate leave button */}
-        <div className="figma-controls">
-          <ControlBar />
-          <button
-            className="figma-button figma-button-leave"
-            onClick={handleLeave}
-          >
-            Leave
-          </button>
+          {/* Video conference area */}
+          <div className="video-container">
+            <VideoConference />
+          </div>
+          
+          {/* Audio renderer */}
+          <RoomAudioRenderer volume={0.8} />
+          
+          {/* Hidden agent controller */}
+          <div style={{ display: 'none' }}>
+            <AgentController roomName={roomName} />
+          </div>
+          
+          {/* Custom control buttons */}
+          <CustomControls onLeave={handleLeave} />
         </div>
       </div>
     </RoomContext.Provider>
@@ -198,21 +217,82 @@ function VideoConference() {
     { onlySubscribed: false }
   );
   
+  // Always show both tiles with proper styling based on enhanced design
+  // Even without tracks, we'll show placeholders
+  
+  // Find any AI track if available
+  const aiTrack = tracks.find(track => {
+    const identity = track.participant?.identity || '';
+    return identity.includes('ai') || identity.includes('assistant');
+  });
+  
+  // Find any user track if available
+  const userTrack = tracks.find(track => {
+    const identity = track.participant?.identity || '';
+    return !identity.includes('ai') && !identity.includes('assistant');
+  });
+  
+  // Check if participants are actively speaking
+  const isSpeaking = false; // This would be connected to audio levels in a full implementation
+  
   return (
-    <div className="video-grid">
-      {tracks.map((track, index) => {
-        // Use a safe approach to get a unique key
-        const trackKey = track.publication?.trackSid || `track-${index}`;
-        // Check if participant exists to avoid additional runtime errors
-        const participantName = track.participant?.identity || 'Unknown';
-        
-        return (
-          <div key={trackKey} className="participant-tile">
-            <div className="participant-identity">{participantName}</div>
-          </div>
-        );
-      })}
-    </div>
+    <>
+      {/* User Participant Tile */}
+      <div className={`video-tile ${isSpeaking ? 'speaking' : ''}`}>
+        {userTrack && userTrack.publication && userTrack.publication.kind === 'video' ? (
+          <video 
+            ref={el => {
+              if (el && userTrack.publication) {
+                userTrack.publication.track?.attach(el);
+              }
+            }}
+            autoPlay 
+            playsInline
+            muted
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div 
+            style={{ 
+              backgroundImage: 'url(/user-placeholder.jpg)', 
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              width: '100%', 
+              height: '100%' 
+            }} 
+          />
+        )}
+        <div className="video-tile-label">User</div>
+      </div>
+      
+      {/* AI Participant Tile */}
+      <div className="video-tile">
+        {aiTrack && aiTrack.publication && aiTrack.publication.kind === 'video' ? (
+          <video 
+            ref={el => {
+              if (el && aiTrack.publication) {
+                aiTrack.publication.track?.attach(el);
+              }
+            }}
+            autoPlay 
+            playsInline
+            muted
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div 
+            style={{ 
+              backgroundImage: 'url(/ai-teacher-placeholder.jpg)', 
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              width: '100%', 
+              height: '100%' 
+            }} 
+          />
+        )}
+        <div className="video-tile-label">AI Speaking Teacher</div>
+      </div>
+    </>
   );
 }
 

@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import LiveKitSession from '@/components/LiveKitSession';
-import './figma-styles.css';
 
 export default function Page() {
   const router = useRouter();

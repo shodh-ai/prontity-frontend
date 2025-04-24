@@ -6,8 +6,14 @@ This project combines LiveKit's real-time communication platform with AI to crea
 
 - **`src/`**: Next.js frontend application
   - **`app/`**: Next.js app router pages
-  - **`components/`**: React components including AgentController
-  - **`api/`**: API routes for token generation and agent management
+  - **`components/`**: React components including AgentController and LiveKitSession
+  - **`config/`**: Configuration files for external services
+  - **`api/`**: API routes for agent management
+
+- **`webrtc-token-service/`**: Dedicated microservice for LiveKit token generation
+  - **`controllers/`**: Business logic for token generation and verification
+  - **`middleware/`**: Authentication and logging middleware
+  - **`routes/`**: API route definitions
 
 - **`livekit-agent-server/`**: Python backend for AI agent implementation
   - **`server/`**: Room management service
@@ -32,9 +38,15 @@ npm install
 
 2. Configure environment variables in `.env.local`:
 ```
+# LiveKit configuration for API routes
 LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
 LIVEKIT_API_KEY=your_api_key
 LIVEKIT_API_SECRET=your_api_secret
+
+# WebRTC Token Service configuration
+NEXT_PUBLIC_TOKEN_SERVICE_URL=http://localhost:3001
+NEXT_PUBLIC_TOKEN_SERVICE_API_KEY=your_token_service_api_key
+NEXT_PUBLIC_LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
 ```
 
 3. Run the development server:
@@ -68,12 +80,32 @@ GOOGLE_API_KEY=your_google_api_key
 python main.py connect --room quickstart-room
 ```
 
-## Agent Implementation
+### WebRTC Token Service Setup
 
-The project offers two approaches for the AI agent:
+1. Install dependencies:
+```bash
+cd webrtc-token-service
+npm install
+```
 
-1. **Simple Room Server**: A lightweight HTTP server for room management and token generation
-2. **AI Agent**: Uses Google's realtime model for natural voice conversations
+2. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit the .env file with your LiveKit credentials and service configuration
+```
+
+3. Run the token service:
+```bash
+npm run dev
+```
+
+## Architecture Overview
+
+The project uses a microservices architecture with the following components:
+
+1. **Next.js Frontend**: Handles user interface and interaction with LiveKit
+2. **WebRTC Token Service**: Dedicated microservice for secure token generation 
+3. **AI Agent**: Uses Google's realtime model for natural voice conversations
 
 ## License
 

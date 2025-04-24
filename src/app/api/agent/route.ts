@@ -77,11 +77,24 @@ export async function POST(req: NextRequest) {
       const agentPath = path.join(process.cwd(), '..', 'livekit-agent-server', 'full_implementation');
       console.log(`Agent path: ${agentPath}`);
       
+      // First, get a token from our token service for the agent
+      const tokenServiceUrl = process.env.NEXT_PUBLIC_TOKEN_SERVICE_URL || 'http://localhost:3002';
+      const agentIdentity = identity || 'ai-assistant';
+      
+      console.log(`Getting token for agent from ${tokenServiceUrl}/api/token?room=${room}&username=${agentIdentity}`);
+      
+      // Get token from our dedicated token service
+      const tokenResponse = await fetch(`${tokenServiceUrl}/api/token?room=${room}&username=${agentIdentity}`);
+      
+      if (!tokenResponse.ok) {
+        throw new Error(`Failed to get token for agent: ${tokenResponse.status} ${tokenResponse.statusText}`);
+      }
+      
+      const tokenData = await tokenResponse.json();
+      
       // Use a non-blocking approach to start the agent
-      // This way the API can return immediately and the agent runs in the background
-      // Run the agent directly without trying to use a virtual environment
-      // This seems to be causing issues as the venv path may not exist
-      const command = `cd "${agentPath}" && python3 "${agentPath}/main.py" connect --room "${room}" --participant-identity "${identity || 'ai-assistant'}"`;  
+      // Pass the token and wsURL to the agent
+      const command = `cd "${agentPath}" && python3 "${agentPath}/main.py" connect --room "${room}" --token "${tokenData.token}" --url "${tokenData.wsUrl}" --participant-identity "${agentIdentity}"`;  
       console.log(`Executing command: ${command}`);
       
       // Start agent without waiting for it to complete

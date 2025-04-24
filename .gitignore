@@ -13,6 +13,9 @@ dist
 dist-ssr
 *.local
 
+# Next.js
+.next/
+
 # Environment files
 .env
 .env.local

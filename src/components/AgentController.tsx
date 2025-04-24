@@ -1,77 +1,59 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface AgentControllerProps {
   roomName: string;
+  pageType: string;
 }
 
-export default function AgentController({ roomName }: AgentControllerProps) {
-  const [agentStatus, setAgentStatus] = useState<string>('not_connected');
+const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType }) => {
+  // Agent status: 'idle', 'connecting', 'connected', 'error', 'disconnected'
+  const [agentStatus, setAgentStatus] = useState<string>('idle');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Poll for agent status
-  useEffect(() => {
-    if (agentStatus === 'connecting') {
-      const intervalId = setInterval(async () => {
-        try {
-          const response = await fetch(`/api/agent?room=${roomName}`);
-          const data = await response.json();
-          setAgentStatus(data.status);
-          
-          if (data.status === 'connected' || data.status === 'error') {
-            clearInterval(intervalId);
-            setIsLoading(false);
-          }
-        } catch (err) {
-          console.error('Error polling agent status:', err);
-          setError('Failed to check agent status');
-          clearInterval(intervalId);
-          setIsLoading(false);
-        }
-      }, 2000);
-      
-      return () => clearInterval(intervalId);
-    }
-  }, [agentStatus, roomName]);
-  
-  // Check initial status and attempt auto-connect on component mount
-  useEffect(() => {
-    const checkAndConnect = async () => {
-      try {
-        const response = await fetch(`/api/agent?room=${roomName}`);
-        const data = await response.json();
-        const currentStatus = data.status;
-        setAgentStatus(currentStatus);
-        
-        // If not connected or connecting, try to connect automatically
-        if (currentStatus !== 'connected' && currentStatus !== 'connecting') {
-            console.log('AgentController: Attempting to auto-connect agent...');
-            await connectAgent(); 
-        }
-      } catch (err) {
-        console.error('AgentController: Error checking initial status or auto-connecting:', err);
-        // Optionally set an error state here if needed, though the connectAgent call will also set errors
-      }
-    };
-    
-    checkAndConnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomName]); // Run only once on mount based on roomName
-
-  const connectAgent = async () => {
+  // Define connectAgent with useCallback to avoid dependency cycle
+  const connectAgent = useCallback(async () => {
     // Avoid concurrent connection attempts
     if (isLoading || agentStatus === 'connecting' || agentStatus === 'connected') {
-        console.log('AgentController: Connection attempt skipped (already connecting or connected, or loading). Status:', agentStatus, 'isLoading:', isLoading);
-        return;
+      console.log('AgentController: Connection attempt skipped (already connecting or connected). Status:', agentStatus);
+      return;
     }
     
     console.log('AgentController: Initiating agent connection...');
     setIsLoading(true);
     setError(null);
     
+    // First ensure any previous agent is disconnected
     try {
+      await fetch(`/api/agent?room=${roomName}`, { method: 'DELETE' });
+      console.log('AgentController: Cleaned up any previous agent connections');
+    } catch (err) {
+      // Ignore errors during cleanup
+      console.log('AgentController: Cleanup before connect (non-critical):', err);
+    }
+    
+    try {
+      // Custom instructions based on page type
+      let instructions = 'You are a helpful TOEFL practice assistant.';
+      
+      switch(pageType) {
+        case 'speaking':
+          instructions = 'You are a TOEFL speaking practice assistant. Listen to the student\'s response and provide helpful feedback on pronunciation, fluency, and content organization.';
+          break;
+        case 'writing':
+          instructions = 'You are a TOEFL writing practice assistant. Provide guidance on essay structure, grammar, and vocabulary usage.';
+          break;
+        case 'vocab':
+          instructions = 'You are a TOEFL vocabulary coach. Help the student learn and practice academic vocabulary.';
+          break;
+        default:
+          // Use default instructions
+      }
+      
+      console.log(`AgentController: Connecting agent for ${pageType} page`);
+      
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: {
@@ -80,14 +62,18 @@ export default function AgentController({ roomName }: AgentControllerProps) {
         body: JSON.stringify({
           room: roomName,
           identity: 'ai-assistant',
-          instructions: 'You are a TOEFL speaking practice assistant.'
+          instructions: instructions,
+          pagePath: pageType,
+          voice: 'Puck' // Ensure we're using a compatible voice
         }),
       });
       
       const data = await response.json();
+      console.log('Agent connecting raw response:', data);
       
       if (response.ok) {
         setAgentStatus('connecting');
+        console.log('Agent connecting response:', data);
       } else {
         setError(data.message || 'Failed to connect agent');
         setIsLoading(false);
@@ -97,13 +83,99 @@ export default function AgentController({ roomName }: AgentControllerProps) {
       setError('Failed to connect agent');
       setIsLoading(false);
     }
-  };
+  }, [roomName, pageType, agentStatus, isLoading]);
+
+  // Poll for status if 'connecting' and implement retry logic
+  useEffect(() => {
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
+    
+    if (agentStatus === 'connecting') {
+      console.log('Starting agent status polling...');
+      const intervalId = setInterval(async () => {
+        try {
+          // Direct API call
+          const response = await fetch(`/api/agent?room=${roomName}`);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('Agent polling result:', data);
+            
+            // Check for error status
+            if (data.status === 'error') {
+              if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                console.log(`Agent reported error, retry attempt ${retryCount}/${MAX_RETRIES}`);
+                // Attempt to reconnect
+                try {
+                  await fetch(`/api/agent?room=${roomName}`, { method: 'DELETE' });
+                  console.log('Cleaned up failed agent connection before retry');
+                  // Small delay before retry
+                  setTimeout(() => connectAgent(), 1000);
+                } catch (e) {
+                  console.error('Error during retry preparation:', e);
+                }
+              } else {
+                console.log('Agent connection failed after max retries');
+                setAgentStatus('error');
+                setError('Agent connection failed after multiple attempts');
+                setIsLoading(false);
+              }
+            } else {
+              // Update status normally
+              setAgentStatus(data.status || 'unknown');
+              console.log('Agent polling status:', data.status);
+              
+              // Stop polling once connected
+              if (data.status === 'connected') {
+                console.log('Agent successfully connected!');
+                setIsLoading(false);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error polling agent status:', err);
+        }
+      }, 2000);
+      
+      return () => {
+        clearInterval(intervalId);
+        console.log('Stopping agent status polling');
+      };
+    }
+  }, [agentStatus, roomName, connectAgent]);
+  
+  // Fetch agent status on component mount
+  useEffect(() => {
+    const checkAgentStatus = async () => {
+      try {
+        // Direct API call
+        const response = await fetch(`/api/agent?room=${roomName}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          setAgentStatus(data.status || 'unknown');
+          console.log('Agent status:', data.status);
+        }
+      } catch (err) {
+        console.error('Error checking agent status:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAgentStatus();
+  }, [roomName]);
 
   const disconnectAgent = async () => {
+    if (isLoading || agentStatus === 'disconnected' || agentStatus === 'error') {
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     
     try {
+      // Direct API call
       const response = await fetch(`/api/agent?room=${roomName}`, {
         method: 'DELETE',
       });
@@ -111,7 +183,8 @@ export default function AgentController({ roomName }: AgentControllerProps) {
       const data = await response.json();
       
       if (response.ok) {
-        setAgentStatus('not_connected');
+        setAgentStatus('disconnected');
+        console.log('Agent disconnected response:', data);
       } else {
         setError(data.message || 'Failed to disconnect agent');
       }
@@ -171,4 +244,6 @@ export default function AgentController({ roomName }: AgentControllerProps) {
       </div>
     </div>
   );
-}
+};
+
+export default AgentController;

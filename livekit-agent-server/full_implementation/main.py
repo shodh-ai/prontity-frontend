@@ -3,6 +3,7 @@ import sys
 import json
 import logging
 import asyncio
+import argparse
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions
@@ -40,12 +41,27 @@ for var in required_env_vars:
 
 class Assistant(Agent):
     def __init__(self) -> None:
-        super().__init__(instructions="""
-you are a english teacher that will help with pronunciation and grammar.
-""")
+        # Use the global instructions value which can be set via CLI args
+        super().__init__(instructions=GLOBAL_INSTRUCTIONS)
 
+
+# Global variables to store agent configuration
+GLOBAL_PAGE_PATH = 'speakingpage'  # Default to speakingpage
+GLOBAL_VOICE = 'Puck'     # Default voice - Puck is compatible with gemini-2.0-flash-exp
+GLOBAL_TEMPERATURE = 0.7  # Default temperature
+GLOBAL_INSTRUCTIONS = 'You are a helpful assistant for TOEFL speaking practice.'  # Default instructions
 
 async def entrypoint(ctx: agents.JobContext):
+    # Use the global page path
+    page_path = GLOBAL_PAGE_PATH
+    
+    # Simply log the intended URL - no need to set it directly
+    # The web browser will handle navigation based on the UI
+    logger.info(f"Agent intended for page: http://localhost:3000/{page_path}")
+    
+    # Note: We don't need to set the web URL directly
+    # The LiveKit client handles this automatically
+    
     await ctx.connect()
     
     # We'll store this to use after session is created
@@ -106,12 +122,20 @@ async def entrypoint(ctx: agents.JobContext):
     
     # Create agent session using Google's realtime model
     try:
+        # Get the API key from the environment
+        api_key = os.environ.get('GOOGLE_API_KEY')
+        if not api_key:
+            logger.error("GOOGLE_API_KEY environment variable not set")
+            logger.error("Please set this in your .env file")
+            return
+        
+        # Create the model with our configuration
         model = google.beta.realtime.RealtimeModel(
-            model="gemini-2.0-flash-exp",
-            voice="Puck",
-            temperature=0.8,
-            instructions="You are a helpful assistant for TOEFL speaking practice.",
-            api_key=os.environ.get('GOOGLE_API_KEY'),
+            model="gemini-2.0-flash-exp",  # Use the model that was working before
+            voice=GLOBAL_VOICE,
+            temperature=GLOBAL_TEMPERATURE,
+            instructions=GLOBAL_INSTRUCTIONS,
+            api_key=api_key,
         )
         
         session = AgentSession(llm=model)
@@ -137,6 +161,48 @@ async def entrypoint(ctx: agents.JobContext):
 
 
 if __name__ == "__main__":
+    # Parse additional command line arguments
+    parser = argparse.ArgumentParser(add_help=False)  # No help to avoid conflicts with livekit cli
+    parser.add_argument('--page-path', type=str, help='Path to web page (e.g., "speakingpage")')
+    parser.add_argument('--voice', type=str, help='Voice to use for the agent')
+    parser.add_argument('--temperature', type=float, help='Temperature for LLM responses')
+    parser.add_argument('--instructions', type=str, help='Instructions for the AI agent')
+    
+    # Parse known args without raising error for unknown args
+    args, remaining = parser.parse_known_args()
+    
+    # Set up agent configuration from command line arguments
+    if args.page_path:
+        GLOBAL_PAGE_PATH = args.page_path
+        logging.info(f"Using page path: {GLOBAL_PAGE_PATH}")
+
+    # Set web URL in Chrome (currently disabled due to 'Room' object has no attribute 'client')
+    # These are not used and are likely causing errors
+    # try:
+    #     room.client.set_web_url(f"http://localhost:3000/{GLOBAL_PAGE_PATH}")
+    # except Exception as e:
+    #     logging.error(f"Error setting web URL: {e}")
+
+    logging.info(f"Agent intended for page: http://localhost:3000/{GLOBAL_PAGE_PATH}")
+    
+    # Save instructions if provided
+    if args.instructions:
+        GLOBAL_INSTRUCTIONS = args.instructions
+        logging.info(f"Using custom instructions: {GLOBAL_INSTRUCTIONS[:50]}...")
+        
+    # Save voice setting if provided
+    if args.voice:
+        GLOBAL_VOICE = args.voice
+        logging.info(f"Using voice: {GLOBAL_VOICE}")
+        
+    # Save temperature setting if provided
+    if args.temperature is not None:
+        GLOBAL_TEMPERATURE = args.temperature
+        logging.info(f"Using temperature: {GLOBAL_TEMPERATURE}")
+        
+    # Update sys.argv to remove our custom args before passing to LiveKit CLI
+    sys.argv = [sys.argv[0]] + remaining
+    
     # Get LiveKit credentials from environment variables
     livekit_url = os.getenv("LIVEKIT_URL")
     livekit_api_key = os.getenv("LIVEKIT_API_KEY")
@@ -156,7 +222,7 @@ if __name__ == "__main__":
     os.environ["LIVEKIT_API_SECRET"] = livekit_api_secret
     
     # Run the agent with the standard CLI interface
-    # The CLI will use the environment variables we've set
+    # We've already handled our custom args, so just pass the entrypoint
     agents.cli.run_app(
         agents.WorkerOptions(
             entrypoint_fnc=entrypoint

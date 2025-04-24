@@ -15,10 +15,12 @@ import CustomControls from '@/components/CustomControls';
 import VideoTiles from '@/components/VideoTiles';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
-import '@/app/room/figma-styles.css';
+import '@/app/speakingpage/figma-styles.css';
 import '@/styles/custom-controls.css';
 import '@/styles/figma-exact.css';
 import '@/styles/enhanced-room.css';
+
+export type PageType = 'speaking' | 'writing' | 'vocab' | 'reflection' | 'rox' | 'login' | 'default';
 
 interface LiveKitSessionProps {
   roomName: string;
@@ -26,17 +28,32 @@ interface LiveKitSessionProps {
   questionText?: string;
   sessionTitle?: string;
   onLeave?: () => void;
+  pageType?: PageType;
+  showTimer?: boolean;
+  timerDuration?: number;
+  customControls?: React.ReactNode;
+  hideVideo?: boolean;
+  hideAudio?: boolean;
+  aiAssistantEnabled?: boolean;
 }
 
 export default function LiveKitSession({
   roomName,
   userName,
-  questionText = "With the rise of automation and artificial intelligence, there is a growing concern about the future of jobs and the relevance of traditional education. What measures do you think should be taken to ensure that education remains effective in preparing individuals for the workforce?",
-  sessionTitle = "Speaking Practice Session",
-  onLeave
+  questionText,
+  sessionTitle = "LiveKit Session",
+  onLeave,
+  pageType = 'default',
+  showTimer = false,
+  timerDuration = 45,
+  customControls,
+  hideVideo = false,
+  hideAudio = false,
+  aiAssistantEnabled = true
 }: LiveKitSessionProps) {
   const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [roomInstance] = useState(() => new Room({
     // Optimize video quality for the user's screen
     adaptiveStream: true,
@@ -50,36 +67,106 @@ export default function LiveKitSession({
     }
   }));
 
-  // Function to initialize audio context after user interaction
-  const initializeAudio = () => {
-    // Create a temporary audio context to ensure browser allows audio
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    // Resume the audio context
-    if (audioContext.state === 'suspended') {
-      audioContext.resume().then(() => {
-        console.log('AudioContext resumed successfully');
-      }).catch(err => {
-        console.error('Failed to resume AudioContext:', err);
-      });
-    }
-    
-    setAudioInitialized(true);
-    
-    // Clean up this temporary audio context if needed
-    if (audioContext.state !== 'closed') {
-      setTimeout(() => {
-        audioContext.close().catch(err => {
-          console.error('Failed to close temporary AudioContext:', err);
-        });
-      }, 1000);
+  // Helper function to determine page-specific styles and components
+  const getPageSpecificClasses = () => {
+    switch (pageType) {
+      case 'speaking':
+        return 'speaking-page-container';
+      case 'writing':
+        return 'writing-page-container';
+      case 'vocab':
+        return 'vocab-page-container';
+      case 'reflection':
+        return 'reflection-page-container';
+      case 'rox':
+        return 'rox-page-container';
+      default:
+        return 'default-page-container';
     }
   };
+  
+  // Helper function to toggle audio on/off
+  const toggleAudio = useCallback(() => {
+    setAudioEnabled(prev => {
+      const newState = !prev;
+      // Also enable/disable microphone in LiveKit
+      try {
+        const localParticipant = roomInstance.localParticipant;
+        if (localParticipant) {
+          const micTrack = localParticipant.getTrackPublication(Track.Source.Microphone);
+          if (micTrack) {
+            if (newState) {
+              micTrack.unmute();
+            } else {
+              micTrack.mute();
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error toggling microphone:', err);
+      }
+      return newState;
+    });
+  }, [roomInstance]);
+
+  // Function to initialize audio context after user interaction
+  const initializeAudio = useCallback(() => {
+    // Skip audio initialization if this page type doesn't need audio
+    if (hideAudio) {
+      setAudioInitialized(true);
+      return;
+    }
+    
+    console.log('Initializing audio...');
+    
+    // Request microphone permission explicitly
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        console.log('Microphone permission granted, stream tracks:', stream.getTracks().length);
+        
+        // Create a temporary audio context to ensure browser allows audio
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        
+        // Resume the audio context
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+          }).catch(err => {
+            console.error('Failed to resume AudioContext:', err);
+          });
+        }
+        
+        // The stream can be stopped since LiveKit will request it again
+        stream.getTracks().forEach(track => track.stop());
+        
+        setAudioInitialized(true);
+        console.log('Audio initialization complete');
+        
+        // Clean up this temporary audio context if needed
+        if (audioContext.state !== 'closed') {
+          setTimeout(() => {
+            audioContext.close().catch(err => {
+              console.error('Failed to close temporary AudioContext:', err);
+            });
+          }, 1000);
+        }
+      })
+      .catch(err => {
+        console.error('Error getting microphone permission:', err);
+        alert('Microphone permission is required for this application. Please enable it in your browser settings.');
+      });
+  }, [hideAudio]);
 
   // Connect to LiveKit room when component mounts and audio is initialized
   useEffect(() => {
-    // Don't connect until audio is initialized
-    if (!audioInitialized) return;
-    
+    if (!audioInitialized && !hideAudio) {
+      // If audio isn't initialized and we need it, don't proceed yet
+      console.log('Waiting for audio initialization before connecting...');
+      return;
+    }
+
+    console.log('Audio initialized or not needed, proceeding with LiveKit connection');
+
     let mounted = true;
     
     const connectToRoom = async () => {
@@ -132,12 +219,12 @@ export default function LiveKitSession({
       roomInstance.disconnect();
       console.log('Disconnected from LiveKit room');
     };
-  }, [roomInstance, roomName, userName, audioInitialized]);
+  }, [roomInstance, roomName, userName, audioInitialized, hideAudio]);
 
   // Show audio initialization prompt if audio isn't initialized yet
-  if (!audioInitialized) {
+  if (!audioInitialized && !hideAudio) {
     return (
-      <div className="figma-room-container">
+      <div className={`figma-room-container ${getPageSpecificClasses()}`}>
         <div className="figma-content">
           <h3>Enable Audio</h3>
           <p>To participate in this session, we need permission to use your microphone.</p>
@@ -150,15 +237,21 @@ export default function LiveKitSession({
         </div>
       </div>
     );
+  } else if (!audioInitialized && hideAudio) {
+    // If audio is disabled for this page type, simply skip initialization
+    setAudioInitialized(true);
   }
   
   // Show loading state while waiting for token
   if (token === '') {
-    return <div className="figma-room-container">
+    return <div className={`figma-room-container ${getPageSpecificClasses()}`}>
       <div className="figma-content">Connecting to session...</div>
     </div>;
   }
 
+
+
+  // Handle leaving the session
   const handleLeave = () => {
     if (onLeave) {
       onLeave();
@@ -167,53 +260,124 @@ export default function LiveKitSession({
     }
   };
 
-  // Return the LiveKit room UI
+  // Prepare additional page-specific props for each page type
+  const getPageSpecificProps = () => {
+    // You can extend this function to add more page-specific props as needed
+    switch (pageType) {
+      case 'speaking':
+        return {
+          showAgentStatus: true,
+          showTimer: true
+        };
+      case 'writing':
+        return {
+          showAgentStatus: true,
+          showTimer: false
+        };
+      case 'vocab':
+        return {
+          showAgentStatus: false,
+          showTimer: false
+        };
+      default:
+        return {
+          showAgentStatus: true,
+          showTimer: false
+        };
+    }
+  };
+  
+  // Get the specific props for this page type
+  const pageProps = getPageSpecificProps();
+
   return (
     <RoomContext.Provider value={roomInstance}>
-      <div data-lk-theme="default" className="figma-room-container">
-        {/* Background elements are handled by ::before and ::after in CSS */}
-        
-        {/* Backdrop blur */}
-        <div className="backdrop-blur"></div>
-        
-        {/* Main content area */}
-        <div className="main-content">
-          {/* Close icon in top right */}
-          <div className="close-icon" onClick={handleLeave}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18 6L6 18M6 6L18 18" stroke="#717171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          
-          {/* Session title */}
-          <div className="session-title">{sessionTitle}</div>
-          
-          {/* Progress indicator */}
-          <div className="progress-container">
-            <div className="progress-bg"></div>
-            <div className="progress-fill"></div>
-          </div>
-          
-          {/* Question container */}
-          <div className="question-container">
-            <div className="question-label">Question</div>
-            <div className="question-text">{questionText}</div>
-          </div>
-          
-          {/* Video tiles - Using the imported component */}
-          <VideoTiles />
-          
-          {/* Audio renderer */}
-          <RoomAudioRenderer volume={0.8} />
-          
-          {/* Hidden agent controller */}
-          <div style={{ display: 'none' }}>
-            <AgentController roomName={roomName} />
-          </div>
-          
-          {/* Custom controls with leave button */}
-          <CustomControls onLeave={handleLeave} />
+      <div className={`session-container ${getPageSpecificClasses()}`}>
+        {/* Add RoomAudioRenderer for audio output */}
+        <RoomAudioRenderer />
+        <div className="header">
+          <h2>{sessionTitle}</h2>
+          {pageType !== 'login' && (
+            <div className="question-container">
+              {questionText && (
+                <div className="question-card">
+                  <h3>Question:</h3>
+                  <p>{questionText}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
+        <div className="conference-container">
+          {/* Only render video conference if connected to room and video should be shown */}
+          {token && !hideVideo && (
+            <VideoTiles />
+          )}
+
+          {/* Controls rendered separately from video */}
+          <div className="custom-controls">
+            {/* Microphone toggle button */}
+            {!hideAudio && (
+              <button 
+                className="custom-button" 
+                onClick={toggleAudio}
+                style={{
+                  background: audioEnabled ? '#FFFFFF' : '#D7D7D7',
+                  border: audioEnabled ? '1px solid #566FE9' : '1px solid #888888'
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" 
+                    stroke={audioEnabled ? '#566FE9' : '#888888'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" 
+                    stroke={audioEnabled ? '#566FE9' : '#888888'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  {!audioEnabled && (
+                    <path d="M3 3l18 18" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  )}
+                </svg>
+              </button>
+            )}
+
+            {/* Custom controls can be injected here */}
+            {customControls}
+
+            {/* Leave session button */}
+            <button 
+              className="custom-button" 
+              onClick={handleLeave}
+              style={{
+                background: '#FFFFFF',
+                border: '1px solid #566FE9'
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="#566FE9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M16 17l5-5-5-5" stroke="#566FE9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M21 12H9" stroke="#566FE9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* AI Agent Controller - only show if enabled */}
+        {aiAssistantEnabled && (
+          <div className="mt-6">
+          {audioInitialized ? (
+            <AgentController roomName={roomName} pageType={pageType} />
+          ) : (
+            <div className="p-4 bg-yellow-100 rounded-lg mb-4">
+              <p className="text-yellow-800 font-medium">Please allow microphone access to enable the AI Assistant.</p>
+              <button 
+                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={initializeAudio}
+              >
+                Grant Microphone Access
+              </button>
+            </div>
+          )}
+        </div>
+        )}
       </div>
     </RoomContext.Provider>
   );

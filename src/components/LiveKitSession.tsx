@@ -6,15 +6,18 @@ import {
   RoomAudioRenderer,
   useTracks,
   RoomContext,
+  useLocalParticipant
 } from '@livekit/components-react';
 import { Room, Track } from 'livekit-client';
 import { useEffect, useState, useCallback } from 'react';
 import AgentController from '@/components/AgentController';
 import CustomControls from '@/components/CustomControls';
+import VideoTiles from '@/components/VideoTiles';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
 import '@/app/room/figma-styles.css';
 import '@/styles/custom-controls.css';
+import '@/styles/figma-exact.css';
 import '@/styles/enhanced-room.css';
 
 interface LiveKitSessionProps {
@@ -167,30 +170,38 @@ export default function LiveKitSession({
   // Return the LiveKit room UI
   return (
     <RoomContext.Provider value={roomInstance}>
-      <div data-lk-theme="default" className="enhanced-room-container">
-        {/* Background elements */}
-        <div className="bg-circle-1"></div>
-        <div className="bg-circle-2"></div>
+      <div data-lk-theme="default" className="figma-room-container">
+        {/* Background elements are handled by ::before and ::after in CSS */}
+        
+        {/* Backdrop blur */}
         <div className="backdrop-blur"></div>
         
-        {/* Main content */}
+        {/* Main content area */}
         <div className="main-content">
-          {/* Progress indicator */}
-          <div className="progress-container">
-            <div className="progress-fill" style={{ width: '28%' }}></div>
+          {/* Close icon in top right */}
+          <div className="close-icon" onClick={handleLeave}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6L18 18" stroke="#717171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </div>
           
           {/* Session title */}
-          <div className="session-title">
-            {sessionTitle}
+          <div className="session-title">{sessionTitle}</div>
+          
+          {/* Progress indicator */}
+          <div className="progress-container">
+            <div className="progress-bg"></div>
+            <div className="progress-fill"></div>
           </div>
-        
-          {/* Question area removed */}
-        
-          {/* Video conference area */}
-          <div className="video-container">
-            <VideoConference />
+          
+          {/* Question container */}
+          <div className="question-container">
+            <div className="question-label">Question</div>
+            <div className="question-text">{questionText}</div>
           </div>
+          
+          {/* Video tiles - Using the imported component */}
+          <VideoTiles />
           
           {/* Audio renderer */}
           <RoomAudioRenderer volume={0.8} />
@@ -200,99 +211,10 @@ export default function LiveKitSession({
             <AgentController roomName={roomName} />
           </div>
           
-          {/* Custom control buttons */}
+          {/* Custom controls with leave button */}
           <CustomControls onLeave={handleLeave} />
         </div>
       </div>
     </RoomContext.Provider>
   );
 }
-
-function VideoConference() {
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { onlySubscribed: false }
-  );
-  
-  // Always show both tiles with proper styling based on enhanced design
-  // Even without tracks, we'll show placeholders
-  
-  // Find any AI track if available
-  const aiTrack = tracks.find(track => {
-    const identity = track.participant?.identity || '';
-    return identity.includes('ai') || identity.includes('assistant');
-  });
-  
-  // Find any user track if available
-  const userTrack = tracks.find(track => {
-    const identity = track.participant?.identity || '';
-    return !identity.includes('ai') && !identity.includes('assistant');
-  });
-  
-  // Check if participants are actively speaking
-  const isSpeaking = false; // This would be connected to audio levels in a full implementation
-  
-  return (
-    <>
-      {/* User Participant Tile */}
-      <div className={`video-tile ${isSpeaking ? 'speaking' : ''}`}>
-        {userTrack && userTrack.publication && userTrack.publication.kind === 'video' ? (
-          <video 
-            ref={el => {
-              if (el && userTrack.publication) {
-                userTrack.publication.track?.attach(el);
-              }
-            }}
-            autoPlay 
-            playsInline
-            muted
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <div 
-            style={{ 
-              backgroundImage: 'url(/user-placeholder.jpg)', 
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              width: '100%', 
-              height: '100%' 
-            }} 
-          />
-        )}
-        <div className="video-tile-label">User</div>
-      </div>
-      
-      {/* AI Participant Tile */}
-      <div className="video-tile">
-        {aiTrack && aiTrack.publication && aiTrack.publication.kind === 'video' ? (
-          <video 
-            ref={el => {
-              if (el && aiTrack.publication) {
-                aiTrack.publication.track?.attach(el);
-              }
-            }}
-            autoPlay 
-            playsInline
-            muted
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <div 
-            style={{ 
-              backgroundImage: 'url(/ai-teacher-placeholder.jpg)', 
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              width: '100%', 
-              height: '100%' 
-            }} 
-          />
-        )}
-        <div className="video-tile-label">AI Speaking Teacher</div>
-      </div>
-    </>
-  );
-}
-

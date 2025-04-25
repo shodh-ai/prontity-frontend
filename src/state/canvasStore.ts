@@ -315,21 +315,29 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     const state = get();
     const newImageId = payload.imageId || `ai-img-${Date.now()}`; // Use provided ID or generate one
 
-    // Simple placement: Offset from current viewport center
+    // Get viewport center for better placement
     const viewport = state.viewport;
-    const screenWidth = window.innerWidth; // Needs access to actual canvas dimensions
-    const screenHeight = window.innerHeight;
-    const centerX = viewport.x + (screenWidth / 2) / viewport.scale;
-    const centerY = viewport.y + (screenHeight / 2) / viewport.scale;
-    const padding = 20 / viewport.scale; // Add padding scaled to viewport
+    let centerX = 0;
+    let centerY = 0;
+    
+    // If we have a viewport, center the image in the visible area
+    if (viewport) {
+      // Use canvas center as focal point
+      const visibleWidth = window.innerWidth / viewport.scale;
+      const visibleHeight = window.innerHeight / viewport.scale;
+      centerX = (-viewport.x / viewport.scale) + (visibleWidth / 2);
+      centerY = (-viewport.y / viewport.scale) + (visibleHeight / 2);
+    } else {
+      // Fallback to fixed position if no viewport info
+      centerX = 200;
+      centerY = 200;
+    }
+    
+    // Center the image around the calculated position
+    const finalX = centerX - (payload.width / 2);
+    const finalY = centerY - (payload.height / 2);
 
-    const finalX = centerX + padding - (payload.width / 2); // Approximate center placement with offset
-    const finalY = centerY + padding - (payload.height / 2);
-
-    // TODO: Implement proper collision avoidance search here using state.elements
-    //       Requires utility functions for bounding box calculation & intersection checks.
-
-    // --- End Placement Logic Placeholder ---
+    // --- End Improved Placement Logic ---
 
     const newImageElement: ImageElement = {
       id: newImageId,
@@ -345,10 +353,21 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
 
     // Add the new element using the existing action
     get().addElement(newImageElement);
+    
+    // Auto-scroll to show the newly added image
+    // Update viewport to center on the new image
+    const newViewport = {
+      ...state.viewport,
+      x: -(finalX * state.viewport.scale) + (window.innerWidth / 2) - ((payload.width * state.viewport.scale) / 2),
+      y: -(finalY * state.viewport.scale) + (window.innerHeight / 2) - ((payload.height * state.viewport.scale) / 2)
+    };
+    get().setViewport(newViewport);
 
     set({ isGeneratingAI: false }); // Hide loading indicator
 
-    // Trigger save after adding the element? Should be handled by autosave logic.
-    console.log("AI Image element added, autosave should trigger.");
-  },
+    // Select the newly added image to make it immediately editable
+    get().setSelectedElementIds(new Set([newImageId]));
+
+    console.log("AI Image element added, viewport adjusted to show image.");
+  }
 }));

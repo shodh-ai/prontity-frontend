@@ -144,7 +144,26 @@ export default function VocabPage() {
       
     } catch (error) {
       console.error('Error generating AI image:', error);
-      alert(`Failed to generate image: ${error instanceof Error ? error.message : 'Unknown error'}`); 
+      
+      // Create a more user-friendly error message
+      let userMessage = "Failed to generate image.";
+      
+      if (error instanceof Error) {
+        const errorMsg = error.message;
+        if (errorMsg.includes('content policy') || 
+            errorMsg.includes('unable to create') || 
+            errorMsg.includes('prohibited')) {
+          userMessage = "Sorry, I can't generate that image due to content policy. Please try a different prompt.";
+        } else if (errorMsg.includes('400') || errorMsg.includes('Bad Request')) {
+          userMessage = "There was a problem with the request. Please try a different prompt.";
+        } else if (errorMsg.includes('500')) {
+          userMessage = "The image generation service is currently having issues. Please try again in a moment.";
+        } else {
+          userMessage = `Failed to generate image: ${errorMsg}`;
+        }
+      }
+      
+      alert(userMessage);
     } finally {
       // Reset loading states
       setIsPromptLoading(false);

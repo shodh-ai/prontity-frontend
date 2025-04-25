@@ -1,12 +1,29 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import path from 'path';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from .env.local
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 // Create a new pool using environment variables
 // This will use PGUSER, PGHOST, PGDATABASE, PGPASSWORD, PGPORT by default
-const pool = new Pool();
+const dbConfig = {
+  user: process.env.PGUSER,
+  host: process.env.PGHOST,
+  database: process.env.PGDATABASE,
+  password: process.env.PGPASSWORD,
+  port: parseInt(process.env.PGPORT || '5432')
+};
+
+console.log('Database connection config:', {
+  user: dbConfig.user,
+  host: dbConfig.host,
+  database: dbConfig.database,
+  port: dbConfig.port,
+  // Don't log password
+});
+
+const pool = new Pool(dbConfig);
 
 /**
  * Execute a query on the database

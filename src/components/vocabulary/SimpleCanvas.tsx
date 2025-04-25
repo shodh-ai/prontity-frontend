@@ -18,6 +18,8 @@ import {
 } from '@/state/canvasStore'; 
 import { v4 as uuidv4 } from 'uuid';
 import AIGeneratedImage from './AIGeneratedImage';
+import DirectImageEditor from './DirectImageEditor';
+import { editImage } from '@/api/imageGeneration';
 
 const SimpleCanvas: React.FC = () => {
   // Use individual selectors with explicit state types
@@ -34,11 +36,16 @@ const SimpleCanvas: React.FC = () => {
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [editingText, setEditingText] = useState<{ id: string; text: string } | null>(null);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  
+  // New state for image editing outside of Konva
+  const [editingImage, setEditingImage] = useState<{ element: ImageElement; imageUrl: string } | null>(null);
   
   const stageRef = useRef<Konva.Stage>(null); 
   const transformerRef = useRef<Konva.Transformer>(null); 
   
   const [stageSize, setStageSize] = useState({ width: 800, height: 400 });
+  const [editError, setEditError] = useState<string | null>(null);
   
   useEffect(() => {
     const updateSize = () => {
@@ -115,92 +122,152 @@ const SimpleCanvas: React.FC = () => {
     }
   }, [elements, updateElement]);
   
-  const handleMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    const stage = stageRef.current;
-    if (!stage) return;
+  const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+    // Detect if we clicked on stage but not on any shape
+    const clickedOnEmpty = e.target === e.target.getStage();
     
-    const clickedNode = e.target;
-    const isStage = clickedNode === stage;
-    const isTransformer = clickedNode.getParent()?.className === 'Transformer';
-
-    if (!isStage && !isTransformer) {
-      const elementId = clickedNode.id();
-      if (elementId && elements.has(elementId) && currentTool === 'select') {
-         handleElementClick(elementId);
-      }
-      return; 
-    }
-
-    if (currentTool === 'select') {
-      setSelectedIds(new Set()); 
-      return;
-    }
-
-    if (currentTool === 'pan') {
-      return;
-    }
-
-    setIsDrawing(true);
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
-
-    const x = (pos.x - viewport.x) / viewport.scale;
-    const y = (pos.y - viewport.y) / viewport.scale;
-    const id = uuidv4();
-
-    let newElement: DrawingElement | null = null;
-
-    switch (currentTool) {
-      case 'pencil':
-        newElement = {
-          id,
-          type: 'line',
-          points: [x, y, x, y],
-          stroke: strokeColor,
-          strokeWidth: strokeWidth,
-          x: x, 
-          y: y,
+    if (clickedOnEmpty) {
+      // Clear selection when clicking empty area
+      setSelectedIds(new Set());
+      
+      if (currentTool === 'text') {
+        // Add a new text element where clicked
+        const stage = e.target.getStage();
+        if (!stage) return;
+        
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+        
+        // Adjust position for viewport transformation
+        const adjustedPos = {
+          x: (pointer.x - stage.x()) / stage.scaleX(),
+          y: (pointer.y - stage.y()) / stage.scaleY(),
         };
-        break;
-      case 'rectangle':
-        newElement = {
-          id,
+        
+        const newTextElement: TextElement = {
+          id: `text-${uuidv4()}`,
+          type: 'text',
+          x: adjustedPos.x,
+          y: adjustedPos.y,
+          text: 'Double-click to edit',
+          fontSize: 20,
+          fill: 'black',
+        };
+        
+        addElement(newTextElement);
+        setEditingText({ id: newTextElement.id, text: newTextElement.text });
+      }
+      else if (currentTool === 'rectangle') {
+        // Start drawing rectangle
+        setIsDrawing(true);
+        
+        const stage = e.target.getStage();
+        if (!stage) return;
+        
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+        
+        // Adjust position for viewport transformation
+        const adjustedPos = {
+          x: (pointer.x - stage.x()) / stage.scaleX(),
+          y: (pointer.y - stage.y()) / stage.scaleY(),
+        };
+        
+        const newRectElement: RectangleElement = {
+          id: `rect-${uuidv4()}`,
           type: 'rectangle',
-          x: x,
-          y: y,
+          x: adjustedPos.x,
+          y: adjustedPos.y,
           width: 0,
           height: 0,
           stroke: strokeColor,
           strokeWidth: strokeWidth,
-          fill: 'transparent' 
+          fill: 'transparent',
         };
-        break;
-      case 'text':
-        newElement = {
-          id,
-          type: 'text',
-          x: x,
-          y: y,
-          text: 'New Text',
-          fontSize: 20 / viewport.scale, 
-          fill: strokeColor,
+        
+        addElement(newRectElement);
+        setSelectedIds(new Set([newRectElement.id]));
+      }
+      else if (currentTool === 'pencil') {
+        // Start drawing line
+        setIsDrawing(true);
+        
+        const stage = e.target.getStage();
+        if (!stage) return;
+        
+        const pointer = stage.getPointerPosition();
+        if (!pointer) return;
+        
+        // Adjust position for viewport transformation
+        const adjustedPos = {
+          x: (pointer.x - stage.x()) / stage.scaleX(),
+          y: (pointer.y - stage.y()) / stage.scaleY(),
         };
-        if (newElement) {
-          addElement(newElement);
-          setIsDrawing(false);
-          setTimeout(() => handleTextDblClick(id), 50);
+        
+        const newLineElement: LineElement = {
+          id: `line-${uuidv4()}`,
+          type: 'pencil',
+          x: 0,
+          y: 0,
+          points: [adjustedPos.x, adjustedPos.y],
+          stroke: strokeColor,
+          strokeWidth: strokeWidth,
+        };
+        
+        addElement(newLineElement);
+        setSelectedIds(new Set([newLineElement.id]));
+      }
+      else if (currentTool === 'pan') {
+        // For panning, only allow vertical movement
+        const stage = e.target.getStage();
+        if (stage) {
+          stage.draggable(true);
+          
+          // Store original x position for restricting horizontal movement
+          // Using data attribute instead of custom property
+          stage.attrs.originalX = viewport.x;
         }
-        return; 
-      default:
-        setIsDrawing(false);
-        return;
+      }
     }
+  }, [currentTool, setSelectedIds, addElement, strokeColor, strokeWidth, viewport.x]); 
 
-    if (newElement) {
-      addElement(newElement);
-      setSelectedIds(new Set([id])); 
+  // Handle image edit requests
+  const handleImageEdit = useCallback(async (element: ImageElement, newImageData: string, prompt: string) => {
+    try {
+      setIsProcessingImage(true);
+      setEditError(null);
+
+      // Call the API to edit the image with Gemini
+      const result = await editImage(newImageData, prompt);
+      console.log('Edit image result:', result);
+      
+      if (result.success && result.imageData) {
+        // The API now returns a complete data URL, so use it directly
+        const imageUrl = result.imageData;
+        
+        // Update the existing element with the new image
+        updateElement(element.id, {
+          imageUrl: imageUrl,
+          metadata: {
+            ...element.metadata,
+            prompt: prompt,
+            originalImage: element.imageUrl, // Store original for possible reversion
+            generationDate: new Date().toISOString()
+          }
+        });
+        
+        console.log('Image successfully edited');
+      } else {
+        console.error('Failed to edit image:', result.error);
+        setEditError(result.error || 'Unknown error occurred');
+      }
+    } catch (error) {
+      console.error('Error editing image:', error);
+      setEditError(error instanceof Error ? error.message : 'An unexpected error occurred');
+    } finally {
+      setIsProcessingImage(false);
     }
-  }, [currentTool, viewport, strokeColor, strokeWidth, addElement, setSelectedIds, handleElementClick, elements]); 
+  }, [updateElement]);
 
   const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (!isDrawing) return;
@@ -353,38 +420,46 @@ const SimpleCanvas: React.FC = () => {
     textarea.addEventListener('blur', handleBlur);
   }, [elements, selectedIds, setSelectedIds, updateElement, viewport]); 
 
-  const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
+  const handleStageWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
-
-    const scaleBy = 1.1;
-    const stage = stageRef.current; 
+    
+    // For vertical scrolling only - don't change scale on wheel
+    const stage = stageRef.current;
     if (!stage) return;
-
-    const oldScale = stage.scaleX();
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-
-    const mousePointTo = {
-      x: (pointer.x - stage.x()) / oldScale,
-      y: (pointer.y - stage.y()) / oldScale,
-    };
-
-    const newScaleUnclamped = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
-    const newScale = Math.max(0.1, Math.min(newScaleUnclamped, 10)); 
-
-    const newPos = {
-      x: pointer.x - mousePointTo.x * newScale,
-      y: pointer.y - mousePointTo.y * newScale,
-    };
-
-    setViewport({ x: newPos.x, y: newPos.y, scale: newScale });
-  }, [setViewport]); 
+    
+    // Current viewport
+    const currentY = viewport.y;
+    
+    // Calculate new Y position based on wheel delta
+    // Using deltaY directly for vertical scrolling
+    const newY = currentY + e.evt.deltaY * -1;
+    
+    // Apply the new position, but keep X position fixed to restrict horizontal scrolling
+    setViewport({
+      ...viewport,
+      y: newY,
+      // Keep x position fixed to prevent horizontal scrolling
+      x: viewport.x
+    });
+  }, [setViewport, viewport]); 
 
   const handleStageDragMove = useCallback((e: KonvaEventObject<DragEvent>) => {
-    if (currentTool !== 'pan') return;
-    const stage = e.target as Konva.Stage;
-    setViewport({ x: stage.x(), y: stage.y(), scale: viewport.scale });
-  }, [currentTool, viewport.scale, setViewport]); 
+    if (currentTool === 'pan') {
+      const stage = e.target.getStage();
+      if (stage) {
+        // Restrict to vertical movement only
+        // Use the stored original X position for horizontal
+        setViewport({ 
+          x: stage.attrs.originalX || viewport.x, // Restrict x to original position
+          y: stage.y(), // Allow y to change
+          scale: stage.scaleX() 
+        });
+        
+        // Force the stage x position to remain fixed
+        stage.x(stage.attrs.originalX || viewport.x);
+      }
+    }
+  }, [currentTool, setViewport, viewport.x]); 
   
   const elementsArray: [string, DrawingElement][] = Array.from(elements.entries());
 
@@ -398,10 +473,10 @@ const SimpleCanvas: React.FC = () => {
         scaleY={viewport.scale}
         x={viewport.x}
         y={viewport.y}
-        onMouseDown={handleMouseDown}
+        onMouseDown={handleStageMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onWheel={handleWheel}
+        onWheel={handleStageWheel}
         onDragMove={handleStageDragMove}
         draggable={currentTool === 'pan'}
       >
@@ -409,18 +484,25 @@ const SimpleCanvas: React.FC = () => {
           {/* Render image elements */}
           {elementsArray
             .filter((entry): entry is [string, ImageElement] => entry[1].type === 'image')
-            .map(([id, element]) => (
-              <AIGeneratedImage
-                key={id}
-                element={element} 
-                isSelected={selectedIds.has(id)}
-                onSelect={() => handleElementClick(id)}
-                onDragEnd={(e) => handleElementDragEnd(id, e)}
-                onTransformEnd={(e) => handleTransformEnd(id, e)}
-                viewportScale={viewport.scale}
-              />
-            ))}
-
+            .map(([id, element]) => {
+              return (
+                <AIGeneratedImage
+                  key={id}
+                  element={element}
+                  isSelected={selectedIds.has(id)}
+                  onSelect={() => handleElementClick(id)}
+                  onDragEnd={e => handleElementDragEnd(id, e)}
+                  onTransformEnd={e => handleTransformEnd(id, e)}
+                  viewportScale={viewport.scale}
+                  onEdit={(_element, _newImageData, _prompt) => {
+                    // This is just a proxy to avoid Konva-related errors
+                    // Actual editing happens in the modal component
+                    setEditingImage({ element, imageUrl: element.imageUrl });
+                    return Promise.resolve();
+                  }}
+                />
+              );
+            })}
           {/* Render line elements */}
           {elementsArray
             .filter((entry): entry is [string, LineElement] => entry[1].type === 'line' || entry[1].type === 'pencil')
@@ -508,58 +590,96 @@ const SimpleCanvas: React.FC = () => {
       </Stage>
       
       <div className="absolute bottom-2 right-2 z-10 flex space-x-2 bg-white p-2 rounded shadow">
-        <div className="text-xs">Zoom: {Math.round(viewport.scale * 100)}%</div>
         <button
           className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
           onClick={() => {
-            const stage = stageRef.current;
-            if (!stage) return;
-            const scaleBy = 1.1;
-            const oldScale = stage.scaleX();
-            const center = { x: stage.width() / 2, y: stage.height() / 2 };
-            const relatedTo = { 
-              x: (center.x - stage.x()) / oldScale,
-              y: (center.y - stage.y()) / oldScale,
-            };
-            const newScale = Math.min(10, oldScale * scaleBy); 
-            const newPos = {
-              x: center.x - relatedTo.x * newScale,
-              y: center.y - relatedTo.y * newScale,
-            };
-            setViewport({ ...newPos, scale: newScale });
+            // Scroll up
+            setViewport({
+              ...viewport,
+              y: viewport.y + 50 // Move up
+            });
           }}
         >
-          +
+          ↑
         </button>
         <button
           className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
           onClick={() => {
-            const stage = stageRef.current;
-            if (!stage) return;
-            const scaleBy = 1.1;
-            const oldScale = stage.scaleX();
-            const center = { x: stage.width() / 2, y: stage.height() / 2 };
-             const relatedTo = { 
-              x: (center.x - stage.x()) / oldScale,
-              y: (center.y - stage.y()) / oldScale,
-            };
-            const newScale = Math.max(0.1, oldScale / scaleBy); 
-            const newPos = {
-              x: center.x - relatedTo.x * newScale,
-              y: center.y - relatedTo.y * newScale,
-            };
-            setViewport({ ...newPos, scale: newScale });
+            // Scroll down
+            setViewport({
+              ...viewport,
+              y: viewport.y - 50 // Move down
+            });
           }}
         >
-          -
+          ↓
         </button>
         <button
           className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
-          onClick={() => setViewport({ x: 0, y: 0, scale: 1 })}
+          onClick={() => setViewport({ x: viewport.x, y: 0, scale: viewport.scale })}
         >
-          Reset View
+          Reset Scroll
         </button>
       </div>
+      
+      {/* Error Modal */}
+      {editError && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-xl font-bold text-gray-700">Image Generation Error</h3>
+              <button
+                onClick={() => setEditError(null)}
+                className="text-gray-400 hover:text-gray-500 rounded-full p-1 hover:bg-gray-100"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="font-medium text-gray-600">{editError}</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Loading Indicator */}
+      {isProcessingImage && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6 flex flex-col items-center">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-700 font-medium">Generating image...</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Image Editor Modal - Separate from Konva */}
+      {editingImage && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-xl font-bold text-gray-700">Edit Image</h3>
+              <button
+                onClick={() => setEditingImage(null)}
+                className="text-gray-400 hover:text-gray-500 rounded-full p-1 hover:bg-gray-100"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+            <DirectImageEditor 
+              imageUrl={editingImage.imageUrl} 
+              onEditComplete={async (editedImageData: string, prompt: string) => {
+                await handleImageEdit(editingImage.element, editedImageData, prompt);
+                setEditingImage(null); // Close the editor when done
+              }}
+              initialPrompt={editingImage.element.metadata?.prompt || ''}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

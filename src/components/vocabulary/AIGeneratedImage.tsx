@@ -13,6 +13,7 @@ interface AIGeneratedImageProps {
   onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
   onTransformEnd: (e: KonvaEventObject<Event>) => void;
   viewportScale: number;
+  onEdit?: (element: ImageElement, newImageData: string, prompt: string) => Promise<void>;
 }
 
 const AIGeneratedImage = ({
@@ -22,6 +23,7 @@ const AIGeneratedImage = ({
   onDragEnd,
   onTransformEnd,
   viewportScale,
+  onEdit,
 }: AIGeneratedImageProps) => {
   const imageRef = React.useRef<any>(null);
   const trRef = React.useRef<any>(null);
@@ -63,6 +65,14 @@ const AIGeneratedImage = ({
     }
   }, [image, status, element]);
 
+  // Simplified double-click handler that delegates to parent's onEdit
+  const handleDblClick = (e: KonvaEventObject<MouseEvent>) => {
+    if (onEdit && imageLoaded) {
+      // Just call the parent's onEdit function which now uses a separate modal
+      onEdit(element, "", "");
+    }
+  };
+
   return (
     <>
       <Image
@@ -75,6 +85,7 @@ const AIGeneratedImage = ({
         draggable={isSelected}
         onClick={onSelect}
         onTap={onSelect}
+        onDblClick={handleDblClick}
         onDragEnd={onDragEnd}
         onTransformEnd={onTransformEnd}
         id={element.id}

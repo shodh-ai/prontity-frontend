@@ -13,6 +13,7 @@ import { useEffect, useState, useCallback } from 'react';
 import AgentController from '@/components/AgentController';
 import CustomControls from '@/components/CustomControls';
 import VideoTiles from '@/components/VideoTiles';
+import TimerController from '@/components/TimerController';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
 import '@/app/speakingpage/figma-styles.css';
@@ -20,7 +21,7 @@ import '@/styles/custom-controls.css';
 import '@/styles/figma-exact.css';
 import '@/styles/enhanced-room.css';
 
-export type PageType = 'speaking' | 'writing' | 'vocab' | 'reflection' | 'rox' | 'login' | 'default';
+export type PageType = 'speaking' | 'speakingpage' | 'writing' | 'vocab' | 'reflection' | 'rox' | 'login' | 'default';
 
 interface LiveKitSessionProps {
   roomName: string;
@@ -303,6 +304,7 @@ export default function LiveKitSession({
     // You can extend this function to add more page-specific props as needed
     switch (pageType) {
       case 'speaking':
+      case 'speakingpage':
         return {
           showAgentStatus: true,
           showTimer: true
@@ -342,6 +344,11 @@ export default function LiveKitSession({
                   <h3>Question:</h3>
                   <p>{questionText}</p>
                 </div>
+              )}
+              
+              {/* Timer will appear here when activated by the agent */}
+              {token && (pageType === 'speaking' || pageType === 'speakingpage') && (
+                <TimerController visible={true} />
               )}
             </div>
           )}
@@ -398,23 +405,11 @@ export default function LiveKitSession({
           </div>
         </div>
 
-        {/* AI Agent Controller - only show if enabled */}
-        {aiAssistantEnabled && (
-          <div className="mt-6">
-          {audioInitialized ? (
+        {/* AI Agent Controller - silently initialized in the background */}
+        {aiAssistantEnabled && audioInitialized && (
+          <div className="hidden">
             <AgentController roomName={roomName} pageType={pageType} />
-          ) : (
-            <div className="p-4 bg-yellow-100 rounded-lg mb-4">
-              <p className="text-yellow-800 font-medium">Please allow microphone access to enable the AI Assistant.</p>
-              <button 
-                className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                onClick={initializeAudio}
-              >
-                Grant Microphone Access
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
         )}
       </div>
     </RoomContext.Provider>

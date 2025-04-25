@@ -197,54 +197,15 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
     }
   };
 
-  return (
-    <div className="p-4 bg-gray-100 rounded-lg mb-4">
-      <h3 className="text-lg font-medium mb-2">AI Assistant</h3>
-      
-      <div className="mb-4">
-        <p>Status: 
-          <span className={`ml-2 font-medium ${
-            agentStatus === 'connected' ? 'text-green-600' : 
-            agentStatus === 'connecting' ? 'text-yellow-600' : 
-            agentStatus === 'error' ? 'text-red-600' : 'text-gray-600'
-          }`}>
-            {agentStatus === 'connected' ? 'Connected' : 
-             agentStatus === 'connecting' ? 'Connecting...' : 
-             agentStatus === 'error' ? 'Connection Error' : 'Not Connected'}
-          </span>
-        </p>
-      </div>
-      
-      {error && (
-        <div className="mb-4 p-2 bg-red-100 text-red-700 rounded">
-          {error}
-        </div>
-      )}
-      
-      <div className="flex space-x-2">
-        {/* Buttons can be removed entirely if UI is never shown, but leaving for potential debug */}
-        {agentStatus !== 'connected' && agentStatus !== 'connecting' && (
-          <button
-            onClick={connectAgent}
-            disabled={isLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isLoading ? 'Connecting...' : 'Connect AI Assistant'}
-          </button>
-        )}
-        
-        {(agentStatus === 'connected' || agentStatus === 'connecting') && (
-          <button
-            onClick={disconnectAgent}
-            disabled={isLoading}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-          >
-            {isLoading ? 'Disconnecting...' : 'Disconnect AI Assistant'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+  // Auto-connect agent when component mounts if not already connected
+  useEffect(() => {
+    if (agentStatus !== 'connected' && agentStatus !== 'connecting') {
+      connectAgent();
+    }
+  }, [agentStatus, connectAgent]);
+  
+  // Return null since this component now works silently in the background
+  return null;
 };
 
 export default AgentController;

@@ -45,6 +45,11 @@ export interface ImageElement extends BaseElement {
   width: number;
   height: number;
   rotation?: number;
+  metadata?: {
+    prompt?: string;
+    originalImage?: string;
+    generationDate?: string;
+  };
 }
 
 // Union type for all possible elements
@@ -155,7 +160,7 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     if (!changed) return {}; // No change if elements not found
 
     // Also remove deleted elements from selection
-    const newSelectedIds = new Set([...state.selectedElementIds].filter(id => !ids.includes(id)));
+    const newSelectedIds = new Set(Array.from(state.selectedElementIds).filter(id => !ids.includes(id)));
     return { elements: newElements, selectedElementIds: newSelectedIds };
   }),
 
@@ -305,33 +310,44 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     }
   },
 
-  // --- AI Interaction Placeholder ---
+  // --- AI Interaction for Image Placement ---
   handleAIImageCommand: (payload: { imageId: string; imageUrl: string; width: number; height: number; placementHint?: string }) => {
     console.log("Received ADD_IMAGE_ELEMENT command, processing:", payload);
     set({ isGeneratingAI: true }); // Show loading while we place it
 
-    // --- Non-Destructive Placement Logic (Placeholder - Simple Offset) ---
-    // This needs to be significantly more robust in the real implementation
+    // --- Improved Centered Placement Logic ---
     const state = get();
     const newImageId = payload.imageId || `ai-img-${Date.now()}`; // Use provided ID or generate one
 
-    // Get viewport center for better placement
-    const viewport = state.viewport;
-    let centerX = 0;
-    let centerY = 0;
+    // Get the canvas dimensions from the DOM if possible
+    let canvasWidth = 800; // Default fallback width
+    let canvasHeight = 600; // Default fallback height
     
-    // If we have a viewport, center the image in the visible area
-    if (viewport) {
-      // Use canvas center as focal point
-      const visibleWidth = window.innerWidth / viewport.scale;
-      const visibleHeight = window.innerHeight / viewport.scale;
-      centerX = (-viewport.x / viewport.scale) + (visibleWidth / 2);
-      centerY = (-viewport.y / viewport.scale) + (visibleHeight / 2);
-    } else {
-      // Fallback to fixed position if no viewport info
-      centerX = 200;
-      centerY = 200;
+    // Try to get actual canvas dimensions - this must be accurate
+    const canvasElement = document.querySelector('.konvajs-content');
+    if (canvasElement) {
+      canvasWidth = canvasElement.clientWidth;
+      canvasHeight = canvasElement.clientHeight;
+      console.log('Canvas dimensions:', { canvasWidth, canvasHeight });
     }
+    
+    // Calculate the absolute center of the visible area
+    // This is the key to precise positioning
+    const viewport = state.viewport;
+    
+    // For debugging - log the viewport state
+    console.log('Current viewport state:', { 
+      x: viewport.x, 
+      y: viewport.y, 
+      scale: viewport.scale 
+    });
+    
+    // Calculate the center in scene coordinates
+    // The key formula: (canvas_center_in_pixels - viewport_offset) / scale = scene_coordinates
+    const centerX = (canvasWidth / 2 - viewport.x) / viewport.scale;
+    const centerY = (canvasHeight / 2 - viewport.y) / viewport.scale;
+    
+    console.log('Absolute center position:', { centerX, centerY });
     
     // Center the image around the calculated position
     const finalX = centerX - (payload.width / 2);
@@ -355,13 +371,32 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     get().addElement(newImageElement);
     
     // Auto-scroll to show the newly added image
-    // Update viewport to center on the new image
-    const newViewport = {
-      ...state.viewport,
-      x: -(finalX * state.viewport.scale) + (window.innerWidth / 2) - ((payload.width * state.viewport.scale) / 2),
-      y: -(finalY * state.viewport.scale) + (window.innerHeight / 2) - ((payload.height * state.viewport.scale) / 2)
-    };
-    get().setViewport(newViewport);
+    // Don't update viewport position - just stay focused on current view
+    // This ensures the image appears exactly where it should without jumping
+    
+    // Wait a few frames to ensure the image is added before scrolling to it
+    setTimeout(() => {
+      // Make sure it's in the viewport if it's outside view
+      const viewportWidth = canvasWidth / state.viewport.scale;
+      const viewportHeight = canvasHeight / state.viewport.scale;
+      
+      // Check if the image is outside the current viewport
+      const isXOutsideView = finalX < -viewport.x/viewport.scale || 
+                             finalX + payload.width > (-viewport.x + viewportWidth)/viewport.scale;
+      const isYOutsideView = finalY < -viewport.y/viewport.scale || 
+                             finalY + payload.height > (-viewport.y + viewportHeight)/viewport.scale;
+      
+      // Only adjust viewport if image is outside the current view
+      if (isXOutsideView || isYOutsideView) {
+        console.log('Image outside view, adjusting viewport');
+        const newViewport = {
+          ...state.viewport,
+          // Keep X position the same since we have vertical scrolling only
+          y: -(finalY * state.viewport.scale) + (canvasHeight / 2) - ((payload.height * state.viewport.scale) / 2)
+        };
+        get().setViewport(newViewport);
+      }
+    }, 50);
 
     set({ isGeneratingAI: false }); // Hide loading indicator
 

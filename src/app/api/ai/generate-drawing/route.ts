@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // Initialize the Gemini API client
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
-// Use exactly the model specified by the user
+// Use the specific model that supports image generation
 const modelName = 'gemini-2.0-flash-exp';
 
 console.log('API Key present:', !!process.env.GOOGLE_API_KEY);
@@ -40,21 +40,23 @@ export async function POST(request: NextRequest) {
       // Use the API in a way compatible with the current version, requesting image output
       // See: https://ai.google.dev/gemini-api/docs/multimodal#text-to-image-from-api
       console.log('Using model:', modelName);
-      // Using exact format from the example code
-      console.log('Attempting to generate content with model', modelName);
-      // Use a type assertion to bypass TypeScript errors while using the exact format
+      // Using the gemini-2.0-flash-exp model with image generation capability
+      console.log('Attempting to generate image with model', modelName);
+      console.log('API Key first 5 chars:', process.env.GOOGLE_API_KEY?.substring(0, 5) || 'none');
+      
+      // Using the correct format for Gemini API
       const result = await model.generateContent({
-        // Format the contents as specified
         contents: [{ 
-          role: 'user', 
+          role: 'user',
           parts: [{ text: enhancedPrompt }]
         }],
-        // Use any to bypass TypeScript checking
         generationConfig: {
-          // Use exact responseModalities format from example
           responseModalities: ['TEXT', 'IMAGE'],
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
         }
-      } as any); // Type assertion to bypass strict checking
+      } as any);
       responseData = result.response;
       
       // Log the full response structure for debugging
@@ -68,38 +70,69 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Extract image from the response
+    // Extract image and text from the response
     let imageData = null;
     let explanationText = '';
     
-    // Add null checks to avoid TypeScript errors
-    if (responseData?.candidates && responseData.candidates.length > 0 && responseData.candidates[0].content.parts) {
-      console.log('Parsing response parts, count:', responseData.candidates[0].content.parts?.length || 0);
+    // Dump the raw structure to help with debugging
+    console.log('Response structure:', JSON.stringify(responseData).substring(0, 500));
+    
+    // Process the response to find image data and text - following the co-drawing example pattern
+    if (responseData?.candidates && responseData.candidates.length > 0 && responseData.candidates[0].content?.parts) {
+      const parts = responseData.candidates[0].content.parts;
+      console.log('Parsing response parts, count:', parts?.length || 0);
       
-      for (const part of responseData.candidates[0].content.parts) {
-        if (part.inlineData) {
+      for (const part of parts) {
+        // Based on the part type, either get the text or image data
+        if (part.text) {
+          console.log('Found text response, first 50 chars:', part.text.substring(0, 50));
+          explanationText += part.text;
+        } else if (part.inlineData) {
           console.log('Found inline data with mime type:', part.inlineData.mimeType);
           imageData = part.inlineData;
-        } else if (part.text) {
-          console.log('Found text response');
-          explanationText = part.text;
         }
       }
     } else {
       console.error('Invalid response structure from Gemini API');
+      console.log('Full response for debugging:', JSON.stringify(responseData));
     }
 
-    if (!imageData) {
-      console.error('No image data found in the response');
-      return NextResponse.json(
-        { error: 'No image was generated in the response' },
-        { status: 500 }
-      );
+    // Handle the case where we got a text response but no image
+    // This commonly happens with content policy restrictions
+    let imageUrl;
+    let explanation = explanationText;
+    
+    if (imageData) {
+      console.log('Creating data URL with mime type:', imageData.mimeType);
+      // Create a data URL from the inline data
+      imageUrl = `data:${imageData.mimeType};base64,${imageData.data}`;
+    } else {
+      // Check if we have text indicating content policy issues
+      if (explanationText && (
+          explanationText.includes("unable to") ||
+          explanationText.includes("can't") ||
+          explanationText.includes("cannot") ||
+          explanationText.includes("sorry")
+        )) {
+        console.log('Content policy restriction detected, using placeholder');
+        explanation = "I couldn't generate that image. Please try a different prompt.";
+        // Create a friendly placeholder with the explanation
+        const safeText = encodeURIComponent("Please try a different prompt");
+        imageUrl = `https://placehold.co/600x400/eee/777?text=${safeText}`;
+      } else if (explanationText) {
+        // We have text but no image for some other reason
+        console.log('No image data found but have text, using text-based placeholder');
+        const safeText = encodeURIComponent(explanationText.substring(0, 30));
+        imageUrl = `https://placehold.co/600x400/lightblue/darkblue?text=${safeText}`;
+      } else {
+        // No text or image - this is a true error
+        console.error('No image data or text found in the response');
+        return NextResponse.json(
+          { error: 'No content was generated in the response' },
+          { status: 500 }
+        );
+      }
     }
-
-    console.log('Creating data URL with mime type:', imageData.mimeType);
-    // Create a data URL from the inline data
-    const imageUrl = `data:${imageData.mimeType};base64,${imageData.data}`;
     
     // Return the image data and dimensions
     console.log('Returning successful response with image data');

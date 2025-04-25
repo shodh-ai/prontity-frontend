@@ -353,7 +353,45 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     const finalX = centerX - (payload.width / 2);
     const finalY = centerY - (payload.height / 2);
 
-    // --- End Improved Placement Logic ---
+    // --- NEW: Shift existing images upward to make room for the new image ---
+    // Create a new Map for elements
+    const newElements = new Map(state.elements);
+    
+    // Identify and shift existing image elements
+    let imageCount = 0;
+    newElements.forEach((element: unknown) => {
+      // Check if this is an element with a type property
+      if (typeof element === 'object' && element !== null && 'type' in element) {
+        // Now TypeScript knows element has a 'type' property
+        const typedElement = element as { type: string; id: string };
+        
+        // Check if this is an image element
+        if (typedElement.type === 'image') {
+          // Now that we've verified it's an image, cast to ImageElement
+          const imageElement = element as ImageElement;
+          
+          // Shift this image upward
+          const verticalShift = payload.height + 50; // 50px padding between images
+          
+          // Update the element in the map
+          newElements.set(imageElement.id, {
+            ...imageElement,
+            y: imageElement.y - verticalShift // Move upward
+          });
+          
+          // Increment our counter
+          imageCount++;
+        }
+      }
+    });
+    
+    // If we shifted any images, update the state
+    if (imageCount > 0) {
+      console.log(`Shifted ${imageCount} existing images upward`);
+      // Update the elements in the state
+      set({ elements: newElements });
+    }
+    // --- End of shifting logic ---
 
     const newImageElement: ImageElement = {
       id: newImageId,

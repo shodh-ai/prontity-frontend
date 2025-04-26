@@ -237,6 +237,16 @@
   animation: pulse 2s infinite;
 }
 
+/* Media controls styling */
+.media-controls-container {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  gap: 12px;
+  z-index: 10;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1440px) {
   .enhanced-room-container {

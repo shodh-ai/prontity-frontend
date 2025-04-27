@@ -4,12 +4,30 @@ import json
 import logging
 import asyncio
 import argparse
+from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions
 
-# Import the persona configuration module
-from personas import get_persona_config
+# Import the YAML-based configuration loader
+from agent_config_loader import (
+    get_persona_config_by_identity,
+    get_persona_config_for_page,
+    get_tools_for_identity,
+    PersonaConfig
+)
+
+# Import the Gemini client module
+from ai.gemini_client import (
+    get_or_create_session_state,
+    remove_session_state,
+    initialize_gemini_model,
+    register_tools_with_model,
+    reinitialize_chat
+)
+
+# Import the tool dispatcher
+from tools.tool_dispatcher import process_tool_call
 
 # Import services modules
 from services.http_client import initialize, close
@@ -47,9 +65,10 @@ for var in required_env_vars:
 
 
 class Assistant(Agent):
-    def __init__(self) -> None:
+    def __init__(self, persona_config: Optional[PersonaConfig] = None) -> None:
         # Use the instructions from the persona configuration
-        super().__init__(instructions=GLOBAL_PERSONA['instructions'])
+        instructions = persona_config.instructions if persona_config else "You are a helpful assistant."
+        super().__init__(instructions=instructions)
         
         # Tools will be managed in the entrypoint function
         # Note: tools are registered in the entrypoint, not directly set here
@@ -59,8 +78,9 @@ class Assistant(Agent):
 GLOBAL_PAGE_PATH = 'speakingpage'  # Default to speakingpage
 GLOBAL_ENABLE_TOOLS = True  # Enable or disable tools
 
-# Will be populated from personas module based on page path
-GLOBAL_PERSONA = None
+# Will be populated from agent_config_loader based on page path - initialize with None
+global GLOBAL_PERSONA_CONFIG
+GLOBAL_PERSONA_CONFIG = None
 
 async def entrypoint(ctx: agents.JobContext):
     # Initialize the HTTP client for service API calls
@@ -71,12 +91,16 @@ async def entrypoint(ctx: agents.JobContext):
     page_path = GLOBAL_PAGE_PATH
     
     # Get persona configuration based on page path
-    global GLOBAL_PERSONA
-    GLOBAL_PERSONA = get_persona_config(page_path)
+    global GLOBAL_PERSONA_CONFIG
+    GLOBAL_PERSONA_CONFIG = get_persona_config_for_page(page_path)
     
     # Simply log the intended URL - no need to set it directly
     # The web browser will handle navigation based on the UI
     logger.info(f"Agent intended for page: http://localhost:3000/{page_path}")
+    
+    # Log the loaded persona configuration
+    logger.info(f"Using persona '{GLOBAL_PERSONA_CONFIG.identity}' for page '{page_path}'")
+    logger.info(f"Persona allows tools: {GLOBAL_PERSONA_CONFIG.allowed_tools}")
     
     # Note: We don't need to set the web URL directly
     # The LiveKit client handles this automatically
@@ -86,6 +110,63 @@ async def entrypoint(ctx: agents.JobContext):
     # We'll store this to use after session is created
     received_review_text = ""
     
+    # Helper function to handle context changes from frontend
+    async def handle_context_change(page_type, task_id=None, persona_identity=None):
+        try:
+            logger.info(f"Context change requested: page={page_type}, task={task_id}, persona={persona_identity}")
+            
+            # Determine which persona to use based on provided identity or page type
+            persona_config = None
+            if persona_identity:
+                # Try to get specific persona by identity
+                persona_config = get_persona_config_by_identity(persona_identity)
+                if persona_config:
+                    logger.info(f"Using specifically requested persona: {persona_identity}")
+                else:
+                    logger.warning(f"Requested persona '{persona_identity}' not found, falling back to page-based selection")
+            
+            # If no specific persona was found, use page-type based selection
+            if not persona_config:
+                persona_config = get_persona_config_for_page(page_type)
+                logger.info(f"Selected persona '{persona_config.identity}' for page type '{page_type}'")
+            
+            # Get tools for this persona
+            if GLOBAL_ENABLE_TOOLS:
+                tools = get_tools_for_identity(persona_config.identity)
+                tool_names = [getattr(tool, 'name', str(tool)) for tool in tools]
+                logger.info(f"Loaded {len(tools)} tools for persona {persona_config.identity}: {tool_names}")
+            else:
+                tools = []
+                logger.info("Tools are disabled for this session")
+            
+            # Update session state with new configuration
+            if session:
+                # Get or create session state
+                session_state = get_or_create_session_state(ctx.room.name, session)
+                
+                # Update session state
+                session_state.update_persona_config(persona_config)
+                session_state.update_page_type(page_type)
+                
+                # Register tools with the model
+                if tools:
+                    await register_tools_with_model(session_state, tools)
+                
+                # Reinitialize the chat with new settings
+                await reinitialize_chat(session_state)
+                
+                # Notify the user about the context change
+                await session.send_text(f"I'm now helping you with the {page_type} task.")
+                
+                return True
+            else:
+                logger.error("Cannot handle context change: No active session")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error handling context change: {e}")
+            return False
+            
     # Define a synchronous wrapper for the data handler
     def on_data_received_sync(payload, participant=None, kind=None):
         # Use a regular function (not async) for the event listener
@@ -94,41 +175,59 @@ async def entrypoint(ctx: agents.JobContext):
             try:
                 # Try to decode as plain text
                 text = payload.decode('utf-8')
-                print(f"Received data payload of {len(text)} bytes")
+                logger.debug(f"Received data payload of {len(text)} bytes")
                 
-                # Try to parse as JSON if it's structured that way
+                # Try to parse as JSON
                 try:
-                    import json
                     data = json.loads(text)
-                    if isinstance(data, dict) and 'content' in data:
+                    
+                    # Handle context change messages
+                    if isinstance(data, dict) and data.get('type') == 'CHANGE_CONTEXT':
+                        logger.info("Received CHANGE_CONTEXT message")
+                        
+                        # Extract context data
+                        payload = data.get('payload', {})
+                        page_type = payload.get('pageType')
+                        task_id = payload.get('taskId')
+                        persona_identity = payload.get('personaIdentity')
+                        
+                        # Create a task to handle the context change
+                        if page_type:
+                            asyncio.create_task(handle_context_change(page_type, task_id, persona_identity))
+                        else:
+                            logger.error("Missing pageType in CHANGE_CONTEXT message")
+                        return
+                    
+                    # Handle the original content extraction logic
+                    elif isinstance(data, dict) and 'content' in data:
                         text = data['content']
-                        print(f"Extracted content from JSON payload: {text[:100]}...")
+                        logger.debug(f"Extracted content from JSON payload: {text[:100]}...")
                 except json.JSONDecodeError:
                     # Not JSON, just use the raw text
-                    print(f"Using raw text payload: {text[:100]}...")
+                    logger.debug(f"Using raw text payload: {text[:100]}...")
                     
                 received_review_text = text
-                print(f"Successfully stored review text of length: {len(received_review_text)}")
+                logger.debug(f"Successfully stored review text of length: {len(received_review_text)}")
                 
-                # Create a task for async work
+                # Create a task for async work (original behavior)
                 if session:
-                    print("Session available, sending text to agent...")
+                    logger.debug("Session available, sending text to agent...")
                     
                     # Define an async function to be called as a task
                     async def process_text():
                         try:
                             await session.send_text(f"I've received your presentation to review with {len(text)} characters. Here's my feedback: {text}")
                         except Exception as e:
-                            print(f"Error sending text to agent: {e}")
+                            logger.error(f"Error sending text to agent: {e}")
                     
                     # Create a task to run the async function
                     asyncio.create_task(process_text())
                 else:
-                    print("Session not available, cannot send text to agent")
+                    logger.warning("Session not available, cannot send text to agent")
             except Exception as e:
-                print(f"Error processing payload: {e}")
+                logger.error(f"Error processing payload: {e}")
         except Exception as outer_e:
-            print(f"Outer exception in on_data_received: {outer_e}")
+            logger.error(f"Outer exception in on_data_received: {outer_e}")
     
     # Register the data handler
     ctx.room.on("data", on_data_received_sync)
@@ -153,27 +252,42 @@ async def entrypoint(ctx: agents.JobContext):
         # Create the model with our configuration
         model = google.beta.realtime.RealtimeModel(
             model="gemini-2.0-flash-exp",  # Use the model that was working before
-            voice=GLOBAL_PERSONA['voice'],
-            temperature=GLOBAL_PERSONA['temperature'],
-            instructions=GLOBAL_PERSONA['instructions'],
+            voice=GLOBAL_PERSONA_CONFIG.voice,
+            temperature=GLOBAL_PERSONA_CONFIG.temperature,
+            instructions=GLOBAL_PERSONA_CONFIG.instructions,
             api_key=api_key,
         )
         
         session = AgentSession(llm=model)
         logger.info("Created agent session with Google's realtime model")
+        
+        # Initialize session state
+        session_state = get_or_create_session_state(ctx.room.name, session)
+        session_state.update_persona_config(GLOBAL_PERSONA_CONFIG)
+        session_state.update_page_type(page_path)
+        
+        # Register tools if enabled
+        if GLOBAL_ENABLE_TOOLS:
+            tools = get_tools_for_identity(GLOBAL_PERSONA_CONFIG.identity)
+            if tools:
+                await register_tools_with_model(session_state, tools)
+                logger.info(f"Registered {len(tools)} tools with Gemini model")
     except Exception as e:
         logger.error(f"Failed to create Google realtime model: {e}")
         # Fallback to original session with commented code
         logger.warning("Agent session creation failed")
     
     # Create the agent instance with tools
-    assistant = Assistant()
+    assistant = Assistant(GLOBAL_PERSONA_CONFIG)
     
-    # Not using tools - we'll use pattern matching instead
-    logger.info("Using pattern matching for timer commands instead of tools")
+    # Log whether we're using tools or pattern matching
+    if GLOBAL_ENABLE_TOOLS and GLOBAL_PERSONA_CONFIG.allowed_tools:
+        logger.info(f"Using tool calling for {GLOBAL_PERSONA_CONFIG.allowed_tools}")
+    else:
+        logger.info("Using pattern matching for commands instead of tools")
     
-    # Timer instructions are now handled by the personas module
-    logger.info(f"Using persona for {GLOBAL_PAGE_PATH} with specialized instructions")
+    # Log persona details
+    logger.info(f"Using persona '{GLOBAL_PERSONA_CONFIG.identity}' for {GLOBAL_PAGE_PATH}")
     
     # Start the agent session in the specified room
     # Note: Not using tools since they aren't supported in the current API
@@ -279,9 +393,35 @@ async def entrypoint(ctx: agents.JobContext):
         except Exception as e2:
             logger.error(f"Error registering alternative message handler: {e2}")
     
-    # Send an initial greeting
+    # Handle function (tool) calling
+    async def on_function_call(data):
+        try:
+            logger.info(f"Received function call: {data.get('name')}")
+            # Process the tool call using our dispatcher
+            result = await process_tool_call(session, data)
+            logger.info(f"Tool call result: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Error handling function call: {e}")
+            return {
+                "name": data.get("name", "unknown"),
+                "response": {
+                    "success": False,
+                    "message": f"Error: {str(e)}"
+                }
+            }
+    
+    # Register function call handler
+    if GLOBAL_ENABLE_TOOLS:
+        try:
+            session.on_function_call(on_function_call)
+            logger.info("Registered function call handler")
+        except Exception as e:
+            logger.error(f"Failed to register function call handler: {e}")
+    
+    # Send an initial greeting appropriate for the current persona
     await session.generate_reply(
-        instructions="hi. Let me introduce myself as your TOEFL speaking practice assistant."
+        instructions=f"hi. Let me introduce myself as your {GLOBAL_PAGE_PATH} assistant."
     )
     
     try:
@@ -290,6 +430,9 @@ async def entrypoint(ctx: agents.JobContext):
     finally:
         # Cleanup resources when the session ends
         logger.info("Cleaning up resources")
+        # Remove session state
+        remove_session_state(ctx.room.name)
+        # Close HTTP client
         await close()
 
 
@@ -320,22 +463,29 @@ if __name__ == "__main__":
     logging.info(f"Agent intended for page: http://localhost:3000/{GLOBAL_PAGE_PATH}")
     
     # Initialize the persona configuration before applying overrides
-    GLOBAL_PERSONA = get_persona_config(GLOBAL_PAGE_PATH)
+    GLOBAL_PERSONA_CONFIG = get_persona_config_for_page(GLOBAL_PAGE_PATH)
+    
+    # Create a copy of the config that we can modify
+    config_dict = GLOBAL_PERSONA_CONFIG.to_dict()
     
     # Override specific persona settings if provided via CLI
     if args.instructions:
-        GLOBAL_PERSONA['instructions'] = args.instructions
+        config_dict['instructions'] = args.instructions
         logging.info(f"Overriding persona instructions with custom instructions")
         
     # Override voice setting if provided
     if args.voice:
-        GLOBAL_PERSONA['voice'] = args.voice
+        config_dict['voice'] = args.voice
         logging.info(f"Overriding persona voice with: {args.voice}")
         
     # Override temperature setting if provided
     if args.temperature is not None:
-        GLOBAL_PERSONA['temperature'] = args.temperature
+        config_dict['parameters'] = config_dict.get('parameters', {})
+        config_dict['parameters']['temperature'] = args.temperature
         logging.info(f"Overriding persona temperature with: {args.temperature}")
+        
+    # Create a new PersonaConfig with the overridden values
+    GLOBAL_PERSONA_CONFIG = PersonaConfig(config_dict)
         
     # Disable tools if requested
     if args.no_tools:

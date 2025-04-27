@@ -7,7 +7,7 @@ export default function Page() {
   const router = useRouter();
   
   // Room configuration
-  const roomName = 'quickstart-room';
+  const roomName = 'Speakingpage';
   const userName = 'quickstart-user';
   
   // The practice question for this specific room

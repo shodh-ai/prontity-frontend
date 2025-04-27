@@ -13,11 +13,12 @@ psutil==7.0.0
 livekit-protocol==1.0.2
 
 # Utilities
-anyio==4.9.0
+anyio>=3.7.1,<4.0.0
 pydantic==2.11.3
 tqdm==4.67.1
 requests==2.32.3
 websockets==15.0.1
+httpx==0.28.1
 
 # Note: The following packages need to be installed from GitHub
 # pip install git+https://github.com/livekit/agents-python.git

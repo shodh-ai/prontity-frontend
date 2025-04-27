@@ -2,10 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import LiveKitSession from '@/components/LiveKitSession';
 import { useCanvasStore } from '@/state/canvasStore';
 import VocabBox, { VocabularyItem } from '@/components/vocabulary/VocabBox';
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
+import LiveKitSession from '@/components/LiveKitSession';
+
+// Import CSS Module
+import styles from './vocabpage.module.css';
 
 // Import the SimpleCanvas component with SSR disabled completely
 const SimpleCanvas = dynamic(
@@ -45,6 +49,7 @@ export default function VocabPage() {
   const [userName, setUserName] = useState('');
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [isPromptLoading, setIsPromptLoading] = useState(false);
+  const [promptText, setPromptText] = useState('');
   
   // Access the isGeneratingAI state directly from the store using Zustand hooks
   const isGeneratingAI = useCanvasStore(state => state.isGeneratingAI);
@@ -58,11 +63,8 @@ export default function VocabPage() {
     return useCanvasStore.getState().saveCanvasState(userId, wordId);
   }, []);
   
-  // Room configuration
+  // Room configuration for API calls
   const roomName = 'VocabularyPractice';
-  
-  // Example vocabulary task instructions
-  const vocabInstructions = "In this vocabulary practice, we'll review key academic terms that frequently appear in TOEFL exams. You can draw, define, or practice using these words in context.";
   
   // Get username from localStorage when component mounts
   useEffect(() => {
@@ -93,11 +95,11 @@ export default function VocabPage() {
     router.push('/roxpage');
   };
   
-  // Handle AI prompt submission
+  // Handle submitting a prompt to generate an image
   const handlePromptSubmit = async (prompt: string) => {
-    setIsPromptLoading(true);
+    if (!prompt.trim()) return;
     
-    // Set the AI generation loading state
+    setIsPromptLoading(true);
     useCanvasStore.getState().setIsGeneratingAI(true);
     
     try {
@@ -108,7 +110,7 @@ export default function VocabPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt,
+          prompt: prompt.trim(),
           context: sampleVocabWords[currentWordIndex].word,
           userId: userName
         }),
@@ -125,14 +127,17 @@ export default function VocabPage() {
         throw new Error(imageData.error);
       }
       
-      // Add the image to the canvas using handleAIImageCommand
+      // Add the image to the canvas using handleAIImageCommand with the correct parameter shape
       useCanvasStore.getState().handleAIImageCommand({
-        imageId: imageData.imageId,
+        imageId: imageData.imageId || Date.now().toString(),
         imageUrl: imageData.imageUrl,
-        width: imageData.width,
-        height: imageData.height,
+        width: imageData.width || 300,
+        height: imageData.height || 300,
         placementHint: 'center' // Optional hint for placement logic
       });
+      
+      // Clear the prompt text after submission
+      setPromptText('');
       
       // Also save the updated canvas state after adding the image
       setTimeout(() => {
@@ -141,36 +146,15 @@ export default function VocabPage() {
           saveCanvasState(userName, currentWord.id);
         }
       }, 500);
-      
     } catch (error) {
-      console.error('Error generating AI image:', error);
-      
-      // Create a more user-friendly error message
-      let userMessage = "Failed to generate image.";
-      
-      if (error instanceof Error) {
-        const errorMsg = error.message;
-        if (errorMsg.includes('content policy') || 
-            errorMsg.includes('unable to create') || 
-            errorMsg.includes('prohibited')) {
-          userMessage = "Sorry, I can't generate that image due to content policy. Please try a different prompt.";
-        } else if (errorMsg.includes('400') || errorMsg.includes('Bad Request')) {
-          userMessage = "There was a problem with the request. Please try a different prompt.";
-        } else if (errorMsg.includes('500')) {
-          userMessage = "The image generation service is currently having issues. Please try again in a moment.";
-        } else {
-          userMessage = `Failed to generate image: ${errorMsg}`;
-        }
-      }
-      
-      alert(userMessage);
+      console.error('Error submitting prompt:', error);
+      alert('Failed to generate image. Please try again.');
     } finally {
-      // Reset loading states
       setIsPromptLoading(false);
       useCanvasStore.getState().setIsGeneratingAI(false);
     }
   };
-  
+
   // Handle moving to next word
   const handleNextWord = (): void => {
     // Save current state first
@@ -184,63 +168,165 @@ export default function VocabPage() {
       });
     }
   };
-  
-  // Custom canvas controls component
+
+  // Custom canvas controls component with improved UI
   const VocabCanvasControls = () => {
     const currentWord = sampleVocabWords[currentWordIndex];
     
     return (
       <div className="vocab-canvas-container">
-        {/* Vocabulary Display Component */}
-        <VocabBox vocabularyItem={currentWord} />
-        
-        {/* Tool Bar with integrated controls */}
-        <div className="toolbar-container mb-4">
-          <div className="flex justify-between items-center">
-            <ToolBar />
-            
-            <button 
-              className="next-word-btn px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg ml-4"
-              onClick={handleNextWord}
-            >
-              Next Word
-            </button>
-          </div>
+        {/* Header with word navigation */}
+        <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <VocabBox vocabularyItem={currentWord} />
+          
+          <button 
+            className="next-word-btn px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded-md transition-colors ml-4 flex items-center"
+            onClick={handleNextWord}
+          >
+            <span>Next Word</span>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
         </div>
         
-        {/* Canvas Component (Client-side only with simplified implementation) */}
-        <SimpleCanvas />
+        {/* Tool Bar */}
+        <div className="toolbar-container mb-4 bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+          <ToolBar />
+        </div>
+        
+        {/* Canvas Component */}
+        <div className="canvas-wrapper mb-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+          <SimpleCanvas />
+        </div>
         
         {/* AI Drawing Prompt Input */}
-        <div className="mt-6 mb-4">
-          <div className="p-3 bg-gray-50 rounded border border-gray-200">
-            <h3 className="text-md font-semibold mb-2">AI Drawing Assistant</h3>
-            <p className="text-sm text-gray-600 mb-3">Ask the AI to draw something to help you remember the word "<strong>{currentWord.word}</strong>"</p>
-            <TextInput 
-              onSubmit={handlePromptSubmit}
-              isLoading={isPromptLoading || isGeneratingAI}
-              placeholder="E.g., 'Draw a person looking confused between two choices' for 'Ambiguous'"
-              buttonText="Generate Drawing"
-            />
+        <div className="mb-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+          <div className="flex items-center mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+            </svg>
+            <h3 className="text-lg font-semibold">AI Drawing Assistant</h3>
           </div>
+          
+          <p className="text-gray-600 mb-3">Generate an image to help remember <strong className="text-blue-600">{currentWord.word}</strong></p>
+          
+          <TextInput 
+            onSubmit={handlePromptSubmit}
+            isLoading={isPromptLoading || isGeneratingAI}
+            placeholder={`Draw a visual for '${currentWord.word}'`}
+            buttonText="Generate"
+          />
         </div>
       </div>
     );
   };
 
   return (
-    <div className="page-wrapper">
-      <LiveKitSession
-        roomName={roomName}
-        userName={userName || 'student-user'}
-        questionText={vocabInstructions}
-        sessionTitle="Vocabulary Practice"
-        pageType="vocab"
-        hideVideo={false} // Show video for AI teacher feed
-        customControls={<VocabCanvasControls />}
-        onLeave={handleLeave}
-        aiAssistantEnabled={true}
-      />
+    <div className={styles.pageContainer}>
+      {/* Background elements */}
+      <div className={styles.backgroundBlob1}></div>
+      <div className={styles.backgroundBlob2}></div>
+      <div className={styles.overlay}></div>
+      
+      {/* Main content card */}
+      <div className={styles.mainCard}>
+        {/* Close button */}
+        <button className={styles.closeButton} onClick={handleLeave}>
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 6L6 18" stroke="#717171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M6 6L18 18" stroke="#717171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        
+        {/* Header with progress */}
+        <div className={styles.headerSection}>
+          <h1 className={styles.sessionTitle}>Vocabulary Practice Session</h1>
+          <div className={styles.progressBar}>
+            <div className={styles.progressFill}></div>
+          </div>
+        </div>
+        
+        {/* Main content */}
+        <div className={styles.contentSection}>
+          <div className={styles.leftContent}>
+            {/* Current word */}
+            <div className={styles.wordSection}>
+              <h2 className={styles.wordTitle}>{sampleVocabWords[currentWordIndex].word}</h2>
+              <p className={styles.wordDetails}>
+                {sampleVocabWords[currentWordIndex].partOfSpeech} {sampleVocabWords[currentWordIndex].definition}
+                <br/>
+                "{sampleVocabWords[currentWordIndex].exampleSentence}"
+              </p>
+            </div>
+            
+            {/* Canvas area */}
+            <div className={styles.canvasContainer}>
+              <SimpleCanvas />
+              <div className={styles.scrollIndicator}>
+                <div className={styles.scrollThumb}></div>
+              </div>
+            </div>
+            
+            {/* Prompt input */}
+            <div className={styles.promptInput}>
+              <input 
+                type="text" 
+                className={styles.inputField}
+                placeholder="Type to generate a image"
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handlePromptSubmit(promptText);
+                  }
+                }}
+                disabled={isPromptLoading || isGeneratingAI}
+              />
+              <button 
+                className={styles.submitButton} 
+                onClick={() => handlePromptSubmit(promptText)}
+                disabled={isPromptLoading || isGeneratingAI}
+              >
+                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 1L7.5 8.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M15 1L10 15L7.5 8.5L1 6L15 1Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          {/* User section */}
+          <div className={styles.userSection}>
+            <div className={styles.userCard} style={{backgroundImage: 'url(https://randomuser.me/api/portraits/men/34.jpg)'}}>
+              <div className={styles.userLabel}>User</div>
+            </div>
+            <div className={styles.userCard} style={{backgroundImage: 'url(https://randomuser.me/api/portraits/women/44.jpg)'}}>
+              <div className={styles.userLabel}>AI Vocabulary Teacher</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Footer controls */}
+        <div className={styles.footerControls}>
+          <button className={styles.nextWordButton} onClick={handleNextWord}>
+            Next Word
+          </button>
+        </div>
+        
+        {/* LiveKit session for the control buttons */}
+        <div className={styles.mediaControlsContainer}>
+          <LiveKitSession
+            roomName={roomName}
+            userName={userName || 'student-user'}
+            sessionTitle=""
+            pageType="vocab"
+            hideVideo={true}
+            onLeave={handleLeave}
+            aiAssistantEnabled={false}
+          />
+        </div>
+      </div>
     </div>
   );
 }

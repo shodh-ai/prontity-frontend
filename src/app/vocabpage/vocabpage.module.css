@@ -1,0 +1,394 @@
+/* VocabPage modern UI CSS */
+
+.pageContainer {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  min-height: 820px;
+  background: #FFFFFF;
+  overflow: hidden;
+}
+
+/* Background elements */
+.backgroundBlob1 {
+  position: absolute;
+  width: 753px;
+  height: 753px;
+  right: -100px;
+  top: -359px;
+  background: #566FE9;
+  border-radius: 50%;
+  z-index: 0;
+}
+
+.backgroundBlob2 {
+  position: absolute;
+  width: 353px;
+  height: 353px;
+  left: -144px;
+  bottom: -100px;
+  background: #336DE6;
+  border-radius: 50%;
+  z-index: 0;
+}
+
+.overlay {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0px;
+  top: 0px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(200px);
+  z-index: 1;
+}
+
+/* Main content card */
+.mainCard {
+  box-sizing: border-box;
+  position: absolute;
+  width: calc(100% - 160px);
+  max-width: 1280px;
+  height: calc(100% - 80px);
+  max-height: 740px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #FFFFFF;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: 40px;
+  overflow: hidden;
+}
+
+.closeButton {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  right: 20px;
+  top: 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.closeButton svg {
+  width: 100%;
+  height: 100%;
+  fill: #717171;
+}
+
+/* Header section */
+.headerSection {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.sessionTitle {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 150%;
+  color: #000000;
+}
+
+.progressBar {
+  width: 610px;
+  height: 10px;
+  background: rgba(199, 204, 248, 0.2);
+  border-radius: 6px;
+  position: relative;
+}
+
+.progressFill {
+  position: absolute;
+  height: 100%;
+  width: 28%; /* Adjust based on progress */
+  background: #566FE9;
+  opacity: 0.9;
+  border-radius: 6px;
+}
+
+/* Content section */
+.contentSection {
+  display: flex;
+  flex: 1;
+  gap: 40px;
+}
+
+.leftContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wordSection {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+}
+
+.wordTitle {
+  font-family: 'Pacifico', cursive;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 48px;
+  line-height: 84px;
+  color: #000000;
+  margin: 0;
+}
+
+.wordDetails {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 140%;
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: 8px;
+}
+
+.canvasContainer {
+  box-sizing: border-box;
+  border: 1px solid rgba(86, 88, 104, 0.2);
+  border-radius: 6px;
+  height: 328px;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.scrollIndicator {
+  position: absolute;
+  width: 6px;
+  height: 296px;
+  right: 8px;
+  top: 16px;
+  background: rgba(86, 111, 233, 0.1);
+  border-radius: 100px;
+}
+
+.scrollThumb {
+  width: 4px;
+  height: 100px;
+  background: #566FE9;
+  border-radius: 100px;
+  position: relative;
+}
+
+.promptInput {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 8px 20px 16px;
+  gap: 10px;
+  width: 100%;
+  height: 48px;
+  border: 1px solid rgba(86, 88, 104, 0.2);
+  border-radius: 6px;
+}
+
+.inputField {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.inputField::placeholder {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.submitButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #566FE9;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.submitButton svg {
+  width: 16px;
+  height: 16px;
+  fill: #FFFFFF;
+}
+
+/* Right sidebar with users */
+.userSection {
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.userCard {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  background-size: cover;
+  background-position: center;
+  border-radius: 12px;
+}
+
+.userLabel {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 10px;
+  background: #FFFFFF;
+  border-radius: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 150%;
+  color: #566FE9;
+}
+
+/* Footer controls */
+.footerControls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 48px;
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  padding: 0 40px;
+}
+
+.footerControls :global(.custom-controls) {
+  position: absolute;
+  left: 40px;
+}
+
+.controlButtons {
+  display: flex;
+  gap: 8px;
+}
+
+.controlButton {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: #FFFFFF;
+  border: 1px solid #566FE9;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.controlButton svg {
+  width: 24px;
+  height: 24px;
+  fill: #566FE9;
+}
+
+.nextWordButton {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 24px;
+  gap: 8px;
+  min-width: 140px;
+  height: 48px;
+  background: #566FE9;
+  border-radius: 6px;
+  border: none;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 170%;
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: absolute;
+  right: 40px;
+}
+
+.nextWordButton:hover {
+  background: #4257d6;
+}
+
+/* Media Controls integration */
+.mediaControlsContainer {
+  position: absolute;
+  bottom: 24px;
+  left: 40px;
+  z-index: 10;
+}
+
+/* Hide LiveKit UI elements except the custom controls */
+.liveKitContainer :global(.session-container) {
+  background: transparent;
+  height: auto;
+  width: auto;
+}
+
+.liveKitContainer :global(.header),
+.liveKitContainer :global(.conference-container) {
+  display: none;
+}
+
+.liveKitContainer :global(.custom-controls) {
+  position: static;
+  display: flex;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 1280px) {
+  .mainCard {
+    width: calc(100% - 40px);
+    height: calc(100% - 40px);
+  }
+  
+  .contentSection {
+    flex-direction: column;
+  }
+  
+  .userSection {
+    flex-direction: row;
+    width: 100%;
+  }
+  
+  .userCard {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .mediaControlsContainer {
+    left: 20px;
+    bottom: 20px;
+  }
+}

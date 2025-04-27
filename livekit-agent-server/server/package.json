@@ -2,9 +2,9 @@
   "name": "livekit-room-server",
   "version": "1.0.0",
   "description": "Simple LiveKit Room Server for token generation",
-  "main": "simple-room-server.js",
+  "main": "agent-server.js",
   "scripts": {
-    "start": "node simple-room-server.js"
+    "start": "node agent-server.js"
   },
   "dependencies": {
     "express": "^4.18.2",

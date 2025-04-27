@@ -17,7 +17,6 @@ import TimerController from '@/components/TimerController';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
 import '@/app/speakingpage/figma-styles.css';
-import '@/styles/custom-controls.css';
 import '@/styles/figma-exact.css';
 import '@/styles/enhanced-room.css';
 

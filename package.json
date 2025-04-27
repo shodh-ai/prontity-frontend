@@ -8,12 +8,14 @@
     "start": "next start"
   },
   "dependencies": {
+    "@google/genai": "^0.10.0",
     "@google/generative-ai": "^0.24.0",
     "@livekit/components-react": "^2.9.3",
     "@livekit/components-styles": "^1.1.5",
     "@radix-ui/react-progress": "^1.1.0",
     "@radix-ui/react-separator": "^1.1.0",
     "@radix-ui/react-slot": "^1.1.0",
+    "canvas": "^3.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "2.1.1",
     "konva": "^9.3.20",

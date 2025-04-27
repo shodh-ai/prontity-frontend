@@ -11,11 +11,9 @@ import LiveKitSession from '@/components/LiveKitSession';
 // Import CSS Module
 import styles from './vocabpage.module.css';
 
-// Import the SimpleCanvas component with SSR disabled completely
-const SimpleCanvas = dynamic(
-  () => import('@/components/vocabulary/SimpleCanvas'),
-  { ssr: false }
-);
+// Import the GeminiEnhancedCanvas component with SSR disabled completely
+import GeminiEnhancedCanvas from "@/components/vocabulary/GeminiEnhancedCanvas";
+
 import ToolBar from '@/components/vocabulary/ToolBar';
 import TextInput from '@/components/vocabulary/TextInput';
 
@@ -197,7 +195,7 @@ export default function VocabPage() {
         
         {/* Canvas Component */}
         <div className="canvas-wrapper mb-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-          <SimpleCanvas />
+          <GeminiEnhancedCanvas vocabularyWord={currentWord.word} />
         </div>
         
         {/* AI Drawing Prompt Input */}
@@ -262,38 +260,13 @@ export default function VocabPage() {
             
             {/* Canvas area */}
             <div className={styles.canvasContainer}>
-              <SimpleCanvas />
+              <GeminiEnhancedCanvas vocabularyWord={sampleVocabWords[currentWordIndex].word} />
               <div className={styles.scrollIndicator}>
                 <div className={styles.scrollThumb}></div>
               </div>
             </div>
             
-            {/* Prompt input */}
-            <div className={styles.promptInput}>
-              <input 
-                type="text" 
-                className={styles.inputField}
-                placeholder="Type to generate a image"
-                value={promptText}
-                onChange={(e) => setPromptText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handlePromptSubmit(promptText);
-                  }
-                }}
-                disabled={isPromptLoading || isGeneratingAI}
-              />
-              <button 
-                className={styles.submitButton} 
-                onClick={() => handlePromptSubmit(promptText)}
-                disabled={isPromptLoading || isGeneratingAI}
-              >
-                <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M15 1L7.5 8.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M15 1L10 15L7.5 8.5L1 6L15 1Z" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-            </div>
+            {/* GeminiEnhancedCanvas has built-in prompt input and controls */}
           </div>
           
           {/* User section */}

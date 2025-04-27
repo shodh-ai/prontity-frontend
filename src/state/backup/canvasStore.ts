@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useState, useEffect } from 'react';
 
 // Assume shared types are available via path alias configured in tsconfig/vite
 // import type { DrawingElement, CanvasState } from '@shared/drawing';
@@ -36,10 +37,6 @@ export interface TextElement extends BaseElement {
   fontSize: number;
   fill: string;
   rotation?: number;
-  width?: number;
-  height?: number;
-  align?: string;
-  fontFamily?: string;
 }
 
 export interface ImageElement extends BaseElement {
@@ -48,12 +45,10 @@ export interface ImageElement extends BaseElement {
   width: number;
   height: number;
   rotation?: number;
-  url?: string; // For backward compatibility
   metadata?: {
     prompt?: string;
     originalImage?: string;
     generationDate?: string;
-    imageUrl?: string;
   };
 }
 
@@ -144,53 +139,39 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
   }),
 
   updateElement: (id: string, updates: Partial<DrawingElement>) => set((state: CanvasStoreState) => {
-    const element = state.elements.get(id);
-    if (!element) return state;
-    
-    const updatedElement = { ...element, ...updates };
     const newElements = new Map(state.elements);
-    newElements.set(id, updatedElement);
-    
-    return { elements: newElements };
+    const currentElement = newElements.get(id);
+    if (currentElement) {
+      // Explicitly cast the merged object back to DrawingElement
+      newElements.set(id, { ...currentElement, ...updates } as DrawingElement);
+      return { elements: newElements };
+    }
+    return {}; // No change if element not found
   }),
 
   deleteElements: (ids: string[]) => set((state: CanvasStoreState) => {
     const newElements = new Map(state.elements);
-    let deleteCount = 0;
-    
+    let changed = false;
     ids.forEach(id => {
-      if (newElements.has(id)) {
-        newElements.delete(id);
-        deleteCount++;
+      if (newElements.delete(id)) {
+        changed = true;
       }
     });
-    
-    // Clear selection if any elements were deleted
-    const newSelectedIds = new Set(state.selectedElementIds);
-    ids.forEach(id => newSelectedIds.delete(id));
-    
-    console.log(`Deleted ${deleteCount} elements`);
-    return { 
-      elements: newElements,
-      selectedElementIds: newSelectedIds
-    };
+    if (!changed) return {}; // No change if elements not found
+
+    // Also remove deleted elements from selection
+    const newSelectedIds = new Set(Array.from(state.selectedElementIds).filter(id => !ids.includes(id)));
+    return { elements: newElements, selectedElementIds: newSelectedIds };
   }),
 
   setViewport: (viewport: Viewport) => set({ viewport }),
-  updateViewport: (updates: Partial<Viewport>) => set((state) => ({ 
-    viewport: { ...state.viewport, ...updates } 
-  })),
+  updateViewport: (updates: Partial<Viewport>) => set((state: CanvasStoreState) => ({ viewport: { ...state.viewport, ...updates } })),
 
-  setCurrentTool: (currentTool: DrawingTool) => set({ 
-    currentTool,
-    // Clear selection on tool change
-    selectedElementIds: new Set()
-  }),
-  
-  setToolOptions: (toolOptions: Partial<CanvasStoreState['toolOptions']>) => 
-    set((state) => ({ toolOptions: { ...state.toolOptions, ...toolOptions } })),
+  setCurrentTool: (currentTool: DrawingTool) => set({ currentTool, selectedElementIds: new Set() }), // Clear selection on tool change
+  setToolOptions: (toolOptions: Partial<CanvasStoreState['toolOptions']>) => set((state: CanvasStoreState) => ({ toolOptions: { ...state.toolOptions, ...toolOptions } })),
 
   setSelectedElementIds: (selectedElementIds: Set<string>) => set({ selectedElementIds }),
+
   setIsDrawing: (isDrawing: boolean) => set({ isDrawing }),
   setIsLoading: (isLoading: boolean) => set({ isLoading }),
   setIsSaving: (isSaving: boolean) => set({ isSaving }),
@@ -203,65 +184,69 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
       console.error('Cannot load canvas state: missing userId or wordId');
       return;
     }
-    
+
     set({ isLoading: true });
-    
+
     try {
-      // First try to load from localStorage for offline support
+      console.log(`Loading canvas state for user: ${userId}, word: ${wordId}`);
+      
+      // Attempt to load from backend API
       try {
-        const localData = localStorage.getItem(`canvas_${userId}_${wordId}`);
-        if (localData) {
-          const parsed = JSON.parse(localData);
-          console.log(`Found canvas state in localStorage for user: ${userId}, word: ${wordId}`);
+        const response = await fetch(`/api/user/${userId}/word/${wordId}/canvas`);
+        
+        // Check if the request was successful
+        if (response.ok) {
+          const data = await response.json();
+          const elementsMap = new Map();
           
-          // Convert the array back to a Map
-          const elements = new Map();
-          parsed.forEach((element: DrawingElement) => {
-            elements.set(element.id, element);
+          // Convert array back to Map
+          data.forEach((element: DrawingElement) => {
+            elementsMap.set(element.id, element);
           });
           
-          set({ elements });
-          console.log('Canvas state loaded from localStorage');
-          return; // Exit early if we successfully loaded from localStorage
-        }
-      } catch (e) {
-        console.error('Error reading from localStorage:', e);
-      }
-      
-      // If we didn't find or couldn't load from localStorage, try the backend
-      try {
-        // Format API endpoint
-        const apiUrl = `/api/canvas/load?userId=${encodeURIComponent(userId)}&wordId=${encodeURIComponent(wordId)}`;
-        
-        // Make API call
-        console.log('Loading canvas state from API endpoint:', apiUrl);
-        const response = await fetch(apiUrl);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to load canvas state: ${response.status} ${response.statusText}`);
+          set({ elements: elementsMap });
+          console.log(`Loaded canvas from backend API for ${userId}, ${wordId}`);
+          return;
         }
         
-        const data = await response.json();
-        
-        // Convert the array to a Map
-        const elements = new Map();
-        data.forEach((element: DrawingElement) => {
-          elements.set(element.id, element);
-        });
-        
-        set({ elements });
-        console.log('Canvas state loaded from API');
+        // If fetch fails with 404 or other error, continue to localStorage fallback
+        throw new Error('API unavailable or canvas not found, using localStorage fallback');
       } catch (apiError) {
-        console.error('Error loading from API:', apiError);
+        console.warn('API request failed:', apiError);
+        // API request failed, try localStorage as fallback
+        const localStorageKey = `canvas_${userId}_${wordId}`;
+        const storedData = localStorage.getItem(localStorageKey);
         
-        // For now, we'll create an empty state if nothing was found
-        // In the future, this could show a user-facing error or fallback
-        console.log('Creating empty canvas state');
+        if (storedData) {
+          try {
+            const parsedData = JSON.parse(storedData);
+            const elementsMap = new Map();
+            
+            // Ensure parsedData is an array before using forEach
+            if (Array.isArray(parsedData)) {
+              // Convert array back to Map
+              parsedData.forEach((element: DrawingElement) => {
+                elementsMap.set(element.id, element);
+              });
+            } else {
+              console.warn('Stored canvas data is not an array, using empty canvas');
+            }
+            
+            set({ elements: elementsMap });
+            console.log(`Loaded canvas from localStorage for ${userId}, ${wordId}`);
+            return;
+          } catch (parseError) {
+            console.error('Error parsing stored canvas data:', parseError);
+          }
+        }
+        
+        // If both API and localStorage fail, start with an empty canvas
+        console.log(`No saved state found for user ${userId}, word ${wordId} on server. Starting fresh.`);
         set({ elements: new Map() });
       }
     } catch (error) {
       console.error('Error loading canvas state:', error);
-      // Show error notification or handle appropriately
+      // Could add user-facing error notification here
     } finally {
       set({ isLoading: false });
     }
@@ -292,90 +277,100 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
         const success = safeLocalStorage(`canvas_${userId}_${wordId}`, JSON.stringify(optimizedData));
         if (!success) {
           console.warn('Local storage capacity may be reached, saving via API only');
-        }
-      } catch (e) {
-        console.error('Error saving to localStorage:', e);
       }
+    } catch (e) {
+      console.error('Error saving to localStorage:', e);
+    }
     
-      // Attempt to save to backend if in production or if API exists
-      try {
-        // Check if we're in development and if we should skip API calls
-        const skipApiInDev = process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_ENABLE_DEV_API;
+    // Attempt to save to backend if in production or if API exists
+    try {
+      // Check if we're in development and if we should skip API calls
+      const skipApiInDev = process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_ENABLE_DEV_API;
+      
+      if (skipApiInDev) {
+        console.log('Skipping API call in development. Using localStorage only.');
+      } else {
+        // Format API endpoint
+        const apiUrl = `/api/canvas/save?userId=${encodeURIComponent(userId)}&wordId=${encodeURIComponent(wordId)}`;
         
-        if (skipApiInDev) {
-          console.log('Skipping API call in development. Using localStorage only.');
-        } else {
-          // Format API endpoint
-          const apiUrl = `/api/canvas/save?userId=${encodeURIComponent(userId)}&wordId=${encodeURIComponent(wordId)}`;
+        // Make API call with a timeout to prevent hanging if API is down
+        console.log('Attempting to save canvas state to API endpoint:', apiUrl);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(optimizedData),
+            signal: controller.signal
+          });
           
-          // Make API call with a timeout to prevent hanging if API is down
-          console.log('Attempting to save canvas state to API endpoint:', apiUrl);
+          clearTimeout(timeoutId);
           
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-          
-          try {
-            const response = await fetch(apiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(optimizedData),
-              signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-              throw new Error(`Failed to save canvas state: ${response.status} ${response.statusText}`);
-            }
-            
-            // All done
-            console.log('Canvas state saved successfully to API');
-          } catch (fetchError: any) {
-            if (fetchError.name === 'AbortError') {
-              console.warn('API call timed out, using localStorage only');
-            } else if (fetchError.message?.includes('404')) {
-              console.warn('API endpoint not found, using localStorage only');
-            } else {
-              console.error('API error:', fetchError);
-            }
-            // Exit without throwing since localStorage save succeeded
+          if (!response.ok) {
+            throw new Error(`Failed to save canvas state: ${response.status} ${response.statusText}`);
           }
+          
+          // All done
+          console.log('Canvas state saved successfully to API');
+        } catch (fetchError: any) {
+          if (fetchError.name === 'AbortError') {
+            console.warn('API call timed out, using localStorage only');
+          } else if (fetchError.message?.includes('404')) {
+            console.warn('API endpoint not found, using localStorage only');
+          } else {
+            console.error('API error:', fetchError);
+          }
+          // Exit without throwing since localStorage save succeeded
+          return;
         }
-      } catch (error) {
-        console.error("Error saving canvas state:", error);
-        // Properly type error and check for 404
-        const typedError = error as Error;
-        // Only show user-facing error if it's not just a missing API in development
-        if (!(process.env.NODE_ENV === 'development' && typedError.message?.includes('404'))) {
-          // Could add user-facing error notification here
-        }
+      }
+    } catch (error) {
+      console.error("Error saving canvas state:", error);
+      // Properly type error and check for 404
+      const typedError = error as Error;
+      // Only show user-facing error if it's not just a missing API in development
+      if (!(process.env.NODE_ENV === 'development' && typedError.message?.includes('404'))) {
+        // Could add user-facing error notification here
       }
     } finally {
       set({ isSaving: false });
     }
   },
 
+  // --- AI Interaction for Image Placement ---
   handleAIImageCommand: (payload: { imageId: string; imageUrl: string; width: number; height: number; placementHint?: string }) => {
     console.log("Received ADD_IMAGE_ELEMENT command, processing:", payload);
     set({ isGeneratingAI: true }); // Show loading while we place it
 
     // --- Improved Centered Placement Logic ---
     const state = get();
+    const newImageId = payload.imageId || `ai-img-${Date.now()}`; // Use provided ID or generate one
+
+    // Get the canvas dimensions from the DOM if possible
+    let canvasWidth = 800; // Default fallback width
+    let canvasHeight = 600; // Default fallback height
+    
+    // Try to get actual canvas dimensions - this must be accurate
+    const canvasElement = document.querySelector('.konvajs-content');
+    if (canvasElement) {
+      canvasWidth = canvasElement.clientWidth;
+      canvasHeight = canvasElement.clientHeight;
+      console.log('Canvas dimensions:', { canvasWidth, canvasHeight });
+    }
+    
+    // Calculate the absolute center of the visible area
+    // This is the key to precise positioning
     const viewport = state.viewport;
     
-    // Use a UUID if none provided
-    const newImageId = payload.imageId || `image-${Date.now()}`;
-    
-    // Get an approximate size of the canvas from the window
-    // In a real implementation, we'd want the actual dimensions
-    const canvasWidth = window.innerWidth * 0.8; // Assuming ~80% of window width
-    const canvasHeight = window.innerHeight * 0.6; // Assuming ~60% of window height
-    
-    console.log('Canvas dimensions:', {
-      width: canvasWidth,
-      height: canvasHeight,
+    // For debugging - log the viewport state
+    console.log('Current viewport state:', { 
+      x: viewport.x, 
+      y: viewport.y, 
       scale: viewport.scale 
     });
     
@@ -438,7 +433,6 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
       width: payload.width,
       height: payload.height,
       imageUrl: payload.imageUrl,
-      url: payload.imageUrl, // For backward compatibility
       rotation: 0,
       opacity: 1,
     };
@@ -482,3 +476,4 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     console.log("AI Image element added, viewport adjusted to show image.");
   }
 }));
+

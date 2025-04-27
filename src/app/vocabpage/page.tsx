@@ -101,54 +101,106 @@ export default function VocabPage() {
     useCanvasStore.getState().setIsGeneratingAI(true);
     
     try {
-      // Call our API endpoint for Gemini image generation
-      const response = await fetch('/api/ai/generate-drawing', {
+      // Get the current canvas content as an image
+      const stageElement = document.querySelector('canvas');
+      let imageData;
+      
+      if (stageElement) {
+        // Capture the current canvas as a data URL
+        const dataUrl = stageElement.toDataURL('image/png');
+        // Remove the data URL prefix for the API
+        imageData = dataUrl.split(',')[1];
+      }
+      
+      // Call our Gemini API endpoint
+      const response = await fetch('/api/ai/gemini-generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           prompt: prompt.trim(),
-          context: sampleVocabWords[currentWordIndex].word,
-          userId: userName
+          imageData,
+          context: sampleVocabWords[currentWordIndex].word
         }),
       });
       
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        throw new Error(`Error: ${response.status} ${response.statusText}`);
       }
       
-      // Get the generated image data
-      const imageData = await response.json();
+      const data = await response.json();
       
-      if (imageData.error) {
-        throw new Error(imageData.error);
+      if (data.imageData) {
+        // Convert the base64 image data to a data URL
+        const imageUrl = `data:image/png;base64,${data.imageData}`;
+        
+        console.log('Generated image URL:', imageUrl.substring(0, 50) + '...');
+        
+        // Pre-load the image to get the actual dimensions
+        const img = document.createElement('img');
+        img.onload = () => {
+          // Once image is loaded, we know its dimensions
+          console.log('Image loaded successfully with dimensions:', img.width, img.height);
+          
+          // Add image to canvas with actual dimensions
+          useCanvasStore.getState().handleAIImageCommand({
+            imageId: `gemini-${Date.now()}`,
+            imageUrl: imageUrl,
+            width: img.width || 400, // Use actual width or default
+            height: img.height || 300, // Use actual height or default
+            placementHint: 'center' // Place in center of viewport
+          });
+          
+          // Clear the loading state and prompt text after successful generation
+          setIsPromptLoading(false);
+          setPromptText('');
+          // Delayed reset of generating state
+          setTimeout(() => {
+            useCanvasStore.getState().setIsGeneratingAI(false);
+          }, 500);
+        };
+        
+        img.onerror = (event: Event | string) => {
+          console.error('Failed to preload image:', event);
+          // Fallback to default dimensions if image preloading fails
+          useCanvasStore.getState().handleAIImageCommand({
+            imageId: `gemini-${Date.now()}`,
+            imageUrl: imageUrl,
+            width: 400,
+            height: 300,
+            placementHint: 'center'
+          });
+          
+          // Clear states even if there was an error
+          setIsPromptLoading(false);
+          setPromptText('');
+          useCanvasStore.getState().setIsGeneratingAI(false);
+        };
+        
+        // Start loading the image
+        img.src = imageUrl;
       }
       
-      // Add the image to the canvas using handleAIImageCommand with the correct parameter shape
-      useCanvasStore.getState().handleAIImageCommand({
-        imageId: imageData.imageId || Date.now().toString(),
-        imageUrl: imageData.imageUrl,
-        width: imageData.width || 300,
-        height: imageData.height || 300,
-        placementHint: 'center' // Optional hint for placement logic
-      });
-      
-      // Clear the prompt text after submission
-      setPromptText('');
-      
-      // Also save the updated canvas state after adding the image
-      setTimeout(() => {
-        if (userName) {
-          const currentWord = sampleVocabWords[currentWordIndex];
-          saveCanvasState(userName, currentWord.id);
-        }
-      }, 500);
     } catch (error) {
-      console.error('Error submitting prompt:', error);
-      alert('Failed to generate image. Please try again.');
+      console.error('Error generating image:', error);
+      
+      // Show a user-friendly error notification
+      const errorMessage = document.createElement('div');
+      errorMessage.className = styles.errorNotification;
+      errorMessage.textContent = 'Could not generate image. Please try again.';
+      document.body.appendChild(errorMessage);
+      
+      // Remove notification after 3 seconds
+      setTimeout(() => {
+        errorMessage.classList.add(styles.fadeOut);
+        setTimeout(() => {
+          document.body.removeChild(errorMessage);
+        }, 500);
+      }, 3000);
     } finally {
       setIsPromptLoading(false);
+      setPromptText(''); // Clear prompt text after submission
       useCanvasStore.getState().setIsGeneratingAI(false);
     }
   };
@@ -266,7 +318,52 @@ export default function VocabPage() {
               </div>
             </div>
             
-            {/* GeminiEnhancedCanvas has built-in prompt input and controls */}
+            {/* Image generation prompt box */}
+            <div className={styles.promptInputContainer}>
+              <div className={styles.promptInputHeader}>
+                <div className="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9.529 4.421c0-.824.673-1.5 1.5-1.5.824 0 1.5.673 1.5 1.5 0 .823-.673 1.5-1.5 1.5-.826-.001-1.5-.677-1.5-1.5zm.5 4.5h2v12h-2v-12zm-5.5 0v5.5H2v-5.5h2.5zm18.5 0v5.5h-2.5v-5.5H23z" />
+                  </svg>
+                  <span className="font-medium">Generate Image with Gemini AI</span>
+                </div>
+              </div>
+              <div className="relative mt-2">
+                <input
+                  type="text" 
+                  className="w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder={`Describe an image that illustrates "${sampleVocabWords[currentWordIndex].word}"...`}
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handlePromptSubmit(promptText);
+                    }
+                  }}
+                  disabled={isPromptLoading || isGeneratingAI}
+                />
+                <button 
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  onClick={() => handlePromptSubmit(promptText)}
+                  disabled={isPromptLoading || isGeneratingAI || !promptText.trim()}
+                >
+                  {isPromptLoading || isGeneratingAI ? (
+                    <div className="flex items-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </div>
+                  ) : (
+                    'Create'
+                  )}
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Try prompts like "Draw a person in a situation that's {sampleVocabWords[currentWordIndex].word}" or "Create a visual representation of {sampleVocabWords[currentWordIndex].word}"
+              </p>
+            </div>
           </div>
           
           {/* User section */}
@@ -297,6 +394,7 @@ export default function VocabPage() {
             hideVideo={true}
             onLeave={handleLeave}
             aiAssistantEnabled={false}
+            customControls={<div className="flex gap-2"></div>}
           />
         </div>
       </div>

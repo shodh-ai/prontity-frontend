@@ -599,6 +599,27 @@ const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({
                     img.crossOrigin = 'Anonymous';
                     
                     // Set up event handlers before setting src
+                    img.onerror = () => {
+                      console.warn(`Failed to load image for element ${element.id}`);
+                      
+                      // Try to load from a data URL if it appears to be one
+                      if (url.startsWith('data:')) {
+                        // It's already a data URL, nothing more we can do but log it
+                        console.error('Image failed to load even though it is a data URL', { id: element.id });
+                      } else {
+                        // If it's not a data URL, try to load a fallback
+                        console.log('Attempting to load fallback image');
+                        setTimeout(() => {
+                          // Try again after a short delay
+                          img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+                        }, 500);
+                      }
+                    };
+                    
+                    // Set the source to trigger the load
+                    img.src = url;
+                    
+                    // Add a load handler to confirm success
                     img.onload = () => {
                       // When the image loads, apply it to the Konva node and redraw
                       if (node) {
@@ -607,13 +628,6 @@ const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({
                         console.log('Successfully loaded image for element:', element.id);
                       }
                     };
-                    
-                    img.onerror = () => {
-                      console.warn(`Failed to load image for element ${element.id}`);
-                    };
-                    
-                    // Set the source to trigger the load
-                    img.src = url;
                   }}
                 />
               );

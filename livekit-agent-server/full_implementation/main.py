@@ -8,6 +8,13 @@ from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions
 
+# Import the persona configuration module
+from personas import get_persona_config
+
+# Import services modules
+from services.http_client import initialize, close
+from services import canvas_client, content_client, user_progress_client
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(levelname)s - %(message)s')
@@ -41,8 +48,8 @@ for var in required_env_vars:
 
 class Assistant(Agent):
     def __init__(self) -> None:
-        # Use the global instructions value which can be set via CLI args
-        super().__init__(instructions=GLOBAL_INSTRUCTIONS)
+        # Use the instructions from the persona configuration
+        super().__init__(instructions=GLOBAL_PERSONA['instructions'])
         
         # Tools will be managed in the entrypoint function
         # Note: tools are registered in the entrypoint, not directly set here
@@ -50,14 +57,22 @@ class Assistant(Agent):
 
 # Global variables to store agent configuration
 GLOBAL_PAGE_PATH = 'speakingpage'  # Default to speakingpage
-GLOBAL_VOICE = 'Puck'     # Default voice - Puck is compatible with gemini-2.0-flash-exp
-GLOBAL_TEMPERATURE = 0.7  # Default temperature
-GLOBAL_INSTRUCTIONS = 'You are a helpful assistant for TOEFL speaking practice.'  # Default instructions
 GLOBAL_ENABLE_TOOLS = True  # Enable or disable tools
 
+# Will be populated from personas module based on page path
+GLOBAL_PERSONA = None
+
 async def entrypoint(ctx: agents.JobContext):
+    # Initialize the HTTP client for service API calls
+    logger.info("Initializing HTTP client for external API calls")
+    await initialize()
+    
     # Use the global page path
     page_path = GLOBAL_PAGE_PATH
+    
+    # Get persona configuration based on page path
+    global GLOBAL_PERSONA
+    GLOBAL_PERSONA = get_persona_config(page_path)
     
     # Simply log the intended URL - no need to set it directly
     # The web browser will handle navigation based on the UI
@@ -138,9 +153,9 @@ async def entrypoint(ctx: agents.JobContext):
         # Create the model with our configuration
         model = google.beta.realtime.RealtimeModel(
             model="gemini-2.0-flash-exp",  # Use the model that was working before
-            voice=GLOBAL_VOICE,
-            temperature=GLOBAL_TEMPERATURE,
-            instructions=GLOBAL_INSTRUCTIONS,
+            voice=GLOBAL_PERSONA['voice'],
+            temperature=GLOBAL_PERSONA['temperature'],
+            instructions=GLOBAL_PERSONA['instructions'],
             api_key=api_key,
         )
         
@@ -157,22 +172,8 @@ async def entrypoint(ctx: agents.JobContext):
     # Not using tools - we'll use pattern matching instead
     logger.info("Using pattern matching for timer commands instead of tools")
     
-    # Set up specialized instructions based on page type
-    if GLOBAL_PAGE_PATH == 'speakingpage' or GLOBAL_PAGE_PATH == 'speaking':
-        # Append specific timer instructions to the global instructions
-        timer_instructions = """
-        Important: When you want to start a timer, simply say phrases like:
-        - "Now, let's start the preparation timer for 15 seconds."  
-        - "Your speaking time of 45 seconds starts now."
-        - "Time's up."
-        
-        The system will automatically detect these phrases and control the timer.
-        """
-        
-        # Add timer instructions to the agent's instructions
-        if "timer" not in GLOBAL_INSTRUCTIONS.lower():
-            session.llm.instructions = GLOBAL_INSTRUCTIONS + "\n" + timer_instructions
-            logger.info("Added timer-specific instructions to the agent")
+    # Timer instructions are now handled by the personas module
+    logger.info(f"Using persona for {GLOBAL_PAGE_PATH} with specialized instructions")
     
     # Start the agent session in the specified room
     # Note: Not using tools since they aren't supported in the current API
@@ -282,15 +283,23 @@ async def entrypoint(ctx: agents.JobContext):
     await session.generate_reply(
         instructions="hi. Let me introduce myself as your TOEFL speaking practice assistant."
     )
+    
+    try:
+        # Keep the agent running until session ends or an exception occurs
+        await ctx.wait_for_disconnect()
+    finally:
+        # Cleanup resources when the session ends
+        logger.info("Cleaning up resources")
+        await close()
 
 
 if __name__ == "__main__":
     # Parse additional command line arguments
     parser = argparse.ArgumentParser(add_help=False)  # No help to avoid conflicts with livekit cli
     parser.add_argument('--page-path', type=str, help='Path to web page (e.g., "speakingpage")')
-    parser.add_argument('--voice', type=str, help='Voice to use for the agent')
-    parser.add_argument('--temperature', type=float, help='Temperature for LLM responses')
-    parser.add_argument('--instructions', type=str, help='Instructions for the AI agent')
+    parser.add_argument('--voice', type=str, help='Override the voice from persona config')
+    parser.add_argument('--temperature', type=float, help='Override the temperature from persona config')
+    parser.add_argument('--instructions', type=str, help='Override the instructions from persona config')
     parser.add_argument('--no-tools', action='store_true', help='Disable tools for the agent')
     
     # Parse known args without raising error for unknown args
@@ -310,20 +319,23 @@ if __name__ == "__main__":
 
     logging.info(f"Agent intended for page: http://localhost:3000/{GLOBAL_PAGE_PATH}")
     
-    # Save instructions if provided
+    # Initialize the persona configuration before applying overrides
+    GLOBAL_PERSONA = get_persona_config(GLOBAL_PAGE_PATH)
+    
+    # Override specific persona settings if provided via CLI
     if args.instructions:
-        GLOBAL_INSTRUCTIONS = args.instructions
-        logging.info(f"Using custom instructions: {GLOBAL_INSTRUCTIONS[:50]}...")
+        GLOBAL_PERSONA['instructions'] = args.instructions
+        logging.info(f"Overriding persona instructions with custom instructions")
         
-    # Save voice setting if provided
+    # Override voice setting if provided
     if args.voice:
-        GLOBAL_VOICE = args.voice
-        logging.info(f"Using voice: {GLOBAL_VOICE}")
+        GLOBAL_PERSONA['voice'] = args.voice
+        logging.info(f"Overriding persona voice with: {args.voice}")
         
-    # Save temperature setting if provided
+    # Override temperature setting if provided
     if args.temperature is not None:
-        GLOBAL_TEMPERATURE = args.temperature
-        logging.info(f"Using temperature: {GLOBAL_TEMPERATURE}")
+        GLOBAL_PERSONA['temperature'] = args.temperature
+        logging.info(f"Overriding persona temperature with: {args.temperature}")
         
     # Disable tools if requested
     if args.no_tools:

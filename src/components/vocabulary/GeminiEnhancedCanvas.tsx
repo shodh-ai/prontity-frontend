@@ -49,6 +49,11 @@ const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({
   className = '',
   vocabularyWord = ''
 }) => {
+
+const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({ 
+  className = '',
+  vocabularyWord = ''
+}) => {
   // Use individual selectors with explicit state types
   const elements = useCanvasStore((state: CanvasStoreState & CanvasStoreActions) => state.elements);
   const addElement = useCanvasStore((state: CanvasStoreState & CanvasStoreActions) => state.addElement);
@@ -76,7 +81,10 @@ const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({
   const transformerRef = useRef<Konva.Transformer>(null); 
   const promptInputRef = useRef<HTMLInputElement>(null);
   
-  const [stageSize, setStageSize] = useState({ width: 800, height: 400 });
+  const [stageSize, setStageSize] = useState({
+    width: window.innerWidth - 200,
+    height: window.innerHeight - 180,
+  });
   
   // Get stage screenshot as base64 data
   const captureStage = useCallback(() => {
@@ -155,18 +163,34 @@ const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({
         try {
           await imageLoadPromise;
         
+          // Define virtual canvas dimensions - large enough for scrolling
+          const canvasWidth = 3000;
+          const canvasHeight = 3000;
+          const safeLeft = 50;
+          const safeTop = 50;
+          const safeRight = canvasWidth - 50;
+          const safeBottom = canvasHeight - 50;
+          
           // Add the image to the canvas with proper dimensions
           // Ensure we have reasonable default dimensions if the image fails to load properly
-          const imgWidth = img.width || 300;
-          const imgHeight = img.height || 200;
+          const imgWidth = img.width || 400;
+          const imgHeight = img.height || 300;
+          
+          // Calculate optimal placement in the visible canvas area
+          const optimalWidth = Math.min(imgWidth, stageSize.width - 100);
+          const optimalHeight = Math.min(imgHeight, stageSize.height - 100);
+          
+          // Center the image in the visible canvas area
+          const xPos = (stageSize.width - optimalWidth) / 2;
+          const yPos = (stageSize.height - optimalHeight) / 2;
           
           const newImageElement: ImageElement = {
             id: uuidv4(),
             type: 'image' as const,
-            x: 50,
-            y: 50,
-            width: Math.min(imgWidth, stageSize.width - 100),
-            height: Math.min(imgHeight, stageSize.height - 100),
+            x: xPos,
+            y: yPos,
+            width: optimalWidth,
+            height: optimalHeight,
             imageUrl: imageUrl, // Required for ImageElement type
             url: imageUrl, // For backward compatibility
             rotation: 0,
@@ -204,23 +228,419 @@ const GeminiEnhancedCanvas: React.FC<GeminiEnhancedCanvasProps> = ({
   ]);
   
   useEffect(() => {
-    const updateSize = () => {
-      const container = stageRef.current?.container().parentElement;
-      setStageSize({
-        width: container?.clientWidth ?? Math.min(window.innerWidth * 0.9, 1200),
-        height: container?.clientHeight ?? 800
-      });
+    const updateDimensions = () => {
+      // Get the container's dimensions if available, otherwise use window size minus margins
+      const containerElement = document.querySelector('.canvas-container');
+      if (containerElement) {
+        const rect = containerElement.getBoundingClientRect();
+        setStageSize({
+          width: rect.width - 2, // Subtract border width
+          height: rect.height - 2,
+        });
+      } else {
+        // Fallback dimensions if container not found
+        setStageSize({
+          width: Math.min(window.innerWidth - 80, 1200),
+          height: Math.min(window.innerHeight - 240, 800),
+        });
+      }
     };
-    
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+
+    window.addEventListener('resize', updateDimensions);
+    // Set initial dimensions after a short delay to ensure container is rendered
+    setTimeout(updateDimensions, 100);
+
+    return () => window.removeEventListener('resize', updateDimensions);
   }, []);
   
+  const [viewport, setViewport] = useState<Viewport>({
+    x: 0,
+    y: 0,
+    scale: 1,
+  });
+  
+  // Add zoom controls state
+  const [showZoomControls, setShowZoomControls] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(100); // percentage
+
+  // Update viewport when store changes
   useEffect(() => {
-    if (transformerRef.current && selectedIds.size > 0) {
-      const stage = stageRef.current;
-      if (!stage) return;
+    setViewport(storeViewport);
+    setZoomLevel(Math.round(storeViewport.scale * 100));
+  }, [storeViewport]);
+
+  // Handle zooming with mouse wheel
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    
+    // Determine if this is a zoom event (with Ctrl/Meta key) or a pan event
+    const isZoom = e.ctrlKey || e.metaKey;
+    
+    if (isZoom) {
+      // For zooming
+      const scaleBy = 1.1;
+      const direction = e.deltaY > 0 ? 1 : -1;
+      const newScale = direction > 0 
+        ? Math.max(0.1, viewport.scale / scaleBy)
+        : Math.min(5, viewport.scale * scaleBy);
+      
+      setViewport(prev => ({
+        ...prev,
+        scale: newScale
+      }));
+      setZoomLevel(Math.round(newScale * 100));
+    } else {
+      // For panning/scrolling
+      setViewport(prev => ({
+        ...prev,
+        x: prev.x - e.deltaX * 2,
+        y: prev.y - e.deltaY * 2
+      }));
+    }
+  }, [viewport]);
+  
+  // Zoom in function
+  const handleZoomIn = useCallback(() => {
+    setViewport(prev => {
+      const newScale = Math.min(5, prev.scale * 1.1);
+      setZoomLevel(Math.round(newScale * 100));
+      return {
+        ...prev,
+        scale: newScale
+      };
+    });
+  }, []);
+  
+  // Zoom out function
+  const handleZoomOut = useCallback(() => {
+    setViewport(prev => {
+      const newScale = Math.max(0.1, prev.scale / 1.1);
+      setZoomLevel(Math.round(newScale * 100));
+      return {
+        ...prev,
+        scale: newScale
+      };
+    });
+  }, []);
+
+}, [addElement, captureStage, setIsGeneratingAI, setSelectedIds, stageSize, vocabularyWord]);
+
+useEffect(() => {
+const updateDimensions = () => {
+// Get the container's dimensions if available, otherwise use window size minus margins
+const containerElement = document.querySelector('.canvas-container');
+if (containerElement) {
+const rect = containerElement.getBoundingClientRect();
+setStageSize({
+width: rect.width - 2, // Subtract border width
+height: rect.height - 2,
+});
+} else {
+// Fallback dimensions if container not found
+setStageSize({
+width: Math.min(window.innerWidth - 80, 1200),
+height: Math.min(window.innerHeight - 240, 800),
+});
+}
+};
+
+window.addEventListener('resize', updateDimensions);
+// Set initial dimensions after a short delay to ensure container is rendered
+setTimeout(updateDimensions, 100);
+
+return () => window.removeEventListener('resize', updateDimensions);
+}, []);
+
+const [viewport, setViewport] = useState<Viewport>({
+x: 0,
+y: 0,
+scale: 1,
+});
+
+// Add zoom controls state
+const [showZoomControls, setShowZoomControls] = useState(false);
+const [zoomLevel, setZoomLevel] = useState(100); // percentage
+
+// Update viewport when store changes
+useEffect(() => {
+setViewport(storeViewport);
+setZoomLevel(Math.round(storeViewport.scale * 100));
+}, [storeViewport]);
+
+// Handle zooming with mouse wheel
+const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+e.preventDefault();
+
+// Determine if this is a zoom event (with Ctrl/Meta key) or a pan event
+const isZoom = e.ctrlKey || e.metaKey;
+
+if (isZoom) {
+// For zooming
+const scaleBy = 1.1;
+const direction = e.deltaY > 0 ? 1 : -1;
+const newScale = direction > 0
+? Math.max(0.1, viewport.scale / scaleBy)
+: Math.min(5, viewport.scale * scaleBy);
+
+setViewport(prev => ({
+...prev,
+scale: newScale
+}));
+setZoomLevel(Math.round(newScale * 100));
+} else {
+// For panning/scrolling
+setViewport(prev => ({
+...prev,
+x: prev.x - e.deltaX * 2,
+y: prev.y - e.deltaY * 2
+}));
+}
+}, [viewport]);
+
+// Zoom in function
+const handleZoomIn = useCallback(() => {
+setViewport(prev => {
+const newScale = Math.min(5, prev.scale * 1.1);
+setZoomLevel(Math.round(newScale * 100));
+return {
+...prev,
+scale: newScale
+};
+});
+}, []);
+
+// Zoom out function
+const handleZoomOut = useCallback(() => {
+setViewport(prev => {
+const newScale = Math.max(0.1, prev.scale / 1.1);
+setZoomLevel(Math.round(newScale * 100));
+return {
+...prev,
+scale: newScale
+};
+});
+}, []);
+
+// Reset view function
+const handleResetView = useCallback(() => {
+setViewport({
+x: 0,
+y: 0,
+scale: 1
+});
+setZoomLevel(100);
+}, []);
+
+// Update store when viewport changes in this component
+useEffect(() => {
+if (
+viewport.x !== storeViewport.x ||
+viewport.y !== storeViewport.y ||
+viewport.scale !== storeViewport.scale
+) {
+setStoreViewport(viewport);
+}
+}, [viewport, storeViewport, setStoreViewport]);
+
+useEffect(() => {
+if (transformerRef.current && selectedIds.size > 0) {
+const stage = stageRef.current;
+if (!stage) return;
+
+const nodes = Array.from(selectedIds).map(id => {
+return stage.findOne(`#${id}`) ?? null;
+}).filter((node): node is Konva.Node => node !== null);
+
+transformerRef.current.nodes(nodes);
+transformerRef.current.getLayer()?.batchDraw();
+} else if (transformerRef.current) {
+transformerRef.current.nodes([]);
+transformerRef.current.getLayer()?.batchDraw();
+}
+}, [selectedIds]);
+
+// Handle Gemini prompt submission when Enter is pressed
+const handleGeminiPromptKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+if (e.key === 'Enter' && geminiPrompt.trim() && !isGeneratingAI) {
+generateWithGemini(geminiPrompt.trim());
+}
+};
+
+const handleGeminiModeToggle = () => {
+// Toggle Gemini mode
+setIsInGeminiMode(!isInGeminiMode);
+
+// If turning on Gemini mode, focus the prompt input
+if (!isInGeminiMode) {
+setTimeout(() => {
+if (promptInputRef.current) {
+promptInputRef.current.focus();
+}
+}, 100);
+}
+};
+
+// Rest of the canvas functionality (unchanged from SimpleCanvas)
+const handleElementClick = useCallback((id: string) => {
+setSelectedIds(new Set([id]));
+}, [setSelectedIds]);
+
+const handleElementDragEnd = useCallback((id: string, e: KonvaEventObject<DragEvent>) => {
+const element = elements.get(id);
+if (!element) return;
+
+const newPos = e.target.position();
+
+updateElement(id, {
+x: newPos.x,
+y: newPos.y
+});
+}, [elements, updateElement]);
+
+const handleTransformEnd = useCallback((id: string, e: KonvaEventObject<Event>) => {
+const element = elements.get(id);
+if (!element) return;
+
+const node = e.target;
+const scaleX = node.scaleX();
+const scaleY = node.scaleY();
+
+// Reset scale to 1 and update width and height
+node.scaleX(1);
+node.scaleY(1);
+
+// For images and rectangles
+if (element.type === 'image' || element.type === 'rectangle') {
+updateElement(id, {
+width: element.width * scaleX,
+height: element.height * scaleY,
+rotation: node.rotation()
+});
+}
+
+// For text elements
+if (element.type === 'text') {
+const textElement = element as TextElement;
+updateElement(id, {
+width: (textElement.width || 0) * scaleX,
+height: (textElement.height || 0) * scaleY,
+rotation: node.rotation(),
+fontSize: textElement.fontSize * Math.min(scaleX, scaleY) // Scale font size proportionally
+});
+}
+}, [elements, updateElement]);
+
+const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
+// Check for clicks on the stage
+const clickedOnEmpty = e.target === e.target.getStage();
+
+// Only proceed if click is on the stage and not on another element
+if (clickedOnEmpty && currentTool !== 'select') {
+setSelectedIds(new Set()); // Clear selection
+
+if (currentTool === 'pencil') {
+// Start drawing line
+setIsDrawing(true);
+
+const pos = e.target.getStage()?.getPointerPosition();
+if (!pos) return;
+
+// Create new line
+const id = uuidv4();
+const line: LineElement = {
+id,
+type: 'line',
+x: 0,
+y: 0,
+points: [pos.x, pos.y],
+stroke: strokeColor,
+strokeWidth: strokeWidth
+};
+
+addElement(line);
+} else if (currentTool === 'rectangle') {
+// Start drawing rectangle
+const pos = e.target.getStage()?.getPointerPosition();
+if (!pos) return;
+
+const id = uuidv4();
+const rect: RectangleElement = {
+id,
+type: 'rectangle',
+x: pos.x,
+y: pos.y,
+width: 0,
+height: 0,
+stroke: strokeColor,
+strokeWidth: strokeWidth,
+fill: '',
+};
+
+addElement(rect);
+setSelectedIds(new Set([id]));
+} else if (currentTool === 'text') {
+const pos = e.target.getStage()?.getPointerPosition();
+if (!pos) return;
+
+const id = uuidv4();
+const textElement: TextElement = {
+id,
+type: 'text',
+x: pos.x,
+y: pos.y,
+text: 'Double-click to edit',
+fontSize: 16,
+fontFamily: 'Arial',
+fill: strokeColor,
+width: 200,
+height: 24,
+align: 'left'
+};
+
+addElement(textElement);
+setSelectedIds(new Set([id]));
+}
+} else if (clickedOnEmpty) {
+// If in select mode and clicked on empty stage, clear selection
+setSelectedIds(new Set());
+}
+}, [addElement, currentTool, setSelectedIds, strokeColor, strokeWidth]);
+
+const handleStageMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+if (!isDrawing) return;
+
+const stage = e.target.getStage();
+const pos = stage?.getPointerPosition();
+if (!pos) return;
+
+// Find the last line drawn
+const lastId = Array.from(elements.keys()).pop();
+if (lastId) {
+const lastElement = elements.get(lastId);
+
+if (lastElement?.type === 'line') {
+// Add new point to the line
+const newPoints = [...lastElement.points, pos.x, pos.y];
+
+updateElement(lastId, {
+points: newPoints
+});
+} else if (lastElement?.type === 'rectangle' && currentTool === 'rectangle') {
+const oldX = lastElement.x;
+const oldY = lastElement.y;
+const newWidth = pos.x - oldX;
+const newHeight = pos.y - oldY;
+
+updateElement(lastId, {
+width: newWidth,
+height: newHeight,
+});
+}
+}
+}, [currentTool, elements, isDrawing, updateElement]);
+
+const handleStageMouseUp = useCallback(() => {
+setIsDrawing(false);
       
       const nodes = Array.from(selectedIds).map(id => {
         return stage.findOne(`#${id}`) ?? null;

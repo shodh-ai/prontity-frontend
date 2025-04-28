@@ -3,13 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import LiveKitSession from '@/components/LiveKitSession';
-import ProtectedRoute from '@/components/ProtectedRoute';
-import { useSession } from 'next-auth/react';
 
-function RoxPageContent() {
+export default function RoxPageDirect() {
   const router = useRouter();
-  const { data: session } = useSession();
-  const [userName, setUserName] = useState('');
+  const [userName, setUserName] = useState('demo-user');
   
   // Room configuration
   const roomName = 'RoxConversation';
@@ -17,17 +14,10 @@ function RoxPageContent() {
   // Example conversation prompt
   const conversationPrompt = "Hello! I'm Rox, your TOEFL practice assistant. How can I help you today? Would you like to practice speaking, writing, or review vocabulary?";
   
-  // Get username from session or localStorage when component mounts
+  // Set username in localStorage for compatibility with other components
   useEffect(() => {
-    if (session?.user?.name) {
-      setUserName(session.user.name);
-    } else {
-      const storedUserName = localStorage.getItem('userName');
-      if (storedUserName) {
-        setUserName(storedUserName);
-      }
-    }
-  }, [session]);
+    localStorage.setItem('userName', userName);
+  }, [userName]);
 
   // Navigation to other practice sections
   const navigateToSpeaking = () => router.push('/speakingpage');
@@ -67,7 +57,7 @@ function RoxPageContent() {
     <div className="page-wrapper">
       <LiveKitSession
         roomName={roomName}
-        userName={userName || 'student-user'}
+        userName={userName}
         questionText={conversationPrompt}
         sessionTitle="Conversation with Rox"
         pageType="rox"
@@ -77,12 +67,4 @@ function RoxPageContent() {
       />
     </div>
   );
-}
-
-export default function RoxPage() {
-  return (
-    <ProtectedRoute>
-      <RoxPageContent />
-    </ProtectedRoute>
-  );
-}
+} 

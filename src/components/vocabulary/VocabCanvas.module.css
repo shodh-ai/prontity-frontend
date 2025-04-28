@@ -1,0 +1,451 @@
+.vocabCanvasContainer {
+  position: relative;
+  width: 1280px;
+  height: 740px;
+  background: #FFFFFF;
+  border-radius: 12px;
+  margin: 0 auto;
+  display: flex;
+}
+
+.vocabCanvasWrapper {
+  flex: 1;
+  padding: 24px;
+  position: relative;
+}
+
+/* Progress bar styles */
+.progressContainer {
+  width: 610px;
+  height: 10px;
+  margin: 20px auto;
+}
+
+.progressBar {
+  width: 100%;
+  height: 10px;
+  background: rgba(199, 204, 248, 0.2);
+  border-radius: 6px;
+  position: relative;
+}
+
+.progressFill {
+  position: absolute;
+  height: 10px;
+  background: rgba(86, 111, 233, 0.9);
+  border-radius: 6px;
+  left: 0;
+  transition: width 0.3s ease;
+}
+
+/* Canvas title section */
+.canvasTitle {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.canvasTitleInner {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.85);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.canvasHeading {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+/* Canvas section */
+.canvasSection {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.canvasContainer {
+  position: relative;
+  width: 800px;
+  height: 328px;
+  border: 1px solid rgba(86, 88, 104, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-left: 152px;
+  margin-top: 50px;
+  text-align: center;
+}
+
+.canvas {
+  border: 1px solid rgba(86, 88, 104, 0.2);
+  border-radius: 6px;
+  background-color: white;
+  height: 328px;
+  width: 800px;
+  display: block;
+  object-fit: contain;
+  touch-action: none;
+  cursor: crosshair;
+  margin: 0 auto;
+}
+
+/* Tools menu */
+.toolsMenu {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-left: 8px;
+}
+
+.colorPickerButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+  cursor: pointer;
+}
+
+.colorPickerButton:hover {
+  transform: scale(1.1);
+}
+
+.hiddenColorInput {
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+}
+
+.toolButton {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, background-color 0.2s;
+  cursor: pointer;
+}
+
+.toolButton:hover {
+  transform: scale(1.1);
+  background-color: #f5f5f5;
+}
+
+.toolIcon {
+  width: 20px;
+  height: 20px;
+  color: #717171;
+}
+
+/* Media Controls Container */
+.mediaControlsContainer {
+  display: flex;
+  justify-content: center;
+  margin: 20px auto;
+  width: 100%;
+}
+
+.mediaControlsContainer :global(.custom-controls) {
+  display: flex;
+  gap: 10px;
+}
+
+/* Scrollbar */
+.scrollbar {
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  width: 6px;
+  height: calc(328px - 20px);
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.scrollbarThumb {
+  width: 4px;
+  height: 50px;
+  background: #566FE9;
+  border-radius: 100px;
+}
+
+/* Prompt form */
+.promptForm {
+  margin-top: 20px;
+  width: 100%;
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.inputContainer {
+  display: flex;
+  position: relative;
+  width: 100%;
+}
+
+.promptInput {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(86, 88, 104, 0.2);
+  border-radius: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.promptInput:focus {
+  border-color: #566FE9;
+}
+
+.submitButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #566FE9;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.submitButton:hover {
+  background-color: #4558c4;
+}
+
+.submitButton:disabled {
+  background-color: #c7ccf8;
+  cursor: not-allowed;
+}
+
+.loaderIcon, .sendIcon {
+  width: 16px;
+  height: 16px;
+  color: #FFFFFF;
+}
+
+/* Control buttons */
+.controlButtonsContainer {
+  position: absolute;
+  bottom: 24px;
+  width: calc(100% - 48px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navigationButtons {
+  display: flex;
+  gap: 8px;
+}
+
+.navigationButton {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #FFFFFF;
+  border: 1px solid #566FE9;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.navigationButton:hover {
+  background-color: #f5f7ff;
+}
+
+.navigationIcon {
+  width: 24px;
+  height: 24px;
+  color: #566FE9;
+}
+
+.primaryButton {
+  padding: 12px 81px;
+  background: #566FE9;
+  border: none;
+  border-radius: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 170%;
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  min-width: 140px;
+}
+
+.primaryButton:hover {
+  background-color: #4558c4;
+}
+
+/* Wrapper */
+.vocabCanvasWrapper {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-left: 152px;
+  margin-top: 50px;
+  width: 800px;
+}
+
+/* Sidebar */
+.sidebarContainer {
+  width: 200px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.imageGallery {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 158px;
+}
+
+.thumbnail {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.thumbnailImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.thumbnailLabel {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 4px 10px;
+  background: #FFFFFF;
+  border-radius: 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 150%;
+  color: #566FE9;
+}
+
+/* Error modal */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.modalContent {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-width: 450px;
+  width: 100%;
+  padding: 24px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.modalTitle {
+  font-size: 20px;
+  font-weight: 700;
+  color: #363636;
+  margin: 0;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: #717171;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.closeIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.modalMessage {
+  font-weight: 500;
+  color: #363636;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1280px) {
+  .vocabCanvasContainer {
+    width: 100%;
+    height: auto;
+    flex-direction: column;
+  }
+  
+  .sidebarContainer {
+    width: 100%;
+    padding: 16px;
+  }
+  
+  .imageGallery {
+    flex-direction: row;
+    margin-top: 24px;
+    justify-content: center;
+  }
+  
+  .canvasContainer {
+    width: 100%;
+    max-width: 800px;
+  }
+  
+  .promptForm {
+    width: 100%;
+    max-width: 800px;
+  }
+  
+  .progressContainer {
+    width: 100%;
+    max-width: 610px;
+  }
+}

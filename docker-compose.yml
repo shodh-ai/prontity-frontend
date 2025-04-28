@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Main Next.js application
+  frontend:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - webrtc-token
+      - vocab-canvas
+      - livekit-agent
+      - mock-services
+
+  # WebRTC Token Service
+  webrtc-token:
+    build: ./webrtc-token-service
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+
+  # Vocabulary Canvas Service
+  vocab-canvas:
+    build: ./vocab-canvas-service
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+
+  # LiveKit Agent Server
+  livekit-agent:
+    build: ./livekit-agent-server
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  # Mock Services
+  mock-services:
+    build: ./mock-services
+    ports:
+      - "3003:3003"
+      - "3004:3004"
+      - "3005:3005"
+    environment:
+      - PYTHONUNBUFFERED=1 

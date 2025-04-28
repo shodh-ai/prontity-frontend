@@ -7,12 +7,14 @@ import VocabBox, { VocabularyItem } from '@/components/vocabulary/VocabBox';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import LiveKitSession from '@/components/LiveKitSession';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import { useSession } from 'next-auth/react';
 
 // Import CSS Module
 import styles from './vocabpage.module.css';
 
-// Import the GeminiEnhancedCanvas component with SSR disabled completely
-import GeminiEnhancedCanvas from "@/components/vocabulary/GeminiEnhancedCanvas";
+// Import the VocabCanvas component
+import VocabCanvas from '@/components/vocabulary/VocabCanvas';
 
 import ToolBar from '@/components/vocabulary/ToolBar';
 import TextInput from '@/components/vocabulary/TextInput';
@@ -42,8 +44,9 @@ const sampleVocabWords: VocabularyItem[] = [
   }
 ];
 
-export default function VocabPage() {
+function VocabPageContent() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [userName, setUserName] = useState('');
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [isPromptLoading, setIsPromptLoading] = useState(false);
@@ -64,16 +67,17 @@ export default function VocabPage() {
   // Room configuration for API calls
   const roomName = 'VocabularyPractice';
   
-  // Get username from localStorage when component mounts
+  // Get username from session or localStorage when component mounts
   useEffect(() => {
-    const storedUserName = localStorage.getItem('userName');
-    if (storedUserName) {
-      setUserName(storedUserName);
+    if (session?.user?.name) {
+      setUserName(session.user.name);
     } else {
-      // Redirect to login if no username found
-      router.push('/loginpage');
+      const storedUserName = localStorage.getItem('userName');
+      if (storedUserName) {
+        setUserName(storedUserName);
+      }
     }
-  }, [router]);
+  }, [session]);
   
   // Load canvas state when word changes
   useEffect(() => {
@@ -198,9 +202,9 @@ export default function VocabPage() {
           document.body.removeChild(errorMessage);
         }, 500);
       }, 3000);
-    } finally {
+      
+      // Clear states
       setIsPromptLoading(false);
-      setPromptText(''); // Clear prompt text after submission
       useCanvasStore.getState().setIsGeneratingAI(false);
     }
   };
@@ -247,7 +251,7 @@ export default function VocabPage() {
         
         {/* Canvas Component */}
         <div className="canvas-wrapper mb-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-          <GeminiEnhancedCanvas vocabularyWord={currentWord.word} />
+          <VocabCanvas vocabularyWord={currentWord.word} definition={currentWord.definition} userId={userName} wordId={currentWord.id} />
         </div>
         
         {/* AI Drawing Prompt Input */}
@@ -311,27 +315,22 @@ export default function VocabPage() {
             </div>
             
             {/* Canvas area */}
-            <div className={styles.canvasContainer}>
-              <GeminiEnhancedCanvas vocabularyWord={sampleVocabWords[currentWordIndex].word} />
-              <div className={styles.scrollIndicator}>
-                <div className={styles.scrollThumb}></div>
-              </div>
-            </div>
+            <VocabCanvas 
+              vocabularyWord={sampleVocabWords[currentWordIndex].word}
+              definition={sampleVocabWords[currentWordIndex].definition}
+              userId={userName}
+              wordId={sampleVocabWords[currentWordIndex].id}
+            />
             
-            {/* Image generation prompt box */}
+            {/* Clean image generation prompt box matching the design in the image */}
             <div className={styles.promptInputContainer}>
-              <div className={styles.promptInputHeader}>
-                <div className="flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M9.529 4.421c0-.824.673-1.5 1.5-1.5.824 0 1.5.673 1.5 1.5 0 .823-.673 1.5-1.5 1.5-.826-.001-1.5-.677-1.5-1.5zm.5 4.5h2v12h-2v-12zm-5.5 0v5.5H2v-5.5h2.5zm18.5 0v5.5h-2.5v-5.5H23z" />
-                  </svg>
-                  <span className="font-medium">Generate Image with Gemini AI</span>
-                </div>
+              <div className="flex justify-between mb-1">
+                <div className="text-sm font-medium text-gray-600">Generate Image with Gemini AI</div>
               </div>
-              <div className="relative mt-2">
+              <div className="relative">
                 <input
                   type="text" 
-                  className="w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                   placeholder={`Describe an image that illustrates "${sampleVocabWords[currentWordIndex].word}"...`}
                   value={promptText}
                   onChange={(e) => setPromptText(e.target.value)}
@@ -343,26 +342,23 @@ export default function VocabPage() {
                   disabled={isPromptLoading || isGeneratingAI}
                 />
                 <button 
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 px-3 py-0.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                   onClick={() => handlePromptSubmit(promptText)}
                   disabled={isPromptLoading || isGeneratingAI || !promptText.trim()}
                 >
                   {isPromptLoading || isGeneratingAI ? (
-                    <div className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <div className="flex items-center py-0.5">
+                      <svg className="animate-spin mr-1 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Generating...
+                      Creating...
                     </div>
                   ) : (
                     'Create'
                   )}
                 </button>
               </div>
-              <p className="mt-2 text-sm text-gray-500">
-                Try prompts like "Draw a person in a situation that's {sampleVocabWords[currentWordIndex].word}" or "Create a visual representation of {sampleVocabWords[currentWordIndex].word}"
-              </p>
             </div>
           </div>
           
@@ -377,27 +373,21 @@ export default function VocabPage() {
           </div>
         </div>
         
-        {/* Footer controls */}
+        {/* Footer controls with Next Word button */}
         <div className={styles.footerControls}>
           <button className={styles.nextWordButton} onClick={handleNextWord}>
             Next Word
           </button>
         </div>
-        
-        {/* LiveKit session for the control buttons */}
-        <div className={styles.mediaControlsContainer}>
-          <LiveKitSession
-            roomName={roomName}
-            userName={userName || 'student-user'}
-            sessionTitle=""
-            pageType="vocab"
-            hideVideo={true}
-            onLeave={handleLeave}
-            aiAssistantEnabled={false}
-            customControls={<div className="flex gap-2"></div>}
-          />
-        </div>
       </div>
     </div>
+  );
+}
+
+export default function VocabPage() {
+  return (
+    <ProtectedRoute>
+      <VocabPageContent />
+    </ProtectedRoute>
   );
 }

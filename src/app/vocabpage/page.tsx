@@ -51,6 +51,7 @@ function VocabPageContent() {
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [isPromptLoading, setIsPromptLoading] = useState(false);
   const [promptText, setPromptText] = useState('');
+  const [generatedImageUrl, setGeneratedImageUrl] = useState('');
   
   // Access the isGeneratingAI state directly from the store using Zustand hooks
   const isGeneratingAI = useCanvasStore(state => state.isGeneratingAI);
@@ -164,24 +165,21 @@ function VocabPageContent() {
             useCanvasStore.getState().setIsGeneratingAI(false);
           }, 500);
         };
-        
         img.onerror = (event: Event | string) => {
           console.error('Failed to preload image:', event);
-          // Fallback to default dimensions if image preloading fails
-          useCanvasStore.getState().handleAIImageCommand({
-            imageId: `gemini-${Date.now()}`,
-            imageUrl: imageUrl,
-            width: 400,
-            height: 300,
-            placementHint: 'center'
-          });
+          // Set the generated image URL in state to display it
+          setGeneratedImageUrl(imageUrl);
           
-          // Clear states even if there was an error
+          // Simply mark the generation as complete
+          useCanvasStore.getState().setIsGeneratingAI(false);
+          
           setIsPromptLoading(false);
           setPromptText('');
-          useCanvasStore.getState().setIsGeneratingAI(false);
+          // Delayed reset of generating state
+          setTimeout(() => {
+            useCanvasStore.getState().setIsGeneratingAI(false);
+          }, 500);
         };
-        
         // Start loading the image
         img.src = imageUrl;
       }
@@ -322,44 +320,7 @@ function VocabPageContent() {
               wordId={sampleVocabWords[currentWordIndex].id}
             />
             
-            {/* Clean image generation prompt box matching the design in the image */}
-            <div className={styles.promptInputContainer}>
-              <div className="flex justify-between mb-1">
-                <div className="text-sm font-medium text-gray-600">Generate Image with Gemini AI</div>
-              </div>
-              <div className="relative">
-                <input
-                  type="text" 
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                  placeholder={`Describe an image that illustrates "${sampleVocabWords[currentWordIndex].word}"...`}
-                  value={promptText}
-                  onChange={(e) => setPromptText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handlePromptSubmit(promptText);
-                    }
-                  }}
-                  disabled={isPromptLoading || isGeneratingAI}
-                />
-                <button 
-                  className="absolute right-1 top-1/2 transform -translate-y-1/2 px-3 py-0.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                  onClick={() => handlePromptSubmit(promptText)}
-                  disabled={isPromptLoading || isGeneratingAI || !promptText.trim()}
-                >
-                  {isPromptLoading || isGeneratingAI ? (
-                    <div className="flex items-center py-0.5">
-                      <svg className="animate-spin mr-1 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Creating...
-                    </div>
-                  ) : (
-                    'Create'
-                  )}
-                </button>
-              </div>
-            </div>
+            {/* Removed duplicate Gemini AI prompt input - using the one in VocabCanvas instead */}
           </div>
           
           {/* User section */}
@@ -373,12 +334,7 @@ function VocabPageContent() {
           </div>
         </div>
         
-        {/* Footer controls with Next Word button */}
-        <div className={styles.footerControls}>
-          <button className={styles.nextWordButton} onClick={handleNextWord}>
-            Next Word
-          </button>
-        </div>
+        {/* Footer controls removed */}
       </div>
     </div>
   );

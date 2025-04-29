@@ -4,7 +4,6 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GoogleGenAI, ContentUnion, Modality } from '@google/genai';
 import { LoaderCircle, SendHorizontal, Trash2, X, Mic, SkipBack, SkipForward } from 'lucide-react';
 import { useCanvasStore } from '@/state/canvasStore';
-import LiveKitSession from '@/components/LiveKitSession';
 import styles from './VocabCanvas.module.css';
 
 // Helper function to parse errors in a more readable format
@@ -440,66 +439,24 @@ export default function VocabCanvas({
   return (
     <div className={styles.vocabCanvasContainer}>
       <div className={styles.vocabCanvasWrapper}>
-        {/* Progress bar removed as requested */}
+        {/* Title section removed as requested */}
         
-        {/* Title and tools */}
-        <div className={styles.canvasTitleInner}>
-          <h3 className={styles.canvasHeading}>Drawing Canvas</h3>
-          <div className={styles.toolsMenu}>
-            <button
-              type="button"
-              className={styles.colorPickerButton}
-              onClick={openColorPicker}
-              onKeyDown={handleKeyDown}
-              aria-label="Open color picker"
-              style={{ backgroundColor: penColor }}>
-              <input
-                ref={colorInputRef}
-                type="color"
-                value={penColor}
-                onChange={handleColorChange}
-                className={styles.hiddenColorInput}
-                aria-label="Select pen color"
-              />
-            </button>
-            <button
-              type="button"
-              onClick={clearCanvas}
-              className={styles.toolButton}>
-              <Trash2
-                className={styles.toolIcon}
-                aria-label="Clear Canvas"
-              />
-            </button>
-          </div>
-        </div>
-        
-        {/* Canvas directly under wrapper */}
+        {/* Canvas display area */}
         <canvas
           ref={canvasRef}
           width={800}
           height={328}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
           className={styles.canvas}
         />
-        <div className={styles.scrollbar}>
-          <div className={styles.scrollbarThumb}></div>
-        </div>
 
-        {/* Prompt input and submit */}
+        {/* Prompt input for Gemini AI */}
         <form onSubmit={handleSubmit} className={styles.promptForm}>
           <div className={styles.inputContainer}>
             <input
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Type to generate an image..."
+              placeholder={`Describe an image for "${vocabularyWord}"...`}
               className={styles.promptInput}
               required
             />
@@ -515,53 +472,6 @@ export default function VocabCanvas({
             </button>
           </div>
         </form>
-        
-        {/* Control buttons */}
-        <div className={styles.controlButtonsContainer}>
-          <div className={styles.navigationButtons}>
-            <button className={styles.navigationButton}>
-              <Mic className={styles.navigationIcon} />
-            </button>
-            <button className={styles.navigationButton}>
-              <SkipBack className={styles.navigationIcon} />
-            </button>
-            <button className={styles.navigationButton}>
-              <SkipForward className={styles.navigationIcon} />
-            </button>
-          </div>
-          
-          <button className={styles.primaryButton}>
-            Next
-          </button>
-        </div>
-      </div>
-      
-      {/* LiveKit session buttons centered below canvas */}
-      <div className={styles.mediaControlsContainer}>
-        <LiveKitSession
-          roomName={roomName}
-          userName={userId || 'student-user'}
-          sessionTitle=""
-          pageType="vocab"
-          hideVideo={true}
-          onLeave={onLeave}
-          aiAssistantEnabled={false}
-          customControls={<div className="flex gap-2"></div>}
-        />
-      </div>
-      
-      {/* AI generated images thumbnails */}
-      <div className={styles.sidebarContainer}>
-        <div className={styles.imageGallery}>
-          {generatedImage && (
-            <div className={styles.thumbnail}>
-              <img src={generatedImage} alt="User drawing" className={styles.thumbnailImage} />
-              <div className={styles.thumbnailLabel}>User</div>
-            </div>
-          )}
-          
-          {/* Placeholder image removed */}
-        </div>
       </div>
       
       {/* Error Modal */}

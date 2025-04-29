@@ -39,42 +39,19 @@ function RoxPageContent() {
     router.push('/');
   };
 
-  // Custom controls for Rox page
-  const roxPageControls = (
-    <div className="rox-controls">
-      <button 
-        className="practice-button"
-        onClick={navigateToSpeaking}
-      >
-        Speaking Practice
-      </button>
-      <button 
-        className="practice-button"
-        onClick={navigateToWriting}
-      >
-        Writing Practice
-      </button>
-      <button 
-        className="practice-button"
-        onClick={navigateToVocab}
-      >
-        Vocabulary Practice
-      </button>
-    </div>
-  );
+  // Practice navigation buttons have been removed
 
   return (
     <div className="page-wrapper">
-      <LiveKitSession
-        roomName={roomName}
-        userName={userName || 'student-user'}
-        questionText={conversationPrompt}
-        sessionTitle="Conversation with Rox"
-        pageType="rox"
-        customControls={roxPageControls}
-        onLeave={handleLeave}
-        aiAssistantEnabled={true}
-      />
+      <div className="simplified-rox-interface">
+        <h2>Welcome to TOEFL Practice Assistant</h2>
+        <p>{conversationPrompt}</p>
+        <div className="navigation-links">
+          <a href="/speakingpage" onClick={() => router.push('/speakingpage')}>Speaking Practice</a>
+          <a href="/writingpage" onClick={() => router.push('/writingpage')}>Writing Practice</a>
+          <a href="/vocabpage" onClick={() => router.push('/vocabpage')}>Vocabulary Practice</a>
+        </div>
+      </div>
     </div>
   );
 }

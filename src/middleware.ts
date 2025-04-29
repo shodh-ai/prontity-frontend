@@ -28,9 +28,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
   
-  // If the user is authenticated and trying to access login/signup page,
-  // redirect to main page (keeps this behavior active)
-  if ((pathname.startsWith('/loginpage') || pathname.startsWith('/signuppage')) && token) {
+  // If the user explicitly wants to force login, don't redirect
+  const forceLogin = request.nextUrl.searchParams.get('forceLogin') === 'true';
+  
+  // Only redirect from signup page if authenticated, but allow staying on login page
+  if (pathname.startsWith('/signuppage') && token && !forceLogin) {
     return NextResponse.redirect(new URL('/roxpage', request.url));
   }
   

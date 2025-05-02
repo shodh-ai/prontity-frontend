@@ -1,6 +1,3 @@
 {
-  "/not-found": "app/not-found.js",
-  "/speakingpage/page": "app/speakingpage/page.js",
-  "/vocabpage/page": "app/vocabpage/page.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
+  "/speakingpage/page": "app/speakingpage/page.js"
 }

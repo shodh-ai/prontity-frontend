@@ -77,7 +77,7 @@ export default function VocabCanvas({
 
   // Initialize Gemini AI
   const getAI = useCallback(() => {
-    const key = apiKey || process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
+    const key = apiKey || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!key) {
       throw new Error('Google API Key is required for Gemini image generation');
     }

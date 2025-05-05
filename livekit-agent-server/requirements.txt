@@ -5,9 +5,17 @@ fastapi==0.104.1
 uvicorn==0.23.2
 openai==1.75.0
 
+# Backend (Flask) dependencies
+flask==3.0.3
+
 # Audio processing dependencies
 sounddevice==0.5.1
 psutil==7.0.0
+
+
+livekit-agents[deepgram,openai,cartesia,silero,turn-detector]~=1.0
+livekit-plugins-noise-cancellation~=0.2
+python-dotenv>=1.0.0
 
 # LiveKit plugins
 livekit-protocol==1.0.2

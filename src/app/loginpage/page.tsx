@@ -2,41 +2,51 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { signIn, useSession, signOut } from 'next-auth/react';
 import Image from 'next/image';
 import Link from 'next/link';
 import styles from './login.module.css';
+import userProgressApi from '@/api/mockUserProgressService';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
   const searchParams = useSearchParams();
   const error = searchParams ? searchParams.get('error') : null;
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userProfile, setUserProfile] = useState<{name?: string, email?: string} | null>(null);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   
-  // Only handle errors, no auto-redirect
+  // Check if user is already logged in (token exists)
   useEffect(() => {
-    // Handle errors from NextAuth
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Verify token by getting user profile
+      userProgressApi.getUserProfile()
+        .then(data => {
+          setIsLoggedIn(true);
+          setUserProfile(data);
+        })
+        .catch(() => {
+          // Token invalid or expired
+          localStorage.removeItem('token');
+          setIsLoggedIn(false);
+        });
+    }
+    
+    // Handle error query params
     if (error) {
-      switch (error) {
-        case 'CredentialsSignin':
-          setErrorMessage('Invalid email or password');
-          break;
-        default:
-          setErrorMessage('An error occurred during sign in');
-          break;
-      }
+      setErrorMessage('An error occurred during sign in');
     }
   }, [error]);
 
   // Add function to logout current user
-  const handleLogout = async () => {
-    await signOut({ redirect: false });
-    // The page will not automatically reload, so we'll set a message
+  const handleLogout = () => {
+    userProgressApi.logout();
+    setIsLoggedIn(false);
+    setUserProfile(null);
     setErrorMessage('You have been logged out. Please log in again.');
   };
 
@@ -56,40 +66,27 @@ export default function LoginPage() {
     setErrorMessage('');
     
     try {
-      // Sign in with credentials using NextAuth
-      const result = await signIn('credentials', {
-        username: email,
-        password: password,
-        redirect: false,
-      });
+      // Sign in using user progress service
+      const result = await userProgressApi.login(email, password);
       
-      if (result?.error) {
-        setErrorMessage('Invalid email or password');
-        setIsLoading(false);
-      } else if (result?.ok) {
-        // Manually redirect on successful login
+      if (result.token && result.user) {
+        setIsLoggedIn(true);
+        setUserProfile(result.user);
         router.push('/roxpage');
+      } else {
+        throw new Error('Invalid response from server');
       }
-    } catch (err) {
-      setErrorMessage('Authentication failed. Please try again.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Invalid email or password');
       setIsLoading(false);
     }
   };
 
-  // Handle social media login
+  // Handle social media login - would need to be implemented in user-progress-service
+  // For now, we'll keep the UI but show an alert that it's not implemented
   const handleSocialLogin = async (provider: string) => {
-    setIsLoading(true);
-    setErrorMessage('');
-    
-    try {
-      // Use NextAuth signIn method with the specified provider
-      await signIn(provider.toLowerCase(), { callbackUrl: '/roxpage' });
-      
-      // Note: no need to set isLoading to false here as we're redirecting
-    } catch (err) {
-      setErrorMessage(`Error signing in with ${provider}`);
-      setIsLoading(false);
-    }
+    setErrorMessage(`Social login with ${provider} not yet implemented in the user-progress-service`);
+    // Future implementation would connect to the appropriate endpoint
   };
 
   return (
@@ -127,16 +124,28 @@ export default function LoginPage() {
               <div className={styles.group31}>
                 <div className={styles.frame11}>
                   <div className={styles.finalLogo} style={{ textAlign: 'center', padding: '0', maxWidth: '100%' }}>
-  <div style={{ width: '175.5px', height: '42px', position: 'relative', margin: '0 auto' }}>
-    <Image
-      src={`/shodh-logo.png?v=${new Date().getTime()}`} 
-      alt="Shodh AI Logo"
-      fill
-      priority
-      style={{ objectFit: 'contain' }}
-    />
-  </div>
-</div>
+                    {isLoggedIn && userProfile ? (
+                      <div style={{ width: '175.5px', height: '42px', position: 'relative', margin: '0 auto' }}>
+                        <Image
+                          src={`/shodh-logo.png?v=${new Date().getTime()}`} 
+                          alt="Shodh AI Logo"
+                          fill
+                          priority
+                          style={{ objectFit: 'contain' }}
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ width: '175.5px', height: '42px', position: 'relative', margin: '0 auto' }}>
+                        <Image
+                          src={`/shodh-logo.png?v=${new Date().getTime()}`} 
+                          alt="Shodh AI Logo"
+                          fill
+                          priority
+                          style={{ objectFit: 'contain' }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <p className={styles.tagline} style={{ width: '279px', height: '21px', margin: '0 auto' }}>AI-Powered Insights for Smarter Learning.</p>
@@ -146,9 +155,9 @@ export default function LoginPage() {
             <div className={styles.frame1000011208}>
               <div className={styles.frame1000011207}>
                 {/* Show authenticated user info if logged in */}
-                {status === 'authenticated' && (
+                {isLoggedIn && userProfile ? (
                   <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                    <p style={{ marginBottom: '10px' }}>You are logged in as {session?.user?.name || session?.user?.email}</p>
+                    <p style={{ marginBottom: '10px' }}>You are logged in as {userProfile.name || userProfile.email}</p>
                     <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                       <button
                         onClick={goToMainPage}
@@ -166,11 +175,13 @@ export default function LoginPage() {
                       </button>
                     </div>
                   </div>
-                )}
-
-                {status !== 'authenticated' && (
+                ) : (
                   <>
                     <form onSubmit={handleSubmit} className={styles.frame1000011206}>
+                      <div className={styles.container}>
+                        <p className={styles.welcomeText}>Welcome!</p>
+                        <p className={styles.signInToContinue}>Sign in to continue with your account.</p>
+                      </div>
                       <div className={styles.frame1000011144}>
                         <div className={styles.frame146}>
                           <input
@@ -254,7 +265,7 @@ export default function LoginPage() {
               </div>
               
               {/* Forgot password and Sign up link - only show when not logged in */}
-              {status !== 'authenticated' && (
+              {!isLoggedIn && (
                 <>
                   <p className={styles.forgotPassword}>
                     Forgot your password?

@@ -126,13 +126,20 @@ export default function LoginPage() {
             <div className={styles.frame1000011149}>
               <div className={styles.group31}>
                 <div className={styles.frame11}>
-                  <div className={styles.finalLogo}>
-                    <div className={styles.logoVector}></div>
-                  </div>
-                  <span className={styles.shodhAI}>Shodh AI</span>
+                  <div className={styles.finalLogo} style={{ textAlign: 'center', padding: '0', maxWidth: '100%' }}>
+  <div style={{ width: '175.5px', height: '42px', position: 'relative', margin: '0 auto' }}>
+    <Image
+      src={`/shodh-logo.png?v=${new Date().getTime()}`} 
+      alt="Shodh AI Logo"
+      fill
+      priority
+      style={{ objectFit: 'contain' }}
+    />
+  </div>
+</div>
                 </div>
               </div>
-              <p className={styles.tagline}>AI-Powered Insights for Smarter Learning.</p>
+              <p className={styles.tagline} style={{ width: '279px', height: '21px', margin: '0 auto' }}>AI-Powered Insights for Smarter Learning.</p>
             </div>
             
             {/* Form fields */}
@@ -210,7 +217,7 @@ export default function LoginPage() {
                           disabled={isLoading}
                           className={styles.frame1000010992}
                         >
-                          <svg className={styles.googleIcon} viewBox="0 0 24 24" fill="none">
+                          <svg className={styles.googleIcon} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" style={{ minWidth: '24px', minHeight: '24px', display: 'block' }}>
                             <path d="M21.9 12.1h-10v3.9h5.7c-.5 2.5-2.6 4.3-5.7 4.3-3.5 0-6.3-2.8-6.3-6.3s2.8-6.3 6.3-6.3c1.5 0 2.9.5 4 1.4l2.9-2.9C16.9 4.3 14.6 3.3 12 3.3c-4.9 0-8.9 4-8.9 8.9s4 8.9 8.9 8.9c7.2 0 8.9-6.3 8.2-9h-9.2z" fill="#566FE9" />
                           </svg>
                           <span className={styles.socialLabel}>Google</span>
@@ -221,7 +228,7 @@ export default function LoginPage() {
                           disabled={isLoading}
                           className={styles.frame1000011201}
                         >
-                          <svg className={styles.appleIcon} viewBox="0 0 24 24" fill="none">
+                          <svg className={styles.appleIcon} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" style={{ minWidth: '24px', minHeight: '24px', display: 'block' }}>
                             <path d="M17.5 12.5c0-3.5 2.9-4.1 3-4.2-1.6-2.4-4.2-2.7-5.1-2.7-2.2-.2-4.3 1.3-5.4 1.3-1.1 0-2.8-1.3-4.6-1.2-2.4 0-4.5 1.4-5.7 3.5-2.5 4.2-.6 10.5 1.7 13.9 1.2 1.7 2.6 3.5 4.4 3.5 1.8 0 2.4-1.1 4.6-1.1 2.1 0 2.7 1.1 4.6 1.1 1.9 0 3.1-1.7 4.3-3.4.8-1.2 1.5-2.5 1.9-3.9-3.3-1.2-4.7-5.9-4.7-7.8z" fill="#566FE9" />
                             <path d="M14.5 4c1-.4 1.8-1.4 2.1-2.4-1.9.1-4.2 1.3-5.4 2.8-1.1 1.3-2 3.2-1.7 5.1 2 .2 4.1-1.1 5-3.5z" fill="#566FE9" />
                           </svg>
@@ -233,7 +240,7 @@ export default function LoginPage() {
                           disabled={isLoading}
                           className={styles.frame1000011202}
                         >
-                          <svg className={styles.facebookIcon} viewBox="0 0 24 24" fill="none">
+                          <svg className={styles.facebookIcon} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" style={{ minWidth: '24px', minHeight: '24px', display: 'block' }}>
                             <path d="M24 12c0-6.627-5.373-12-12-12S0 5.373 0 12c0 5.99 4.388 10.954 10.125 11.855v-8.386H7.078V12h3.047V9.356c0-3.007 1.79-4.668 4.533-4.668 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.49 0-1.955.925-1.955 1.874V12h3.328l-.532 3.47h-2.796v8.385C19.612 22.954 24 17.99 24 12z" fill="#566FE9" />
                           </svg>
                           <span className={styles.socialLabel}>Facebook</span>

@@ -306,3 +306,60 @@ export default function WritingPage() {
     </ProtectedRoute>
   );
 }
+
+                        <div className="opacity-80 font-semibold text-sm text-gray-700">
+                          AI Writing Teacher
+                        </div>
+                        <div className="font-normal text-sm text-gray-600 leading-relaxed">
+                          {comment.text}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Control Buttons */} 
+              <div className="flex items-center justify-end gap-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={loadNewPrompt}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-100 hover:border-[#566fe9] hover:text-[#566fe9] transition-colors text-sm"
+                >
+                  New Prompt
+                </button>
+                <button
+                  onClick={handleLeave} // Or a submit function
+                  className="px-4 py-2 bg-[#566fe9] hover:bg-[#4a5fc8] text-white rounded-md transition-colors duration-200 text-sm font-medium"
+                >
+                  Submit / Next
+                </button>
+              </div>
+
+            </div>
+          ) : (
+            // Display when no prompt is loaded (after initial loading state)
+            <div className="flex items-center justify-center h-[400px]">
+              <div className="text-center p-8 bg-white rounded-lg">
+                <p className="text-lg text-gray-700 mb-4">No writing prompt available</p>
+                <button 
+                  onClick={loadNewPrompt} 
+                  className="mt-2 bg-[#566fe9] hover:bg-[#4a5fc8] text-white px-5 py-2 rounded-md transition-colors duration-200"
+                >
+                  Load Prompt
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function WritingPage() {
+  return (
+    <ProtectedRoute>
+      <WritingPageContent />
+    </ProtectedRoute>
+  );
+}

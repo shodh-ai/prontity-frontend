@@ -1,1 +1,0 @@
-export { ListenToLecture } from "./ListenToLecture";

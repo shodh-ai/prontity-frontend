@@ -4,8 +4,6 @@ This repository contains a full-stack, real-time voice AI agent system built wit
 
 ## Overview
 - **Voice agent**: Real-time voice-to-voice conversation with advanced echo cancellation, powered by LiveKit and Deepgram.
-- **Custom LLM bridge**: Integrates with an external backend for advanced AI responses (e.g., weather queries via OpenAI function calling).
-- **Weather backend**: Flask-based agent that leverages OpenAI and mock data to answer weather-related questions.
 - **Modular architecture**: Easily extendable for additional AI services or custom integrations.
 
 ## Project Structure
@@ -25,10 +23,16 @@ project-root/
 ## Quick Start
 1. **Clone the repository**
 2. **See [`livekit-agent-server/README.md`](livekit-agent-server/README.md) for full installation and usage instructions.**
-3. If you intend to use the WebRTC token service, run `npm install` inside the `webrtc-token-service` directory:
+3. To use the WebRTC token service, run `npm install` inside the `webrtc-token-service` directory:
    ```sh
    cd webrtc-token-service
    npm install
+   npm run dev
+   ```
+4. To start frontend run `npm install` inside the `frontend` directory:
+   ```sh
+   npm install
+   npm run dev
    ```
 
 ## Key Features

@@ -159,6 +159,11 @@
   height: 42px;
 }
 
+.logoImage {
+  width: 34.93px;
+  height: 42px;
+}
+
 .logoVector {
   position: absolute;
   width: 34.93px;
@@ -166,6 +171,8 @@
   left: 0;
   top: 0;
   background: #000042;
+  mask: url('/logo.svg') no-repeat center / contain;
+  -webkit-mask: url('/logo.svg') no-repeat center / contain;
 }
 
 .shodhAI {
@@ -180,21 +187,27 @@
 }
 
 .tagline {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  width: 279px;
+  height: 21px;
+  font-family: 'Plus Jakarta Sans';
   font-style: normal;
   font-weight: 500;
   font-size: 14px;
   line-height: 150%;
   text-align: center;
-  color: rgba(0, 0, 0, 0.75);
+  color: #000000;
+  opacity: 0.75;
 }
 
 /* Form Container */
 .frame1000011208 {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  padding: 0px;
   gap: 32px;
   width: 400px;
+  height: 383px;
 }
 
 .frame1000011207 {
@@ -483,7 +496,7 @@
     align-items: center;
   }
   
-  .frame1000010992,
+  
   .frame1000011201,
   .frame1000011202 {
     width: 100%;

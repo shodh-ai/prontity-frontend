@@ -1,16 +1,43 @@
 {
   "pages": {
+    "/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
+    ],
+    "/loginpage/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/loginpage/page.css",
+      "static/chunks/app/loginpage/page.js"
+    ],
     "/speakingpage/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/speakingpage/page.css",
       "static/chunks/app/speakingpage/page.js"
     ],
-    "/layout": [
+    "/writingpage/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
+      "static/chunks/app/writingpage/page.js"
+    ],
+    "/roxpage/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/roxpage/page.js"
+    ],
+    "/listeningpage/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/listeningpage/page.js"
+    ],
+    "/vocabpage/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/vocabpage/page.css",
+      "static/chunks/app/vocabpage/page.js"
     ],
     "/not-found": [
       "static/chunks/webpack.js",

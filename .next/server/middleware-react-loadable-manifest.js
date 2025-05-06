@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"../state/canvasStore.ts -> @/utils/storageUtils\":{\"id\":\"../state/canvasStore.ts -> @/utils/storageUtils\",\"files\":[\"static/chunks/_app-pages-browser_src_utils_storageUtils_ts.js\"]}}"

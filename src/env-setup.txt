@@ -1,0 +1,4 @@
+Add this to your .env file at the project root to make authentication work properly:
+
+NEXTAUTH_SECRET=some-very-secret-value-for-authentication
+NEXTAUTH_URL=http://localhost:3000

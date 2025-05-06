@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCanvasStore } from '@/state/canvasStore';
 import VocabBox, { VocabularyItem } from '@/components/vocabulary/VocabBox';
 import dynamic from 'next/dynamic';
@@ -19,39 +19,68 @@ import VocabCanvas from '@/components/vocabulary/VocabCanvas';
 import ToolBar from '@/components/vocabulary/ToolBar';
 import TextInput from '@/components/vocabulary/TextInput';
 
-// Sample vocabulary words for demonstration
-const sampleVocabWords: VocabularyItem[] = [
-  {
-    id: 'word1',
-    word: 'Ambiguous',
-    partOfSpeech: 'adjective',
-    definition: 'Open to more than one interpretation; having a double meaning.',
-    exampleSentence: 'The conclusion of the story was ambiguous, leaving readers to decide for themselves what happened.'
-  },
-  {
-    id: 'word2',
-    word: 'Pragmatic',
-    partOfSpeech: 'adjective',
-    definition: 'Dealing with things sensibly and realistically in a way that is based on practical considerations.',
-    exampleSentence: 'She made a pragmatic decision to sell her car and use public transportation instead.'
-  },
-  {
-    id: 'word3',
-    word: 'Ubiquitous',
-    partOfSpeech: 'adjective',
+// Comment out API clients for now
+// import contentApi from '@/api/contentService';
+// import userProgressApi from '@/api/userProgressService';
+
+// Local dummy data
+const vocabData = {
+  'ubiquitous': {
+    wordId: 'ubiquitous',
+    wordText: 'Ubiquitous',
     definition: 'Present, appearing, or found everywhere.',
-    exampleSentence: 'Mobile phones have become ubiquitous in modern society.'
+    exampleSentence: 'Mobile phones have become ubiquitous in modern society.',
+    difficultyLevel: 3,
+  },
+  'ameliorate': {
+    wordId: 'ameliorate',
+    wordText: 'Ameliorate',
+    definition: 'To make something bad or unsatisfactory better.',
+    exampleSentence: 'The new policies were designed to ameliorate the living conditions in urban areas.',
+    difficultyLevel: 4,
+  },
+  'ephemeral': {
+    wordId: 'ephemeral',
+    wordText: 'Ephemeral',
+    definition: 'Lasting for a very short time.',
+    exampleSentence: 'The beauty of cherry blossoms is ephemeral, lasting only a few days each year.',
+    difficultyLevel: 3,
+  },
+  'serendipity': {
+    wordId: 'serendipity',
+    wordText: 'Serendipity',
+    definition: 'The occurrence and development of events by chance in a happy or beneficial way.',
+    exampleSentence: 'Finding this rare book was pure serendipity - I wasn\'t even looking for it!',
+    difficultyLevel: 4,
   }
-];
+};
+
+// Default vocabulary word to show while loading
+const defaultVocabWord: VocabularyItem = {
+  id: 'default',
+  word: 'Loading...',
+  partOfSpeech: '',
+  definition: 'Loading vocabulary word...',
+  exampleSentence: ''
+};
+
+// Sample vocabulary word IDs from the API documentation
+const availableVocabIds = ['ubiquitous', 'ameliorate', 'ephemeral', 'serendipity'];
+
 
 function VocabPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const [userName, setUserName] = useState('');
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [currentWordId, setCurrentWordId] = useState('');
+  const [vocabWords, setVocabWords] = useState<VocabularyItem[]>([]);
+  const [currentWord, setCurrentWord] = useState<VocabularyItem>(defaultVocabWord);
   const [isPromptLoading, setIsPromptLoading] = useState(false);
   const [promptText, setPromptText] = useState('');
   const [generatedImageUrl, setGeneratedImageUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
   // Access the isGeneratingAI state directly from the store using Zustand hooks
   const isGeneratingAI = useCanvasStore(state => state.isGeneratingAI);
@@ -80,21 +109,116 @@ function VocabPageContent() {
     }
   }, [session]);
   
+  // Fetch vocabulary words from local dummy data
+  useEffect(() => {
+    const fetchVocabWords = () => {
+      try {
+        setLoading(true);
+        // Get wordId from URL query parameters if available
+        const wordIdFromUrl = searchParams?.get('wordId');
+        
+        // Available word IDs from our local data
+        const availableIds = Object.keys(vocabData);
+        
+        // Use the wordId from URL or default to the first in our list
+        const targetWordId = wordIdFromUrl || availableIds[0];
+        setCurrentWordId(targetWordId);
+        
+        // Get the selected vocabulary word from local data
+        const wordData = vocabData[targetWordId as keyof typeof vocabData];
+        
+        if (wordData) {
+          // Format the data to match our VocabularyItem interface
+          const formattedWord: VocabularyItem = {
+            id: wordData.wordId,
+            word: wordData.wordText,
+            partOfSpeech: '', // API doesn't include part of speech
+            definition: wordData.definition,
+            exampleSentence: wordData.exampleSentence || '',
+          };
+          
+          setCurrentWord(formattedWord);
+          console.log('Loaded vocabulary word:', wordData.wordText, 'with ID:', targetWordId);
+          
+          // Also load other vocab words for navigation
+          const otherWords = availableIds
+            .filter(id => id !== targetWordId)
+            .map(id => {
+              const word = vocabData[id as keyof typeof vocabData];
+              return {
+                id: word.wordId,
+                word: word.wordText,
+                partOfSpeech: '',
+                definition: word.definition,
+                exampleSentence: word.exampleSentence || '',
+              } as VocabularyItem;
+            });
+            
+          setVocabWords([formattedWord, ...otherWords]);
+          
+          // Simulate loading the user's saved canvas for this vocabulary word
+          console.log('Would load canvas state for user:', userName, 'and word:', targetWordId);
+          // In a real app, this would call:
+          // loadCanvasState(userName, targetWordId);
+        } else {
+          setError(`Vocabulary word with ID "${targetWordId}" not found`); 
+        }
+      } catch (err) {
+        console.error('Error loading vocabulary words:', err);
+        setError('Failed to load vocabulary words. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (userName) {
+      fetchVocabWords();
+    }
+  }, [userName, searchParams]);
+  
   // Load canvas state when word changes
   useEffect(() => {
-    if (userName) {
-      const currentWord = sampleVocabWords[currentWordIndex];
+    if (userName && currentWord.id !== 'default') {
       loadCanvasState(userName, currentWord.id);
     }
-  }, [userName, currentWordIndex, loadCanvasState]);
+  }, [userName, currentWord, loadCanvasState]);
 
   // Handle leaving the room
   const handleLeave = () => {
-    // Save before leaving
-    if (userName) {
-      const currentWord = sampleVocabWords[currentWordIndex];
-      saveCanvasState(userName, currentWord.id);
+    // Simulated progress recording (local only, no API call)
+    try {
+      const token = localStorage.getItem('token');
+      if (token && currentWord) {
+        // Simulate saving canvas state
+        console.log('Would save canvas state for user:', userName, 'and word:', currentWord.id);
+        // In a real app, this would call:
+        // const canvasData = saveCanvasState(userName, currentWord.id);
+        
+        // Simulate recording task completion
+        console.log('Would record task completion for word:', currentWord.id, 'with score:', 100);
+        console.log('Task data:', { 
+          vocabCompleted: true,
+          canvasData: 'simulated-canvas-data',
+          testSize: 'large' 
+        });
+        
+        // In a real app, this would call:
+        // userProgressApi.recordTaskCompletion(
+        //   currentWord.id, 
+        //   100,
+        //   { 
+        //     vocabCompleted: true,
+        //     canvasData: canvasData,
+        //     testSize: 'large' 
+        //   },
+        //   undefined,
+        //   true
+        // );
+      }
+    } catch (err) {
+      console.error('Error recording task completion:', err);
     }
+    
     router.push('/roxpage');
   };
   
@@ -126,7 +250,7 @@ function VocabPageContent() {
         body: JSON.stringify({
           prompt: prompt.trim(),
           imageData,
-          context: sampleVocabWords[currentWordIndex].word
+          context: currentWord.word
         }),
       });
       
@@ -209,21 +333,56 @@ function VocabPageContent() {
 
   // Handle moving to next word
   const handleNextWord = (): void => {
-    // Save current state first
-    if (userName) {
-      const currentWord = sampleVocabWords[currentWordIndex];
-      saveCanvasState(userName, currentWord.id).then(() => {
-        // Then move to next word
-        setCurrentWordIndex((prevIndex: number) => 
-          (prevIndex + 1) % sampleVocabWords.length
-        );
-      });
+    // Simulate saving canvas state and recording task completion
+    try {
+      if (currentWord) {
+        console.log('Would save canvas state for user:', userName, 'and word:', currentWord.id);
+        // In a real app, this would call:
+        // saveCanvasState(userName, currentWord.id);
+      }
+      
+      // Simulate recording task completion if logged in
+      const token = localStorage.getItem('token');
+      if (token && currentWord) {
+        console.log('Would record task completion for word:', currentWord.id, 'with score:', 100);
+        console.log('Task data:', { 
+          vocabCompleted: true,
+          canvasData: 'submitted',
+          testSize: 'large' 
+        });
+        
+        // In a real app, this would call:
+        // userProgressApi.recordTaskCompletion(
+        //   currentWord.id,
+        //   100, 
+        //   { 
+        //     vocabCompleted: true,
+        //     canvasData: 'submitted',
+        //     testSize: 'large' 
+        //   },
+        //   undefined,
+        //   true
+        // );
+      }
+    } catch (err) {
+      console.error('Error recording task completion:', err);
     }
-  };
+    
+    // Find the next word in our vocabulary list
+    if (vocabWords.length > 0) {
+      const currentIndex = vocabWords.findIndex(word => word.id === currentWord.id);
+      const nextIndex = (currentIndex + 1) % vocabWords.length;
+      const nextWord = vocabWords[nextIndex];
+      
+      // Navigate to the same page with a new word ID
+      router.push(`/vocabpage?wordId=${nextWord.id}`);
+      console.log('Navigating to next word:', nextWord.id);
+    }
+  };  
 
   // Custom canvas controls component with improved UI
   const VocabCanvasControls = () => {
-    const currentWord = sampleVocabWords[currentWordIndex];
+    // Use the current word from state
     
     return (
       <div className="vocab-canvas-container">
@@ -249,7 +408,25 @@ function VocabPageContent() {
         
         {/* Canvas Component */}
         <div className="canvas-wrapper mb-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-          <VocabCanvas vocabularyWord={currentWord.word} definition={currentWord.definition} userId={userName} wordId={currentWord.id} />
+          {loading ? (
+            <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading vocabulary word...</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-64 bg-red-50 text-red-600 rounded-lg p-4">
+              <p>{error}</p>
+            </div>
+          ) : (
+            <VocabCanvas 
+              vocabularyWord={currentWord.word} 
+              definition={currentWord.definition} 
+              userId={userName} 
+              wordId={currentWord.id} 
+            />
+          )}
         </div>
         
         {/* AI Drawing Prompt Input */}
@@ -261,7 +438,7 @@ function VocabPageContent() {
             <h3 className="text-lg font-semibold">AI Drawing Assistant</h3>
           </div>
           
-          <p className="text-gray-600 mb-3">Generate an image to help remember <strong className="text-blue-600">{currentWord.word}</strong></p>
+          <p className="text-gray-600 mb-3">Generate an image to help remember <strong className="text-blue-600">{loading ? 'this word' : currentWord.word}</strong></p>
           
           <TextInput 
             onSubmit={handlePromptSubmit}
@@ -304,21 +481,34 @@ function VocabPageContent() {
           <div className={styles.leftContent}>
             {/* Current word */}
             <div className={styles.wordSection}>
-              <h2 className={styles.wordTitle}>{sampleVocabWords[currentWordIndex].word}</h2>
+              <h2 className={styles.wordTitle}>{loading ? 'Loading...' : currentWord.word}</h2>
               <p className={styles.wordDetails}>
-                {sampleVocabWords[currentWordIndex].partOfSpeech} {sampleVocabWords[currentWordIndex].definition}
+                {loading ? '' : currentWord.partOfSpeech} {loading ? 'Loading definition...' : currentWord.definition}
                 <br/>
-                "{sampleVocabWords[currentWordIndex].exampleSentence}"
+                {loading ? '' : currentWord.exampleSentence ? `"${currentWord.exampleSentence}"` : 'No example sentence available.'}
               </p>
             </div>
             
             {/* Canvas area */}
-            <VocabCanvas 
-              vocabularyWord={sampleVocabWords[currentWordIndex].word}
-              definition={sampleVocabWords[currentWordIndex].definition}
-              userId={userName}
-              wordId={sampleVocabWords[currentWordIndex].id}
-            />
+            {loading ? (
+              <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto"></div>
+                  <p className="mt-2 text-gray-600">Loading canvas...</p>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center h-64 bg-red-50 text-red-600 rounded-lg p-4">
+                <p>{error}</p>
+              </div>
+            ) : (
+              <VocabCanvas 
+                vocabularyWord={currentWord.word}
+                definition={currentWord.definition}
+                userId={userName}
+                wordId={currentWord.id}
+              />
+            )}
             
             {/* Removed duplicate Gemini AI prompt input - using the one in VocabCanvas instead */}
           </div>

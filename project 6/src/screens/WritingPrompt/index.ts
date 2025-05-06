@@ -1,0 +1,1 @@
+export { WritingPrompt } from "./WritingPrompt";

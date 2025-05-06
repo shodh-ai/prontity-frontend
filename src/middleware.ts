@@ -2,18 +2,46 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 
-// Temporarily make all paths accessible without login
-// Original list: ['/loginpage', '/signuppage', '/api', '/roxpage/direct']
-const publicPaths = ['/']; // This effectively makes all paths public since all paths start with '/'
+// Only these paths are accessible without login
+const publicPaths = [
+  '/loginpage',
+  '/signuppage',
+  '/api',
+  '/' // Root path only, not all paths that start with '/'
+];
+
+// For debugging
+const DEBUG = true;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Check if the path is public
-  // Currently all paths will be considered public
-  const isPublicPath = publicPaths.some(path => 
-    pathname.startsWith(path) || pathname === '/'
-  );
+  // Log the current path and authentication data in development
+  if (DEBUG) {
+    console.log('Middleware checking path:', pathname);
+  }
+  
+  // Check if the path is public - exact matches only for root and precise path matches for others
+  const isPublicPath = publicPaths.some(path => {
+    // Special handling for the API routes, which need prefix matching
+    if (path === '/api' && pathname.startsWith('/api/')) {
+      return true;
+    }
+    // For all other paths, require exact matches
+    return pathname === path;
+  });
+  
+  if (DEBUG) {
+    console.log('Is public path?', isPublicPath);
+  }
+  
+  // Always allow access to auth-related paths
+  if (pathname.startsWith('/api/auth') || 
+      pathname.startsWith('/_next') ||
+      pathname.includes('.') || // Static files like .js, .css, etc.
+      pathname === '/favicon.ico') {
+    return NextResponse.next();
+  }
   
   // Check if user is authenticated
   const token = await getToken({ 
@@ -21,8 +49,16 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET 
   });
   
-  // This block is currently inactive since all paths are public
+  if (DEBUG) {
+    console.log('Auth token found?', !!token);
+  }
+  
+  // Redirect to login if trying to access a protected route without auth
   if (!isPublicPath && !token) {
+    if (DEBUG) {
+      console.log('Redirecting to login page');
+    }
+    
     const url = new URL('/loginpage', request.url);
     url.searchParams.set('callbackUrl', encodeURI(request.url));
     return NextResponse.redirect(url);

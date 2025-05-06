@@ -1,6 +1,9 @@
 {
   "/not-found": "app/not-found.js",
+  "/loginpage/page": "app/loginpage/page.js",
+  "/roxpage/page": "app/roxpage/page.js",
   "/speakingpage/page": "app/speakingpage/page.js",
-  "/api/questions/route": "app/api/questions/route.js",
+  "/listeningpage/page": "app/listeningpage/page.js",
+  "/writingpage/page": "app/writingpage/page.js",
   "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
 }

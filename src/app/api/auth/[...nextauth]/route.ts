@@ -27,7 +27,8 @@ const handler = NextAuth({
       async authorize(credentials) {
         // In a real application, you would verify credentials against your database
         if (
-          credentials?.username === "demo" &&
+          // Accept either 'demo' or 'demo@example.com' as valid username/email
+          (credentials?.username === "demo" || credentials?.username === "demo@example.com") &&
           credentials?.password === "password"
         ) {
           return {
@@ -36,6 +37,9 @@ const handler = NextAuth({
             email: "demo@example.com",
           };
         }
+        
+        // Log authentication attempt for debugging
+        console.log('Auth attempt with username:', credentials?.username);
         
         // If credentials are invalid, return null
         return null;

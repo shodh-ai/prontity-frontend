@@ -1,0 +1,45 @@
+/* Basic highlight styling */
+.highlight {
+  /* Use background color for visibility */
+  background-color: rgba(255, 255, 0, 0.3); /* Default yellow highlight */
+  border-radius: 2px;
+  padding: 0.05em 0; /* Minimal vertical padding */
+  margin: 0 -0.05em; /* Counteract padding */
+  box-decoration-break: clone; /* Ensures background covers wrapped lines nicely */
+  -webkit-box-decoration-break: clone;
+}
+
+/* Type-specific styling */
+.highlight.highlight-grammar {
+  /* Example: Red underline */
+  background-color: rgba(255, 0, 0, 0.15); /* Light red background */
+  /* Add a subtle bottom border instead of underline for better control */
+  border-bottom: 1.5px dotted red;
+  /* box-shadow: 0 1px 0 0 red; /* Alternative underline */
+}
+
+.highlight.highlight-coherence {
+  /* Example: Blue wavy underline */
+  background-color: rgba(0, 0, 255, 0.1); /* Light blue background */
+  /* Wavy underline is hard with pure CSS, border is easier */
+  border-bottom: 1.5px dotted blue;
+}
+
+.highlight.highlight-suggestion {
+  /* Example: Green dashed underline */
+  background-color: rgba(0, 128, 0, 0.1); /* Light green background */
+  border-bottom: 1.5px dashed green;
+}
+
+/* Active highlight styling */
+.highlight.highlight-active {
+  /* Make the active one stand out more */
+  background-color: rgba(255, 165, 0, 0.5); /* Brighter orange background */
+  box-shadow: 0 0 0 1px orange; /* Add an outline */
+  /* Ensure active style overrides type-specific backgrounds if needed */
+}
+
+/* Ensure underlines don't add extra height */
+.ProseMirror span[class*="highlight"] {
+  line-height: inherit; /* Prevent underlines from messing with line height */
+}

@@ -1,21 +1,15 @@
 {
   "pages": {
-    "/speakingpage/page": [
+    "/writingpage/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/speakingpage/page.css",
-      "static/chunks/app/speakingpage/page.js"
+      "static/chunks/app/writingpage/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
-    ],
-    "/not-found": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/not-found.js"
     ]
   }
 }

@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import highlight styles */
+@import './highlight.css';
+
 @layer components {
   .all-\[unset\] {
     all: unset;

@@ -1,298 +1,232 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import ProtectedRoute from '@/components/ProtectedRoute';
-import { useSession } from 'next-auth/react';
-import { XIcon } from 'lucide-react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import StarterKit from '@tiptap/starter-kit';
+import Highlight from '@tiptap/extension-highlight';
+import TextStyle from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import Placeholder from '@tiptap/extension-placeholder';
+import { Editor } from '@tiptap/react';
+import { debounce } from 'lodash';
 
-// Define type for writing prompts
-interface WritingPrompt {
-  promptId: string;
-  title: string;
-  promptText: string;
-  difficultyLevel: number;
+// Import the HighlightExtension and Highlight interface
+import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension';
+import { Highlight as HighlightType } from '@/components/TiptapEditor/highlightInterface';
+
+// Import our new reusable components
+import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
+import EditorToolbar from '@/components/EditorToolbar';
+
+// Import our new Socket.IO hook
+import { useSocketIO } from '@/hooks/useSocketIO';
+
+// Types for messages
+interface TextUpdateMessage {
+  type: 'text_update';
+  content: string;
+  timestamp: number;
 }
 
-type WritingPromptsType = {
-  [key: string]: WritingPrompt;
-};
-
-// Local dummy data
-const writingPrompts: WritingPromptsType = {
-  'prompt-narrative-story': {
-    promptId: 'prompt-narrative-story',
-    title: 'A Memorable Journey',
-    promptText: 'Write a narrative essay about a memorable journey or trip you have taken. Include details about the destination, the people you were with, and why it was memorable.',
-    difficultyLevel: 2,
-  },
-  'prompt-argumentative-1': {
-    promptId: 'prompt-argumentative-1',
-    title: 'Technology and Society',
-    promptText: 'Do you believe technology has made us more connected or more isolated? Write an argumentative essay supporting your position with examples and evidence.',
-    difficultyLevel: 3,
-  },
-  'prompt-descriptive': {
-    promptId: 'prompt-descriptive',
-    title: 'A Special Place',
-    promptText: 'Describe a place that is special to you. It could be your hometown, a vacation spot, or any location that has meaning for you. Use descriptive language to help readers visualize this place.',
-    difficultyLevel: 2,
-  }
-};
-
-// Teacher comments for AI feedback
-const teacherComments = [
-  {
-    text: "Contrary to popular belief, Lorem Ipsum is not simply random text. It has roots in a piece of classical Latin literature from 45 BC, making it over 2000 years old. Richard McClintock, a Latin professor at Hampden-Sydney College.",
-  },
-  {
-    text: "Try using more transition words like however, therefore, or in contrast to improve the flow between your ideas.",
-  },
-  {
-    text: "Editing one extra time for grammar and punctuation will make your final piece look much more polished.",
-  },
-];
-
-function WritingPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { data: session } = useSession();
-  const [userName, setUserName] = useState('');
-  const [essay, setEssay] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState<WritingPrompt | null>(null);
+export default function WritingPage() {
+  // State for word count
+  const [wordCount, setWordCount] = useState(0);
   
-  // Get username from session or localStorage when component mounts
-  useEffect(() => {
-    if (session?.user?.name) {
-      setUserName(session.user.name);
-    } else {
-      const storedUserName = localStorage.getItem('userName');
-      if (storedUserName) {
-        setUserName(storedUserName);
-      } else {
-        // Redirect to login if no username found
-        router.push('/loginpage');
-      }
+  // State for AI suggestions/highlights
+  const [aiSuggestions, setAiSuggestions] = useState<HighlightType[]>([]);
+  
+  // State for active highlight ID
+  const [activeHighlightId, setActiveHighlightId] = useState<string | number | null>(null);
+  
+  // State for editor content (for debouncing)
+  const [editorContent, setEditorContent] = useState('');
+  
+  // Ref for current editor content to avoid stale closures in socket handlers
+  const editorContentRef = useRef('');
+  
+  // Last sent content for avoiding duplicate sends
+  const lastSentContentRef = useRef('');
+  
+  // Use our Socket.IO hook for real-time communication
+  const { socket, isConnected, sendMessage, aiSuggestion, clientId, error } = useSocketIO();
+  
+  // Function to send text updates to the server
+  const sendTextUpdate = useCallback((content: string) => {
+    if (isConnected && content !== lastSentContentRef.current) {
+      const message: TextUpdateMessage = {
+        type: 'text_update',
+        content,
+        timestamp: Date.now()
+      };
+      
+      sendMessage(message);
+      lastSentContentRef.current = content; // Update last sent content reference
+      console.log('Text update sent to server.');
+    } else if (!isConnected) {
+      console.warn('Failed to send text update - will retry when connection is established.');
     }
-  }, [router, session]);
+  }, [isConnected, sendMessage]);
+
+  // Create a debounced version of the send function to avoid too many updates
+  const debouncedSendTextUpdate = useMemo(
+    () => debounce(sendTextUpdate, 1000, { maxWait: 5000 }),
+    [sendTextUpdate]
+  );
   
-  // Load a writing prompt from local dummy data
+  // Handle AI suggestions from Socket.IO
   useEffect(() => {
-    const fetchWritingPrompt = () => {
-      setLoading(true);
-      setError(null);
+    if (aiSuggestion) {
       try {
-        // Get prompt ID from URL query parameters if available
-        const promptIdFromUrl = searchParams?.get('promptId');
+        // Parse the AI suggestion string to get the suggestions array
+        const suggestionsData = JSON.parse(aiSuggestion);
         
-        // Default prompt IDs from our local data
-        const availablePromptIds = Object.keys(writingPrompts);
+        // Convert server suggestions to our HighlightType format
+        const highlights: HighlightType[] = Array.isArray(suggestionsData) ?
+          suggestionsData.map((suggestion: any) => ({
+            id: suggestion.id,
+            start: suggestion.start,
+            end: suggestion.end,
+            type: suggestion.type,
+            message: suggestion.message
+          })) : [];
         
-        // Use the prompt ID from URL or default to the first in our list
-        const targetPromptId = promptIdFromUrl || availablePromptIds[0];
-        
-        // Get the writing prompt from local data
-        const promptData = writingPrompts[targetPromptId];
-        
-        if (promptData) {
-          setPrompt(promptData);
-          console.log('Loaded prompt:', promptData.title, 'with ID:', targetPromptId);
-        } else {
-          // Handle case when prompt ID is not found
-          setError(`Prompt ID "${targetPromptId}" not found in available prompts`);
-        }
-      } catch (err) {
-        console.error('Error loading writing prompt:', err);
-        setError('Failed to load writing prompt. Please try again later.');
-      } finally {
-        setLoading(false);
+        setAiSuggestions(highlights);
+      } catch (e) {
+        console.error('Error parsing AI suggestions:', e);
       }
-    };
-    
-    fetchWritingPrompt();
-  }, [searchParams]);
-  
-  // Function to load a different writing prompt
-  const loadNewPrompt = () => {
-    // Available prompt IDs from the API documentation
-    const availablePromptIds = ['prompt-narrative-story', 'prompt-argumentative-1', 'prompt-descriptive'];
-    
-    // Get a random prompt ID different from the current one
-    const currentPromptId = prompt?.promptId;
-    const availableIds = availablePromptIds.filter(id => id !== currentPromptId);
-    const randomIndex = Math.floor(Math.random() * availableIds.length);
-    const newPromptId = availableIds[randomIndex];
-    
-    // Navigate to the same page with a new prompt ID
-    router.push(`/writingpage?promptId=${newPromptId}`);
-  };
-  
-  // Handle leaving the room
-  const handleLeave = () => {
-    // Simulated progress recording (local only, no API call)
-    try {
-      const token = localStorage.getItem('token');
-      if (token && prompt) {
-        console.log('Would record task completion for prompt:', prompt.promptId, 'with words:', essay.split(/\s+/).filter(Boolean).length);
-      }
-    } catch (err) {
-      console.error('Error recording task completion:', err);
     }
+  }, [aiSuggestion]);
+  
+  // When connection is established, send current content
+  useEffect(() => {
+    if (isConnected && editorContentRef.current && editorContentRef.current !== lastSentContentRef.current) {
+      sendTextUpdate(editorContentRef.current);
+      console.log('Connection established, sending current content to server');
+    }
+  }, [isConnected, sendTextUpdate]);
+  
+  // Log connection errors
+  useEffect(() => {
+    if (error) {
+      console.error('Socket.IO error:', error);
+    }
+  }, [error]);
+  
+  // Log client ID when received
+  useEffect(() => {
+    if (clientId) {
+      console.log('Socket.IO connected with client ID:', clientId);
+    }
+  }, [clientId]);
+  
+  // Reference to the editor for imperative actions if needed
+  const editorRef = useRef<TiptapEditorHandle>(null);
+  
+  // Define the extensions we want to use
+  const extensions = useMemo(() => [
+    StarterKit,
+    Highlight.configure({ multicolor: true }),
+    TextStyle,
+    Color,
+    Placeholder.configure({
+      placeholder: 'Start typing here...'
+    }),
+    // Add the HighlightExtension
+    HighlightExtension
+  ], []);
+
+  // Handle editor updates
+  const handleEditorUpdate = useCallback(({ editor }: { editor: Editor }) => {
+    // Update word count
+    const text = editor.getText();
+    setWordCount(text.split(/\s+/).filter(Boolean).length);
     
-    router.push('/roxpage');
-  };
+    // Only process if there is actual text content
+    if (text.trim().length > 0) {
+      // Get HTML content from the editor
+      const content = editor.getHTML();
+      
+      // Update content state and refs
+      setEditorContent(content);
+      editorContentRef.current = content;
+      
+      // Log for debugging
+      console.log(`Editor content updated (${text.length} chars). Connection status: ${isConnected ? 'connected' : 'disconnected'}`);
+      
+      // Send content update to server (debounced)
+      debouncedSendTextUpdate(content);
+    }
+  }, [debouncedSendTextUpdate, isConnected]);
+  
+  // Handle click on a highlight (for testing)
+  const handleHighlightClick = useCallback((id: string | number) => {
+    console.log('WritingPage: handleHighlightClick called with ID:', id);
+    setActiveHighlightId(id);
+  }, []);
 
   return (
-    <div className="min-h-screen w-full bg-white flex items-center justify-center overflow-hidden relative">
-      {/* Background decorative elements - exact positioning from project 6 */}
-      <div className="absolute w-[753px] h-[753px] top-0 right-0 bg-[#566fe9] rounded-[376.5px] -z-10" />
-      <div className="absolute w-[353px] h-[353px] bottom-0 left-0 bg-[#336de6] rounded-[176.5px] -z-10" />
-      <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[200px] -z-10" />
-
-      {/* Main content card - exact styling from project 6 */}
-      <div className="w-[1280px] h-[740px] bg-white rounded-xl border-none m-4 relative">
-        <div className="p-6">
-          {/* Close button */}
-          <button 
-            onClick={handleLeave}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
-            aria-label="Close"
-          >
-            <XIcon className="h-6 w-6" />
-          </button>
-
-          {/* Progress section */}
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base">
-              Writing Practice Session
-            </h1>
-            <div className="w-[610px]">
-              <div className="h-2.5 bg-[#c7ccf8] bg-opacity-20 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-[#566fe9] rounded-full" 
-                  style={{ width: '28%' }}
-                ></div>
+    <div className="writing-page p-8 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Writing Page</h1>
+        <div className="connection-status">
+          <span className="mr-2">Connection:</span>
+          <span className={`px-2 py-1 rounded text-sm font-medium ${
+            isConnected 
+              ? 'bg-green-100 text-green-800' 
+              : 'bg-gray-100 text-gray-800'
+          }`}>
+            {isConnected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
+      </div>
+      
+      <div className="editor-wrapper border border-gray-300 rounded-lg p-4 bg-white">
+        {/* The editor toolbar component */}
+        <EditorToolbar 
+          editor={editorRef.current?.editor ?? null} 
+          className="mb-4" 
+        />
+        
+        {/* Our reusable TiptapEditor component */}
+        <TiptapEditor
+          ref={editorRef}
+          initialContent="<p>This is a sample paragraph with some text that will have highlights applied to it. You can click on the highlights to see the associated message. Try typing more text to see how the editor behaves.</p>"
+          isEditable={true}
+          extensions={extensions}
+          onUpdate={handleEditorUpdate}
+          onHighlightClick={handleHighlightClick}
+          highlightData={aiSuggestions}
+          activeHighlightId={activeHighlightId}
+          className="prose max-w-none min-h-[500px] focus:outline-none"
+        />
+      </div>
+      
+      <div className="mt-4 flex justify-between items-start">
+        <div className="w-2/3">
+          <h3 className="text-lg font-medium mb-2">AI Suggestions</h3>
+          <div className="space-y-2">
+            {aiSuggestions.map((highlight) => (
+              <div 
+                key={highlight.id} 
+                className={`p-2 border rounded-md cursor-pointer ${activeHighlightId === highlight.id ? 'bg-yellow-100 border-yellow-400' : 'bg-white'}`}
+                onClick={() => handleHighlightClick(highlight.id)}
+              >
+                <div className="font-medium text-sm capitalize">{highlight.type}</div>
+                <div className="text-sm">{highlight.message}</div>
               </div>
-            </div>
+            ))}
+            {aiSuggestions.length === 0 && isConnected && (
+              <div className="text-gray-500 italic">AI suggestions will appear here after you start typing...</div>
+            )}
+            {aiSuggestions.length === 0 && !isConnected && (
+              <div className="text-gray-500 italic">Connect to the server to receive AI suggestions...</div>
+            )}
           </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center h-[600px] w-full">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#566fe9] mx-auto"></div>
-                <p className="mt-4 text-gray-700 font-medium">Loading writing prompt...</p>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center h-[600px] w-full">
-              <div className="text-center bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg max-w-md shadow-sm">
-                <p className="font-bold text-lg mb-2">Error loading writing prompt</p>
-                <p>{error}</p>
-                <button 
-                  onClick={loadNewPrompt} 
-                  className="mt-4 bg-[#566fe9] hover:bg-[#4a5fc8] text-white px-5 py-2 rounded-md transition-colors duration-200"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          ) : prompt ? (
-            /* Main content grid - exact layout from project 6 */
-            <div className="grid grid-cols-[2fr_1fr] gap-8">
-              {/* Left column - Reading and Writing */}
-              <div className="space-y-6">
-                {/* Reading section */}
-                <div>
-                  <h3 className="opacity-60 font-semibold mb-3">Read the passage</h3>
-                  <div className="font-normal text-base leading-[25.6px]">
-                    <h2 className="text-xl font-semibold mb-2">{prompt.title}</h2>
-                    <p>{prompt.promptText}</p>
-                    <br />
-                    <p>
-                      Contrary to popular belief, Lorem Ipsum is not simply random
-                      text. It has roots in a piece of classical Latin literature from
-                      45 BC, making it over 2000 years old. Richard McClintock, a
-                      Latin professor at Hampden-Sydney College in Virginia, looked up
-                      one of the more obscure Latin words, consectetur, from a Lorem
-                      Ipsum passage, and going through the cites of the word in
-                      classical literature, discovered the undoubtable source.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Writing section */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="opacity-60 font-semibold">User Answer</h3>
-                    <span className="text-[#566fe9]">
-                      Word Count: {essay.split(/\s+/).filter(Boolean).length}
-                    </span>
-                  </div>
-                  <div className="border border-gray-100 rounded-md shadow-sm">
-                    <textarea
-                      className="w-full min-h-[300px] p-5 border-none rounded-md outline-none resize-none font-normal text-base leading-[25.6px]"
-                      value={essay}
-                      onChange={(e) => setEssay(e.target.value)}
-                      placeholder="Start writing your essay here..."
-                    />
-                    {essay.length > 0 && (
-                      <div className="relative">
-                        <div className="absolute bg-[#ef0e27] opacity-10 bottom-0 left-5 right-5 h-[25px]" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right column - Comments */}
-              <div>
-                <h2 className="opacity-60 font-semibold mb-3">Comments</h2>
-                <div className="h-[520px] pr-4 overflow-y-auto">
-                  {teacherComments.map((comment, index) => (
-                    <div
-                      key={index}
-                      className="flex items-start gap-3 p-5 mb-4 rounded-xl bg-gray-50"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-[#566fe9] flex items-center justify-center text-white">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="opacity-60 font-semibold">
-                          AI Writing Teacher
-                        </div>
-                        <div className="font-normal text-base leading-[25.6px]">
-                          {comment.text}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                <button
-                  onClick={handleLeave}
-                  className="w-full mt-4 py-2 border border-[#566fe9] rounded-md text-[#566fe9]"
-                >
-                  Next Session
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-[600px] w-full">
-              <div className="text-center p-8 bg-white rounded-lg shadow-sm">
-                <p className="text-lg text-gray-700 mb-4">No writing prompt available</p>
-                <button 
-                  onClick={loadNewPrompt} 
-                  className="mt-2 bg-[#566fe9] hover:bg-[#4a5fc8] text-white px-5 py-2 rounded-md transition-colors duration-200"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          )}
+        </div>
+        <div className="text-right text-gray-600">
+          <div className="mb-2">Word count: {wordCount}</div>
+          <div className="text-xs text-gray-400">
+            {isConnected ? 'Changes are saved automatically' : 'Changes will be saved when connected'}
+          </div>
         </div>
       </div>
     </div>

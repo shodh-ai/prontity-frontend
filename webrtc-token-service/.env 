@@ -1,6 +1,0 @@
-LIVEKIT_URL=wss://shodhai-pojmjchi.livekit.cloud
-LIVEKIT_API_KEY=APIFPSPx95xubAM
-LIVEKIT_API_SECRET=VIbj58g0cqmHvPLadQfAinHCBC72FPdtwtDST0UDLdc
-# Server Configuration
-PORT=3002
-ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend-domain.com

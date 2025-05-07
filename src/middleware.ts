@@ -16,11 +16,17 @@ const DEBUG = true;
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Log the current path and authentication data in development
+  // Log the current path for debugging
   if (DEBUG) {
     console.log('Middleware checking path:', pathname);
+    console.log('AUTHENTICATION BYPASSED - ALL PATHS ARE PUBLIC');
   }
   
+  // BYPASS ALL AUTHENTICATION - IMMEDIATELY ALLOW ALL REQUESTS
+  return NextResponse.next();
+  
+  // The code below is preserved as comments for future reference
+  /*
   // Check if the path is public - exact matches only for root and precise path matches for others
   const isPublicPath = publicPaths.some(path => {
     // Special handling for the API routes, which need prefix matching
@@ -71,6 +77,7 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/signuppage') && token && !forceLogin) {
     return NextResponse.redirect(new URL('/roxpage', request.url));
   }
+  */
   
   return NextResponse.next();
 }

@@ -1,8 +1,4 @@
 {
-  "/speakingpage/page": "app/speakingpage/page.js",
   "/writingpage/page": "app/writingpage/page.js",
-  "/loginpage/page": "app/loginpage/page.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/listeningpage/page": "app/listeningpage/page.js",
-  "/roxpage/page": "app/roxpage/page.js"
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
 }

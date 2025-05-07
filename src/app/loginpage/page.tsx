@@ -178,10 +178,7 @@ export default function LoginPage() {
                 ) : (
                   <>
                     <form onSubmit={handleSubmit} className={styles.frame1000011206}>
-                      <div className={styles.container}>
-                        <p className={styles.welcomeText}>Welcome!</p>
-                        <p className={styles.signInToContinue}>Sign in to continue with your account.</p>
-                      </div>
+                      {/* Welcome text removed */}
                       <div className={styles.frame1000011144}>
                         <div className={styles.frame146}>
                           <input

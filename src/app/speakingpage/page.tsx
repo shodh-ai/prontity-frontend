@@ -188,9 +188,21 @@ function SpeakingPageContent() {
 }
 
 export default function Page() {
+  // We're going to redirect to the practice-session page which has the updated UI
+  const router = useRouter();
+  
+  useEffect(() => {
+    router.push('/speakingpage/practice-session');
+  }, [router]);
+  
   return (
     <ProtectedRoute>
-      <SpeakingPageContent />
+      <div className="flex items-center justify-center h-screen w-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4">Loading speaking practice...</p>
+        </div>
+      </div>
     </ProtectedRoute>
   );
 }

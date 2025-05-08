@@ -1,0 +1,63 @@
+/* TTS Highlighting Styles */
+
+/* Style for the active highlight during TTS playback */
+.tts-active-highlight {
+  transition: all 0.3s ease !important;
+  background-color: rgba(255, 235, 59, 0.3) !important;
+  outline: 2px solid #FFB74D !important;
+  box-shadow: 0 0 8px rgba(255, 183, 77, 0.6) !important;
+  border-radius: 4px !important;
+  padding: 2px !important;
+  position: relative !important;
+}
+
+/* Apply a subtle pulse animation when TTS is active */
+.tts-is-speaking .tts-active-highlight {
+  animation: tts-pulse 2s infinite ease-in-out;
+}
+
+@keyframes tts-pulse {
+  0% {
+    box-shadow: 0 0 4px rgba(255, 183, 77, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255, 183, 77, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 4px rgba(255, 183, 77, 0.4);
+  }
+}
+
+/* Make sure the suggestion list items stand out when active */
+[id^="suggestion-"].tts-active-highlight {
+  z-index: 2;
+  transform: translateY(-2px) scale(1.02);
+}
+
+/* Highlighting for writing suggestions */
+.writing-suggestion.tts-active-highlight {
+  border-left: 4px solid #f59e0b !important;
+  padding-left: 1rem !important;
+}
+
+/* Debug styles to help identify elements for highlighting - remove in production */
+.suggestion-element-found {
+  position: relative;
+}
+
+.suggestion-element-found::before {
+  content: "✓";
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  background: green;
+  color: white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}

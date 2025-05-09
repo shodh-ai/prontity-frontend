@@ -518,8 +518,19 @@ function VocabPageContent() {
             <div className={styles.userCard} style={{backgroundImage: 'url(https://randomuser.me/api/portraits/men/34.jpg)'}}>
               <div className={styles.userLabel}>User</div>
             </div>
-            <div className={styles.userCard} style={{backgroundImage: 'url(https://randomuser.me/api/portraits/women/44.jpg)'}}>
-              <div className={styles.userLabel}>AI Vocabulary Teacher</div>
+            
+            {/* LiveKit agent integration */}
+            <div className="ml-2 w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
+              <LiveKitSession
+                roomName="VocabularyPractise"
+                userName={userName || "Anonymous User"}
+                pageType="vocab"
+                sessionTitle="Vocabulary Teacher"
+                aiAssistantEnabled={true}
+                hideVideo={false}
+                hideAudio={false}
+                showTimer={false}
+              />
             </div>
           </div>
         </div>

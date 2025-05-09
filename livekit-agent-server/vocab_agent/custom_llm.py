@@ -12,8 +12,8 @@ import uuid
 logger = logging.getLogger(__name__)
 
 # Get the URL of your custom backend agent from environment variables
-# Example: export MY_CUSTOM_AGENT_URL="http://localhost:5005/process"
-MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL", "http://localhost:5005/process") # Default URL
+# Example: export MY_CUSTOM_AGENT_URL="http://localhost:5000/process"
+MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL", "http://localhost:5000/process") # Default URL
 
 class CustomLLMBridge(LLM):
     """

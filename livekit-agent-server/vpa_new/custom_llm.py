@@ -171,9 +171,19 @@ class CustomLLMBridge(LLM):
                         payload = {"transcript": transcript} # Send transcript as JSON
                         async with session.post(self._url, json=payload) as response:
                             response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-                            result = await response.json() # Expecting JSON back, e.g., {"response": "..."}
-                            response_text = result.get("response", "") # Extract the response text
+                            result = await response.json()
+                            response_text = result.get("response", "")
+                            logger.info(f"Raw response from agent: {result}")
+                            logger.info(f"Extracted response_text: '{response_text}'")
+                            
+                            # Check for action and payload
+                            action = result.get("action")
+                            payload = result.get("payload")
+                            logger.info(f"Extracted action: {action}, payload available: {payload is not None}")
+                            
                             logger.info(f"Received response from external agent: '{response_text}'")
+                            if action:
+                                logger.info(f"Action received: {action} with payload: {payload}")
 
                 except aiohttp.ClientError as e:
                     logger.error(f"Error communicating with external agent at {self._url}: {e}")
@@ -184,13 +194,32 @@ class CustomLLMBridge(LLM):
 
                 # Yield the response back to the LiveKit pipeline as a single chunk
                 # LiveKit expects an AsyncIterable of ChatChunk
-                yield ChatChunk(
-                    id=str(uuid.uuid4()),
+                # Create metadata with action and payload if present
+                metadata = None
+                if action and payload:
+                    metadata = {
+                        "dom_actions": [{
+                            "action": action,
+                            "payload": payload
+                        }]
+                    }
+                    logger.info(f"Created metadata: {metadata}")
+                
+                # Debug the outgoing chunk
+                chunk_id = str(uuid.uuid4())
+                logger.info(f"Creating ChatChunk with id={chunk_id}, content='{response_text[:50]}...', metadata present: {metadata is not None}")
+                
+                # Create and yield the chunk
+                chunk = ChatChunk(
+                    id=chunk_id,
                     delta=ChoiceDelta(
                         role='assistant',
-                        content=response_text
+                        content=response_text,
+                        metadata=metadata
                     )
                 )
+                logger.info(f"Yielding chunk with content: '{chunk.delta.content[:50]}...'")
+                yield chunk
                 logger.debug("Finished yielding response from CustomLLMBridge.")
             
             # Yield the async generator

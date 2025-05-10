@@ -1,10 +1,10 @@
-# custom_llm.py (create this new file or add the class to your main.py)
+# custom_llm.py (updated to handle DOM actions)
 
 import os
-import json
 import logging
 import aiohttp # Required for async HTTP requests: pip install aiohttp
-from typing import AsyncIterable, Optional
+import json
+from typing import AsyncIterable, Optional, Dict, List, Any
 from contextlib import asynccontextmanager
 
 from livekit.agents.llm import LLM, ChatContext, ChatMessage, ChatRole, ChatChunk, ChoiceDelta
@@ -19,6 +19,7 @@ MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL", "http://localhost:5005/pr
 class CustomLLMBridge(LLM):
     """
     A custom LLM component that bridges to an external backend script/service.
+    Supports both regular text responses and DOM manipulation actions.
     """
     def __init__(self, url: str = MY_CUSTOM_AGENT_URL):
         super().__init__()
@@ -57,6 +58,19 @@ class CustomLLMBridge(LLM):
                 
                 # Debug the chat context structure - more safely this time
                 logger.debug(f"CustomLLMBridge received chat context of type: {type(chat_ctx)}")
+                
+                # Try to get the current vocabulary word and definition from the context
+                current_word = ""
+                definition = ""
+                
+                # Extract word and definition info from context if present
+                try:
+                    # This can be enhanced to extract from the conversation history if needed
+                    # For now, assuming we could get it from metadata or environment
+                    current_word = os.getenv("CURRENT_VOCAB_WORD", "")
+                    definition = os.getenv("CURRENT_VOCAB_DEFINITION", "")
+                except Exception as e:
+                    logger.error(f"Error getting vocabulary context: {e}")
                 
                 # Get messages - try different approaches based on the API
                 try:
@@ -165,36 +179,43 @@ class CustomLLMBridge(LLM):
                 logger.debug(f"User message object: {user_message}")
                 logger.debug(f"User message type: {type(user_message)}")
 
+                # Create payload with transcript and context information
+                payload = {
+                    "transcript": transcript,
+                    "word": current_word,
+                    "definition": definition
+                }
+
                 response_text = ""
                 dom_actions = None
                 
                 try:
                     # Use aiohttp for async HTTP requests
                     async with aiohttp.ClientSession() as session:
-                        payload = {"transcript": transcript} # Send transcript as JSON
                         async with session.post(self._url, json=payload) as response:
                             response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-                            result = await response.json() # Expecting JSON back, e.g., {"response": "..."}
-                            response_text = result.get("response", "") # Extract the response text
+                            result = await response.json() # Expecting JSON back
                             
-                            # Check for special actions from the agent
-                            if "action" in result and "payload" in result:
-                                action = result["action"]
-                                payload = result["payload"]
-                                logger.info(f"Received special action from agent: {action} with payload: {payload}")
-                                
-                                # Convert the action and payload to a format that can be sent as metadata
-                                dom_actions = [{
-                                    "action": action,
-                                    "payload": payload
-                                }]
-                                logger.info(f"Converted to dom_actions format: {dom_actions}")
-                            # Check if the response contains DOM actions (for backward compatibility)
-                            elif "dom_actions" in result:
-                                dom_actions = result["dom_actions"]
-                                logger.info(f"Received DOM actions from external agent: {dom_actions}")
-                            
+                            # Extract the text response
+                            response_text = result.get("response", "")
                             logger.info(f"Received response from external agent: '{response_text}'")
+                            
+                            # Extract DOM actions if present
+                            if "dom_actions" in result:
+                                dom_actions = result.get("dom_actions", [])
+                                logger.info(f"Received DOM actions: {dom_actions}")
+                                
+                                # Add DOM action descriptions to the text response
+                                if dom_actions:
+                                    action_descriptions = []
+                                    for action in dom_actions:
+                                        if action.get("action") == "fill_input":
+                                            action_descriptions.append(f"I'm filling in '{action.get('value', '')}' as the image prompt.")
+                                        elif action.get("action") == "click":
+                                            action_descriptions.append(f"I'm submitting the prompt to generate an image.")
+                                    
+                                    if action_descriptions:
+                                        response_text += " " + " ".join(action_descriptions)
 
                 except aiohttp.ClientError as e:
                     logger.error(f"Error communicating with external agent at {self._url}: {e}")
@@ -232,3 +253,17 @@ class CustomLLMBridge(LLM):
         except Exception as e:
             logger.error(f"Error in _chat_context_manager: {e}")
             raise
+    
+    async def execute_dom_actions(self, actions: List[Dict[str, Any]]):
+        """
+        Execute DOM actions in a browser context.
+        This method would be implemented in a browser-compatible environment.
+        
+        For now, this is a placeholder that would be replaced with actual DOM
+        manipulation in a real implementation.
+        """
+        # This would be implemented depending on the browser automation library used
+        logger.info(f"Would execute DOM actions: {actions}")
+        # Example implementation would use something like Playwright, Puppeteer, or Selenium
+        # For LiveKit integration, this might be handled through a browser extension
+        pass

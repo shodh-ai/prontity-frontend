@@ -7,6 +7,7 @@ import VocabBox, { VocabularyItem } from '@/components/vocabulary/VocabBox';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import LiveKitSession from '@/components/LiveKitSession';
+import VocabImageOverlay from '@/components/vocabulary/VocabImageOverlay';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useSession } from 'next-auth/react';
 
@@ -18,6 +19,8 @@ import VocabCanvas from '@/components/vocabulary/VocabCanvas';
 
 import ToolBar from '@/components/vocabulary/ToolBar';
 import TextInput from '@/components/vocabulary/TextInput';
+import VocabAgentActionHandler from '@/components/vocabulary/VocabAgentActionHandler';
+import VocabDirectActionHandler from '@/components/vocabulary/VocabDirectActionHandler';
 
 // Comment out API clients for now
 // import contentApi from '@/api/contentService';
@@ -67,7 +70,6 @@ const defaultVocabWord: VocabularyItem = {
 // Sample vocabulary word IDs from the API documentation
 const availableVocabIds = ['ubiquitous', 'ameliorate', 'ephemeral', 'serendipity'];
 
-
 function VocabPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -97,92 +99,90 @@ function VocabPageContent() {
   // Room configuration for API calls
   const roomName = 'VocabularyPractice';
   
-  // Get username from session or localStorage when component mounts
+  // Set username from auth or localStorage
   useEffect(() => {
-    if (session?.user?.name) {
-      setUserName(session.user.name);
+    // Use session data if available, otherwise fallback to local storage
+    if (session && session.user && session.user.email) {
+      setUserName(session.user.email);
     } else {
-      const storedUserName = localStorage.getItem('userName');
-      if (storedUserName) {
-        setUserName(storedUserName);
-      }
+      const storedUserName = localStorage.getItem('userName') || 'deepSinghYadav@gmail.com';
+      setUserName(storedUserName);
     }
   }, [session]);
   
-  // Fetch vocabulary words from local dummy data
+  // Fetch vocab words on component mount
   useEffect(() => {
-    const fetchVocabWords = () => {
-      try {
-        setLoading(true);
-        // Get wordId from URL query parameters if available
-        const wordIdFromUrl = searchParams?.get('wordId');
-        
-        // Available word IDs from our local data
-        const availableIds = Object.keys(vocabData);
-        
-        // Use the wordId from URL or default to the first in our list
-        const targetWordId = wordIdFromUrl || availableIds[0];
-        setCurrentWordId(targetWordId);
-        
-        // Get the selected vocabulary word from local data
-        const wordData = vocabData[targetWordId as keyof typeof vocabData];
-        
-        if (wordData) {
-          // Format the data to match our VocabularyItem interface
-          const formattedWord: VocabularyItem = {
-            id: wordData.wordId,
-            word: wordData.wordText,
-            partOfSpeech: '', // API doesn't include part of speech
-            definition: wordData.definition,
-            exampleSentence: wordData.exampleSentence || '',
-          };
-          
-          setCurrentWord(formattedWord);
-          console.log('Loaded vocabulary word:', wordData.wordText, 'with ID:', targetWordId);
-          
-          // Also load other vocab words for navigation
-          const otherWords = availableIds
-            .filter(id => id !== targetWordId)
-            .map(id => {
-              const word = vocabData[id as keyof typeof vocabData];
-              return {
-                id: word.wordId,
-                word: word.wordText,
-                partOfSpeech: '',
-                definition: word.definition,
-                exampleSentence: word.exampleSentence || '',
-              } as VocabularyItem;
-            });
-            
-          setVocabWords([formattedWord, ...otherWords]);
-          
-          // Simulate loading the user's saved canvas for this vocabulary word
-          console.log('Would load canvas state for user:', userName, 'and word:', targetWordId);
-          // In a real app, this would call:
-          // loadCanvasState(userName, targetWordId);
-        } else {
-          setError(`Vocabulary word with ID "${targetWordId}" not found`); 
-        }
-      } catch (err) {
-        console.error('Error loading vocabulary words:', err);
-        setError('Failed to load vocabulary words. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    if (userName) {
-      fetchVocabWords();
-    }
-  }, [userName, searchParams]);
+    fetchVocabWords();
+  }, [searchParams]); // Re-run this when URL params change
   
-  // Load canvas state when word changes
+  // Load canvas state when username and current word are set
   useEffect(() => {
-    if (userName && currentWord.id !== 'default') {
+    if (userName && currentWord && currentWord.id !== 'default') {
+      console.log('Loading canvas state for user:', userName, 'and word:', currentWord.id);
       loadCanvasState(userName, currentWord.id);
     }
   }, [userName, currentWord, loadCanvasState]);
-
+  
+  const fetchVocabWords = () => {
+    try {
+      setLoading(true);
+      // Get wordId from URL query parameters if available
+      const wordIdFromUrl = searchParams?.get('wordId');
+      
+      // Available word IDs from our local data
+      const availableIds = Object.keys(vocabData);
+      
+      // Use the wordId from URL or default to the first in our list
+      const targetWordId = wordIdFromUrl || availableIds[0];
+      setCurrentWordId(targetWordId);
+      
+      // Get the selected vocabulary word from local data
+      const wordData = vocabData[targetWordId as keyof typeof vocabData];
+      
+      if (wordData) {
+        // Format current word for consistent data structure
+        const formattedWord: VocabularyItem = {
+          id: wordData.wordId,
+          word: wordData.wordText,
+          partOfSpeech: '',
+          definition: wordData.definition,
+          exampleSentence: wordData.exampleSentence
+        };
+        
+        // Set current word
+        setCurrentWord(formattedWord);
+        
+        // Get other words for navigation
+        const otherWords = availableIds
+          .filter(id => id !== targetWordId)
+          .map(id => {
+            const word = vocabData[id as keyof typeof vocabData];
+            return {
+              id: word.wordId,
+              word: word.wordText,
+              partOfSpeech: '',
+              definition: word.definition,
+              exampleSentence: word.exampleSentence
+            };
+          });
+        
+        setVocabWords([formattedWord, ...otherWords]);
+        
+        // Simulate loading the user's saved canvas for this vocabulary word
+        console.log('Would load canvas state for user:', userName, 'and word:', targetWordId);
+        // In a real app, this would call:
+        // loadCanvasState(userName, targetWordId);
+      } else {
+        setError(`Vocabulary word with ID "${targetWordId}" not found`); 
+      }
+    } catch (err) {
+      console.error('Error loading vocabulary words:', err);
+      setError('Failed to load vocabulary words. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   // Handle leaving the room
   const handleLeave = () => {
     // Simulated progress recording (local only, no API call)
@@ -224,6 +224,10 @@ function VocabPageContent() {
   
   // Handle submitting a prompt to generate an image
   const handlePromptSubmit = async (prompt: string) => {
+    // Expose this function globally so VocabDirectActionHandler can use it
+    if (typeof window !== 'undefined') {
+      (window as any).__vocabpage_handlePromptSubmit = handlePromptSubmit;
+    }
     if (!prompt.trim()) return;
     
     setIsPromptLoading(true);
@@ -241,33 +245,34 @@ function VocabPageContent() {
         imageData = dataUrl.split(',')[1];
       }
       
-      // Call our Gemini API endpoint
+      // Generate an enhanced prompt with the vocabulary context
+      const enhancedPrompt = `${prompt}. This is for the vocabulary word "${currentWord.word}" and should help illustrate its meaning.`;
+      
+      // Make the API call to generate an image with Gemini
       const response = await fetch('/api/ai/gemini-generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: prompt.trim(),
-          imageData,
-          context: currentWord.word
+          prompt: enhancedPrompt,
+          imageData, // Include the captured canvas image
+          context: currentWord.word, // Include the vocabulary word as context
         }),
       });
       
       if (!response.ok) {
-        throw new Error(`Error: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to generate image: ${response.status}`);
       }
       
       const data = await response.json();
       
       if (data.imageData) {
-        // Convert the base64 image data to a data URL
         const imageUrl = `data:image/png;base64,${data.imageData}`;
         
-        console.log('Generated image URL:', imageUrl.substring(0, 50) + '...');
+        // Preload the image to get dimensions
+        const img = new Image();
         
-        // Pre-load the image to get the actual dimensions
-        const img = document.createElement('img');
         img.onload = () => {
           // Once image is loaded, we know its dimensions
           console.log('Image loaded successfully with dimensions:', img.width, img.height);
@@ -289,6 +294,7 @@ function VocabPageContent() {
             useCanvasStore.getState().setIsGeneratingAI(false);
           }, 500);
         };
+        
         img.onerror = (event: Event | string) => {
           console.error('Failed to preload image:', event);
           // Set the generated image URL in state to display it
@@ -304,10 +310,12 @@ function VocabPageContent() {
             useCanvasStore.getState().setIsGeneratingAI(false);
           }, 500);
         };
+        
         // Start loading the image
         img.src = imageUrl;
+      } else {
+        throw new Error('No image data returned from API');
       }
-      
     } catch (error) {
       console.error('Error generating image:', error);
       
@@ -330,7 +338,7 @@ function VocabPageContent() {
       useCanvasStore.getState().setIsGeneratingAI(false);
     }
   };
-
+  
   // Handle moving to next word
   const handleNextWord = (): void => {
     // Simulate saving canvas state and recording task completion
@@ -378,81 +386,14 @@ function VocabPageContent() {
       router.push(`/vocabpage?wordId=${nextWord.id}`);
       console.log('Navigating to next word:', nextWord.id);
     }
-  };  
-
-  // Custom canvas controls component with improved UI
-  const VocabCanvasControls = () => {
-    // Use the current word from state
-    
-    return (
-      <div className="vocab-canvas-container">
-        {/* Header with word navigation */}
-        <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <VocabBox vocabularyItem={currentWord} />
-          
-          <button 
-            className="next-word-btn px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded-md transition-colors ml-4 flex items-center"
-            onClick={handleNextWord}
-          >
-            <span>Next Word</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-        </div>
-        
-        {/* Tool Bar */}
-        <div className="toolbar-container mb-4 bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-          <ToolBar />
-        </div>
-        
-        {/* Canvas Component */}
-        <div className="canvas-wrapper mb-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-          {loading ? (
-            <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mx-auto"></div>
-                <p className="mt-2 text-gray-600">Loading vocabulary word...</p>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="flex items-center justify-center h-64 bg-red-50 text-red-600 rounded-lg p-4">
-              <p>{error}</p>
-            </div>
-          ) : (
-            <VocabCanvas 
-              vocabularyWord={currentWord.word} 
-              definition={currentWord.definition} 
-              userId={userName} 
-              wordId={currentWord.id} 
-            />
-          )}
-        </div>
-        
-        {/* AI Drawing Prompt Input */}
-        <div className="mb-4 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-          <div className="flex items-center mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-            </svg>
-            <h3 className="text-lg font-semibold">AI Drawing Assistant</h3>
-          </div>
-          
-          <p className="text-gray-600 mb-3">Generate an image to help remember <strong className="text-blue-600">{loading ? 'this word' : currentWord.word}</strong></p>
-          
-          <TextInput 
-            onSubmit={handlePromptSubmit}
-            isLoading={isPromptLoading || isGeneratingAI}
-            placeholder={`Draw a visual for '${currentWord.word}'`}
-            buttonText="Generate"
-          />
-        </div>
-      </div>
-    );
   };
 
   return (
     <div className={styles.pageContainer}>
+      {/* Action handlers for processing agent commands */}
+      <VocabAgentActionHandler />
+      <VocabDirectActionHandler />
+      
       {/* Background elements */}
       <div className={styles.backgroundBlob1}></div>
       <div className={styles.backgroundBlob2}></div>
@@ -489,6 +430,9 @@ function VocabPageContent() {
               </p>
             </div>
             
+            {/* Vocabulary Image Overlay - Displays images directly in the UI */}
+            <VocabImageOverlay />
+            
             {/* Canvas area */}
             {loading ? (
               <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
@@ -510,7 +454,29 @@ function VocabPageContent() {
               />
             )}
             
-            {/* Removed duplicate Gemini AI prompt input - using the one in VocabCanvas instead */}
+            {/* Canvas Controls */}
+            {!loading && !error && (
+              <div className="flex justify-between items-center mt-4">
+                <button 
+                  className="next-word-btn px-4 py-2 bg-blue-500 text-white hover:bg-blue-600 rounded-md transition-colors flex items-center"
+                  onClick={handleNextWord}
+                >
+                  <span>Next Word</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                
+                <div className="mt-4">
+                  <TextInput
+                    onSubmit={handlePromptSubmit}
+                    isLoading={isPromptLoading || isGeneratingAI}
+                    placeholder={`Draw a visual for '${currentWord.word}'`}
+                    buttonText="Generate"
+                  />
+                </div>
+              </div>
+            )}
           </div>
           
           {/* User section */}
@@ -534,8 +500,6 @@ function VocabPageContent() {
             </div>
           </div>
         </div>
-        
-        {/* Footer controls removed */}
       </div>
     </div>
   );

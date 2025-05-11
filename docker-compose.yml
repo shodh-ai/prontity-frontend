@@ -8,11 +8,13 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+      - PRONITY_API_URL=http://pronity-backend:8000
     depends_on:
       - webrtc-token
       - vocab-canvas
       - livekit-agent
       - mock-services
+      - pronity-backend
 
   # WebRTC Token Service
   webrtc-token:
@@ -44,10 +46,43 @@ services:
 
   # Mock Services
   mock-services:
-    build: ./mock-services
+    build: ./mock-services-env
     ports:
       - "3003:3003"
       - "3004:3004"
       - "3005:3005"
     environment:
-      - PYTHONUNBUFFERED=1 
+      - PYTHONUNBUFFERED=1
+
+  # Pronity Backend Service
+  pronity-backend:
+    build:
+      context: /Users/drsudhanshu/Desktop/harshit_new/pronity-backend
+    ports:
+      - "8080:8000"
+    environment:
+      - PGUSER=postgres
+      - PGPASSWORD=postgres
+      - PGDATABASE=pronity
+      - PGHOST=pronity-db
+      - PGPORT=5432
+      - DATABASE_URL=postgres://postgres:postgres@pronity-db:5432/pronity
+      - BACKEND_PORT=8000
+    depends_on:
+      - pronity-db
+
+  # Pronity Database
+  pronity-db:
+    image: postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=pronity
+    ports:
+      - "5433:5432"
+    volumes:
+      - pronity-pgdata:/var/lib/postgresql/data
+
+volumes:
+  pronity-pgdata:

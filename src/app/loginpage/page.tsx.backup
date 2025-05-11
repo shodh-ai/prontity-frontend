@@ -5,8 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import styles from './login.module.css';
-// Import only Pronity API for authentication
-import { login as pronityLogin, PronityApiError, AuthResponse, fetchUserProfile, User } from '@/api/pronityClient';
+// Import both APIs to support gradual migration
+import userProgressApi from '@/api/mockUserProgressService';
+import { login as pronityLogin, PronityApiError, AuthResponse, fetchUserProfile } from '@/api/pronityClient';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,11 +32,17 @@ export default function LoginPage() {
           setUserProfile(data);
         })
         .catch((error) => {
-          // Token invalid or expired
-          console.error('Token validation error:', error);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          setIsLoggedIn(false);
+          // Try fallback to mock API if Pronity API fails
+          userProgressApi.getUserProfile()
+            .then(data => {
+              setIsLoggedIn(true);
+              setUserProfile(data);
+            })
+            .catch(() => {
+              // Token invalid or expired for both APIs
+              localStorage.removeItem('token');
+              setIsLoggedIn(false);
+            });
         });
     }
     
@@ -47,9 +54,7 @@ export default function LoginPage() {
 
   // Add function to logout current user
   const handleLogout = () => {
-    // Remove token and user data from localStorage
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    userProgressApi.logout();
     setIsLoggedIn(false);
     setUserProfile(null);
     setErrorMessage('You have been logged out. Please log in again.');
@@ -71,43 +76,53 @@ export default function LoginPage() {
     setErrorMessage('');
     
     try {
-      // Sign in with Pronity backend
+      // Try signing in with Pronity backend first
       const credentials = { email, password };
-      const result = await pronityLogin(credentials);
+      let result: AuthResponse;
       
-      // Store token and user info in localStorage
-      localStorage.setItem('token', result.token);
-      localStorage.setItem('user', JSON.stringify(result.user));
-      
-      setIsLoggedIn(true);
-      setUserProfile(result.user);
-      router.push('/roxpage');
-    } catch (err: any) {
-      let errorMsg = 'Invalid email or password';
-      
-      if (err instanceof PronityApiError) {
-        console.error('Login error:', err);
-        errorMsg = err.message;
+      try {
+        // Attempt login with Pronity API
+        result = await pronityLogin(credentials);
         
-        // Add more user-friendly messages for specific error codes
-        if (err.statusCode === 401) {
-          errorMsg = 'Invalid email or password';
-        } else if (err.statusCode === 404) {
-          errorMsg = 'User not found. Please register first.';
-        } else if (err.statusCode >= 500) {
-          errorMsg = 'Server error. Please try again later.';
+        // Store token and user info in localStorage
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        
+        setIsLoggedIn(true);
+        setUserProfile(result.user);
+        router.push('/roxpage');
+      } catch (pronityError) {
+        console.log('Pronity login failed, trying fallback:', pronityError);
+        
+        // Fallback to the mock user progress service
+        try {
+          const fallbackResult = await userProgressApi.login(email, password);
+          
+          if (fallbackResult.token && fallbackResult.user) {
+            setIsLoggedIn(true);
+            setUserProfile(fallbackResult.user);
+            router.push('/roxpage');
+          } else {
+            throw new Error('Invalid response from server');
+          }
+        } catch (fallbackError: any) {
+          throw fallbackError; // Re-throw to be caught by outer catch
         }
       }
-      
+    } catch (err: any) {
+      const errorMsg = err instanceof PronityApiError 
+        ? `Pronity API: ${err.message}` 
+        : err.message || 'Invalid email or password';
+        
       setErrorMessage(errorMsg);
       setIsLoading(false);
     }
   };
 
-  // Handle social media login - would need to be implemented in Pronity backend
+  // Handle social media login - would need to be implemented in user-progress-service
   // For now, we'll keep the UI but show an alert that it's not implemented
   const handleSocialLogin = async (provider: string) => {
-    setErrorMessage(`Social login with ${provider} is not yet implemented in the Pronity backend`);
+    setErrorMessage(`Social login with ${provider} not yet implemented in the user-progress-service`);
     // Future implementation would connect to the appropriate endpoint
   };
 

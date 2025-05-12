@@ -70,23 +70,31 @@ export default function LoginPage() {
     setIsLoading(true);
     setErrorMessage('');
     
+    console.log('Attempting login with:', { email }); // Debug login attempt
+    
     try {
       // Sign in with Pronity backend
       const credentials = { email, password };
+      console.log('Using API URL:', window.location.origin); // Show base URL for debugging
       const result = await pronityLogin(credentials);
+      console.log('Login successful, got token:', result.token ? 'token-received' : 'no-token'); // Debug token receipt
       
       // Store token and user info in localStorage
       localStorage.setItem('token', result.token);
       localStorage.setItem('user', JSON.stringify(result.user));
+      console.log('Saved token to localStorage');
       
       setIsLoggedIn(true);
       setUserProfile(result.user);
+      console.log('Redirecting to main page');
       router.push('/roxpage');
     } catch (err: any) {
       let errorMsg = 'Invalid email or password';
       
+      console.error('Login failed with error:', err); // More detailed error logging
+      
       if (err instanceof PronityApiError) {
-        console.error('Login error:', err);
+        console.error('Pronity API error:', { message: err.message, statusCode: err.statusCode });
         errorMsg = err.message;
         
         // Add more user-friendly messages for specific error codes
@@ -97,6 +105,9 @@ export default function LoginPage() {
         } else if (err.statusCode >= 500) {
           errorMsg = 'Server error. Please try again later.';
         }
+      } else {
+        // Handle network errors better
+        errorMsg = `Connection error: ${err.message}. Please check if the backend server is running.`;
       }
       
       setErrorMessage(errorMsg);

@@ -6,7 +6,7 @@
  */
 
 // The base URL for the Pronity backend API
-const PRONITY_API_URL = process.env.NEXT_PUBLIC_PRONITY_API_URL || 'http://localhost:8080';
+const PRONITY_API_URL = process.env.NEXT_PUBLIC_PRONITY_API_URL || 'http://localhost:8000';
 
 /**
  * Error class for Pronity API related errors
@@ -79,6 +79,8 @@ export interface AuthResponse {
  * @throws PronityApiError if the request fails
  */
 export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
+  console.log(`Attempting to connect to API at: ${PRONITY_API_URL}/auth/login`);
+  
   try {
     const response = await fetch(`${PRONITY_API_URL}/auth/login`, {
       method: 'POST',
@@ -88,6 +90,8 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
       body: JSON.stringify(credentials),
     });
     
+    console.log('Login response status:', response.status);
+    
     if (!response.ok) {
       if (response.status === 401) {
         throw new PronityApiError('Invalid email or password', 401);
@@ -95,12 +99,21 @@ export async function login(credentials: LoginCredentials): Promise<AuthResponse
       throw new PronityApiError(`Login error: ${response.statusText}`, response.status);
     }
     
-    return await response.json();
+    const result = await response.json();
+    console.log('Login successful, token received');
+    return result;
   } catch (error) {
     if (error instanceof PronityApiError) {
       throw error;
     }
-    throw new PronityApiError(`Network error during login: ${(error as Error).message}`, 0);
+    
+    console.error('Network error during login:', error);
+    // More descriptive network error message
+    throw new PronityApiError(
+      `Network error during login: ${(error as Error).message}. ` +
+      `Please check if the backend server (${PRONITY_API_URL}) is running and accessible.`, 
+      0
+    );
   }
 }
 
@@ -185,6 +198,128 @@ export async function fetchInterests(): Promise<Interest[]> {
       throw error;
     }
     throw new PronityApiError(`Network error when fetching interests: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Fetches interests for the currently logged in user
+ * @param token JWT authentication token
+ * @returns Promise resolving to an array of interests
+ * @throws PronityApiError if the request fails
+ */
+export async function fetchUserInterests(token: string): Promise<Interest[]> {
+  try {
+    const response = await fetch(`${PRONITY_API_URL}/interest/user`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error fetching interests: ${response.statusText}`, response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when fetching interests: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Fetches all interests in the system (admin function)
+ * @returns Promise resolving to an array of interests
+ * @throws PronityApiError if the request fails
+ */
+export async function fetchAllInterests(): Promise<Interest[]> {
+  try {
+    const response = await fetch(`${PRONITY_API_URL}/interest/all`);
+    
+    if (!response.ok) {
+      throw new PronityApiError(`Error fetching all interests: ${response.statusText}`, response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when fetching all interests: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Adds a new interest
+ * @param name Name of the interest to add
+ * @param token JWT authentication token
+ * @returns Promise resolving to the created interest
+ * @throws PronityApiError if the request fails
+ */
+export async function addInterest(name: string, token: string): Promise<Interest> {
+  try {
+    const response = await fetch(`${PRONITY_API_URL}/interest/add`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ interestName: name })
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error adding interest: ${response.statusText}`, response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when adding interest: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Deletes an interest
+ * @param interestId ID of the interest to delete
+ * @param token JWT authentication token
+ * @returns Promise resolving to the deleted interest
+ * @throws PronityApiError if the request fails
+ */
+export async function deleteInterest(interestId: string, token: string): Promise<Interest> {
+  try {
+    const response = await fetch(`${PRONITY_API_URL}/interest/delete`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ interestId })
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      } else if (response.status === 404) {
+        throw new PronityApiError(`Interest with ID '${interestId}' not found`, 404);
+      }
+      throw new PronityApiError(`Error deleting interest: ${response.statusText}`, response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when deleting interest: ${(error as Error).message}`, 0);
   }
 }
 

@@ -214,6 +214,7 @@ export default function SpeakingReportPage() {
                   onLeave={handleLiveKitLeave}
                   questionText={report.questionText}
                   aiAssistantEnabled={true}
+                  showAvatar={true} /* Enable Tavus avatar display */
                 />
               </div>
             )}

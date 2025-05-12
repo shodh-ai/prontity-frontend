@@ -5,9 +5,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 interface AgentControllerProps {
   roomName: string;
   pageType: string;
+  showAvatar?: boolean;
 }
 
-const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType }) => {
+const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType, showAvatar = false }) => {
   // Agent status: 'idle', 'connecting', 'connected', 'error', 'disconnected'
   const [agentStatus, setAgentStatus] = useState<string>('idle');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -57,6 +58,8 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
       
       console.log(`AgentController: Connecting agent for ${pageType} page`);
       
+      console.log(`Connecting agent with avatar enabled: ${showAvatar}`);
+      
       // Connect agent using the agent server instead of the API route
       const response = await fetch(`${AGENT_SERVER_URL}/connect-agent`, {
         method: 'POST',
@@ -68,7 +71,16 @@ const AgentController: React.FC<AgentControllerProps> = ({ roomName, pageType })
           identity: 'ai-assistant',
           instructions: instructions,
           pagePath: pageType,
-          voice: 'Puck' // Ensure we're using a compatible voice
+          voice: 'Puck', // Ensure we're using a compatible voice
+          useAvatar: showAvatar, // Enable Tavus avatar if requested
+          avatarSettings: showAvatar ? {
+            enabled: true,
+            publishVideo: true,
+            width: 640,
+            height: 480,
+            framerate: 30,
+            quality: 'high'
+          } : null
         }),
       });
       

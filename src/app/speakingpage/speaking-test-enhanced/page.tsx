@@ -2,6 +2,31 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import Image from 'next/image';
+import _ from 'lodash';
+import { Editor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Highlight from '@tiptap/extension-highlight';
+import TextStyle from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import Placeholder from '@tiptap/extension-placeholder';
+import { debounce } from 'lodash';
+
+// Import the TiptapEditor and necessary extensions
+import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
+import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension';
+import { Highlight as HighlightType } from '@/components/TiptapEditor/highlightInterface';
+import EditorToolbar from '@/components/EditorToolbar';
+
+// Import SocketIO hook for AI suggestions
+import { useSocketIO } from '@/hooks/useSocketIO';
+
+// Import styles
+import '../figma-styles.css';
+import '@/styles/enhanced-room.css';
+import '@/styles/tts-highlight.css';
 // Using a local placeholder for TipTap until the import path is fixed
 // You may need to update this with the correct path when deploying
 const Tiptap = ({ content, onUpdate, extensions, isEditable, onHighlightClick, highlightData, activeHighlightId, className }: any) => {
@@ -49,6 +74,64 @@ import '../figma-styles.css';
 import '@/styles/enhanced-room.css';
 import '@/styles/tts-highlight.css';
 
+// Web Speech API type definitions
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  readonly length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  readonly isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  readonly transcript: string;
+  readonly confidence: number;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  maxAlternatives: number;
+  onaudioend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onaudiostart: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onerror: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onnomatch: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
+  onsoundend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onsoundstart: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onspeechend: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onspeechstart: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognition;
+  prototype: SpeechRecognition;
+}
+
+// Define WebkitSpeechRecognition for compatibility with other browsers
+declare global {
+  interface Window {
+    SpeechRecognition: SpeechRecognitionConstructor;
+    webkitSpeechRecognition: SpeechRecognitionConstructor;
+  }
+}
+
 // Type for messages to the socket server
 interface TextUpdateMessage {
   type: 'text_update';
@@ -69,6 +152,11 @@ export default function EnhancedSpeakingTestPage() {
   const audioChunks = useRef<Blob[]>([]);
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [userName, setUserName] = useState('');
+  
+  // Speech recognition related state
+  const [transcriptionMethod, setTranscriptionMethod] = useState<'webSpeech' | 'deepgram'>('webSpeech');
+  const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isWebSpeechSupported, setIsWebSpeechSupported] = useState(false);
   
   // Editor related state
   const editorRef = useRef<TiptapEditorHandle>(null);
@@ -104,7 +192,7 @@ export default function EnhancedSpeakingTestPage() {
     ]
   });
 
-  // Get username from session or localStorage when component mounts
+  // Get username from session or localStorage when component mounts and initialize Web Speech API
   useEffect(() => {
     if (session?.user?.name) {
       setUserName(session.user.name);
@@ -113,6 +201,17 @@ export default function EnhancedSpeakingTestPage() {
       if (storedUserName) {
         setUserName(storedUserName);
       }
+    }
+    
+    // Check if Web Speech API is supported in this browser
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognitionAPI) {
+      setIsWebSpeechSupported(true);
+      console.log('Web Speech API is supported in this browser');
+    } else {
+      console.warn('Web Speech API is not supported in this browser');
+      // Fallback to Deepgram if Web Speech API is not supported
+      setTranscriptionMethod('deepgram');
     }
     
     // Simulate API fetch for the initial question
@@ -567,29 +666,28 @@ export default function EnhancedSpeakingTestPage() {
     // Send update to socket server for AI processing
     debouncedSendTextUpdate(html);
   };
-    
+  
   // Handle STT results - process transcriptions and update the editor
   const handleSTTResult = useCallback((data: any) => {
     console.log('Processing STT result:', data);
-    
-    // Check for both possible data structures the server might send
+    // Handle STT result from socket or other STT service
     const transcriptSegment = data?.transcript_segment || data?.text || '';
-    
     if (transcriptSegment) {
-      console.log('Using transcript segment:', transcriptSegment);
-      
-      // Store the segment to be processed in the next render cycle
-      setLiveTranscription(prev => {
-        // Append the new segment to the existing transcription
-        return prev + transcriptSegment;
-      });
+      setLiveTranscription(prev => prev + transcriptSegment);
       return true;
     } else {
       console.warn('Received STT result with no usable transcript data');
       return false;
     }
-  }, []);
-  
+    try {
+      speechRecognitionRef.current.stop();
+      console.log('Web Speech API recognition stopped');
+    } catch (error) {
+      console.error('Error stopping Web Speech recognition:', error);
+    }
+    speechRecognitionRef.current = null;
+  }
+};
   // Function to test the STT functionality
   const testSTTFunctionality = useCallback(() => {
     // Reset editor content before adding new test transcription

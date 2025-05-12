@@ -400,3 +400,112 @@ export async function fetchWord(wordId: string): Promise<Word> {
     throw new PronityApiError(`Network error when fetching word: ${(error as Error).message}`, 0);
   }
 }
+
+/**
+ * Interface for speaking practice data
+ */
+export interface SpeakingPracticeData {
+  userId: string;
+  questionText?: string;
+  transcription: string;
+  duration?: number;
+  practiceDate?: string;
+  topicId?: string; // Added for compatibility with /user/add-report endpoint
+}
+
+/**
+ * Saves transcription data to the backend
+ * @param data The speaking practice data containing the transcription
+ * @param token JWT authentication token
+ * @returns Promise resolving to the saved practice data including an ID
+ * @throws PronityApiError if the request fails
+ */
+export async function saveTranscription(data: SpeakingPracticeData, token: string): Promise<any> {
+  try {
+    console.log('Saving transcription data:', {
+      userId: data.userId,
+      questionText: data.questionText,
+      transcriptionLength: data.transcription.length,
+      duration: data.duration,
+      practiceDate: data.practiceDate
+    });
+    
+    const response = await fetch(`${PRONITY_API_URL}/speaking/save-transcription`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error saving transcription: ${response.statusText}`, response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when saving transcription: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Uploads an audio recording to the backend
+ * @param audioBlob The audio recording as a Blob
+ * @param practiceId ID of the associated speaking practice (from saveTranscription)
+ * @param token JWT authentication token
+ * @returns Promise resolving to the upload result
+ * @throws PronityApiError if the request fails
+ */
+export async function uploadAudioRecording(audioBlob: Blob, practiceId: string, token: string): Promise<any> {
+  try {
+    console.log('Uploading audio recording:', {
+      practiceId: practiceId,
+      blobType: audioBlob.type,
+      blobSize: `${Math.round(audioBlob.size / 1024)} KB`
+    });
+    
+    // Create a FormData instance to send the file
+    const formData = new FormData();
+    
+    // Append the audio blob as a file with a specific name and type
+    // Use .webm extension if the blob's type is audio/webm, otherwise use .mp3
+    const fileExtension = audioBlob.type.includes('webm') ? 'webm' : 'mp3';
+    formData.append('audio', audioBlob, `recording_${Date.now()}.${fileExtension}`);
+    
+    // Add the practice ID to associate the audio with the transcription
+    formData.append('practiceId', practiceId);
+    
+    const response = await fetch(`${PRONITY_API_URL}/speaking/upload-audio`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+        // Don't set Content-Type here, it will be automatically set with the boundary
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error uploading audio: ${response.statusText}`, response.status);
+    }
+    
+    const result = await response.json();
+    console.log('Audio uploaded successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in uploadAudioRecording:', error);
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when uploading audio: ${(error as Error).message}`, 0);
+  }
+}

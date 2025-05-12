@@ -20,6 +20,9 @@ import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension
 // Import Socket.IO hook for AI suggestions
 import { useSocketIO } from '@/hooks/useSocketIO';
 
+// Import API functions for saving transcription and audio
+import { saveTranscription, uploadAudioRecording, SpeakingPracticeData } from '@/api/pronityClient';
+
 // Define highlight interface that matches the component's expectations
 interface HighlightType {
   id: string;
@@ -47,61 +50,45 @@ import '../figma-styles.css';
 import '@/styles/enhanced-room.css';
 import '@/styles/tts-highlight.css';
 
-// Web Speech API type definitions
-interface SpeechRecognitionEvent extends Event {
-  readonly resultIndex: number;
-  readonly results: SpeechRecognitionResultList;
+// Use more permissive types for the Web Speech API to avoid conflicts
+interface ISpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: { transcript: string; confidence: number };
+    };
+  };
 }
 
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionResult {
-  readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-  readonly isFinal: boolean;
-}
-
-interface SpeechRecognitionAlternative {
-  readonly transcript: string;
-  readonly confidence: number;
-}
-
-interface SpeechRecognition extends EventTarget {
+interface ISpeechRecognition {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
-  maxAlternatives: number;
-  onaudioend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onaudiostart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onerror: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onnomatch: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
-  onsoundend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onsoundstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onspeechend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onspeechstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
   start(): void;
   stop(): void;
   abort(): void;
+  onresult: (event: ISpeechRecognitionEvent) => void;
+  onend: (event: Event) => void;
+  onerror: (event: Event) => void;
+  onstart: (event: Event) => void;
+  stream?: MediaStream;
 }
 
-interface SpeechRecognitionConstructor {
-  new (): SpeechRecognition;
-  prototype: SpeechRecognition;
-}
+// Declare the Speech Recognition API for TypeScript type checking
+const SpeechRecognitionPolyfill = () => {
+  if (typeof window !== 'undefined') {
+    return window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+  }
+  return null;
+};
 
-// Define WebkitSpeechRecognition for compatibility with other browsers
+// For TypeScript compatibility with Window object
 declare global {
   interface Window {
-    SpeechRecognition: SpeechRecognitionConstructor;
-    webkitSpeechRecognition: SpeechRecognitionConstructor;
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
   }
 }
 
@@ -119,6 +106,9 @@ export default function WebSpeechEnhancedPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const [loading, setLoading] = useState(true);
+  const [savingData, setSavingData] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<'preparation' | 'speaking' | 'review'>('preparation');
   const [timerSeconds, setTimerSeconds] = useState<number>(0);
@@ -127,16 +117,17 @@ export default function WebSpeechEnhancedPage() {
   const audioChunks = useRef<Blob[]>([]);
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [userName, setUserName] = useState('');
+  const recordingStartTimeRef = useRef<number | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
   
   // Speech recognition related state
-  const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const speechRecognitionRef = useRef<ISpeechRecognition | null>(null);
   const [isWebSpeechSupported, setIsWebSpeechSupported] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState('');
   const [liveTranscription, setLiveTranscription] = useState('');
-  
-  // Editor related state
-  const editorRef = useRef<TiptapEditorHandle>(null);
+  const [interimTranscript, setInterimTranscript] = useState('');
   const [wordCount, setWordCount] = useState(0);
+  const editorRef = useRef<TiptapEditorHandle>(null);
+  const [toeflQuestion, setToeflQuestion] = useState<any>(null);
   const lastSentContentRef = useRef('');
   
   // State for AI suggestions
@@ -240,80 +231,202 @@ export default function WebSpeechEnhancedPage() {
     fetchTOEFLQuestion();
   }, [session, isBrowser]);
   
-  // Set up the TipTap editor extensions
-  const extensions = useMemo(() => [
-    StarterKit,
-    TextStyle,
-    Color,
-    Placeholder.configure({
-      placeholder: 'Your response will appear here as you speak...'
-    }),
-    HighlightExtension
-  ], []);
-  
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      }
+  // Function to start audio recording
+  const startRecording = async () => {
+    if (isRecording) return;
+    
+    try {
+      setIsRecording(true);
+      audioChunks.current = [];
       
-      if (speechRecognitionRef.current) {
-        speechRecognitionRef.current.stop();
-      }
-      
+      // Reset audio URL if there was a previous recording
       if (audioURL) {
-        URL.revokeObjectURL(audioURL);
+        setAudioURL(null);
       }
-    };
-  }, [audioURL]);
+      
+      // Start tracking recording duration
+      recordingStartTimeRef.current = Date.now();
+      setRecordingDuration(0);
+      
+      // Reset live transcription
+      setLiveTranscription('');
+      setInterimTranscript('');
+      
+      // Also reset editor content
+      if (editorRef.current?.editor) {
+        editorRef.current.editor.commands.setContent('');
+      }
+      
+      console.log('🔴 Starting recording...');
+      
+      // Request microphone access
+      console.log('🎤 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      console.log('Microphone access granted');
+      
+      // Create MediaRecorder instance
+      const options = { mimeType: 'audio/webm' };
+      const recorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = recorder;
+      
+      // Start Web Speech API for transcription
+      startWebSpeechRecognition();
+      
+      // Handle data availability to collect audio chunks for playback
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunks.current.push(e.data);
+        }
+      };
+      
+      // Handle recording stop
+      recorder.onstop = async () => {
+        console.log('Recording stopped, creating audio blob...');
+        
+        // Stop speech recognition
+        if (speechRecognitionRef.current) {
+          speechRecognitionRef.current.stop();
+          speechRecognitionRef.current = null;
+        }
+        
+        // Calculate recording duration
+        if (recordingStartTimeRef.current) {
+          const durationMs = Date.now() - recordingStartTimeRef.current;
+          const durationSec = Math.floor(durationMs / 1000);
+          setRecordingDuration(durationSec);
+          recordingStartTimeRef.current = null;
+        }
+        
+        // Create audio blob for playback
+        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setAudioURL(audioUrl);
+        setIsRecording(false);
+        
+        // Clear interim transcript
+        setInterimTranscript('');
+        
+        // Get the final transcription
+        let transcription = liveTranscription;
+        if (editorRef.current?.editor) {
+          transcription = editorRef.current.editor.getText();
+        }
+        
+        // If we have a transcription and user is logged in, save to backend
+        if (transcription && localStorage.getItem('token')) {
+          try {
+            setSavingData(true);
+            setSaveError(null);
+            setSaveSuccess(false);
+            
+            // Get user data from localStorage
+            const userJson = localStorage.getItem('user');
+            const userData = userJson ? JSON.parse(userJson) : null;
+            const token = localStorage.getItem('token');
+            
+            if (!userData || !token) {
+              throw new Error('User not logged in properly');
+            }
+            
+            // Get question text (if available)
+            let questionText = 'Speaking practice session';
+            if (questionData && questionData.prompt) {
+              questionText = questionData.prompt;
+            }
+            
+            // Prepare data for saving
+            const speakingData: SpeakingPracticeData = {
+              userId: userData.id,
+              questionText: questionText,
+              transcription: transcription,
+              duration: recordingDuration || 0,
+              practiceDate: new Date().toISOString()
+            };
+            
+            console.log('------- SAVING TO PRONITY BACKEND -------');
+            console.log('Transcription data to save:', {
+              userId: speakingData.userId,
+              questionText: speakingData.questionText,
+              transcriptionLength: speakingData.transcription.length,
+              duration: speakingData.duration,
+              practiceDate: speakingData.practiceDate
+            });
+            
+            // Save transcription first
+            console.log('Calling saveTranscription API...');
+            const savedData = await saveTranscription(speakingData, token);
+            console.log('Transcription saved successfully!', savedData);
+            
+            // Then upload the audio recording
+            if (savedData && savedData.id) {
+              console.log('Audio details:', {
+                blobType: audioBlob.type,
+                blobSize: `${(audioBlob.size / 1024).toFixed(2)} KB`,
+                practiceId: savedData.id
+              });
+              console.log('Calling uploadAudioRecording API...');
+              const audioResult = await uploadAudioRecording(audioBlob, savedData.id, token);
+              console.log('Audio upload result:', audioResult);
+              setSaveSuccess(true);
+              console.log('✅ Transcription and audio saved successfully to pronity-backend');
+            }
+          } catch (error) {
+            console.error('Error saving recording data:', error);
+            setSaveError('Failed to save recording. ' + (error instanceof Error ? error.message : 'Unknown error'));
+          } finally {
+            setSavingData(false);
+          }
+        }
+      };
+      
+      // Start recording with small time slices for real-time processing
+      recorder.start(250);
+      
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      setIsRecording(false);
+    }
+  };
+  
+  // Function to stop audio recording
+  const stopRecording = () => {
+    if (!isRecording || !mediaRecorderRef.current) return;
+    
+    console.log('Stopping recording...');
+    // Stop the MediaRecorder (this will trigger the onstop event)
+    mediaRecorderRef.current.stop();
+    
+    // Release microphone access
+    if (mediaRecorderRef.current.stream) {
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+  };
 
-  // Format time for display (MM:SS)
-  const formatTime = (seconds: number) => {
+  // Format time in mm:ss format
+  const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-  
-  // Handle click on highlight in the editor
-  const onHighlightClick = useCallback((highlightId: string | number) => {
-    setActiveHighlightId(highlightId);
-    
-    // Find the highlight in the suggestions
-    const highlight = aiSuggestions.find(h => h.id === highlightId.toString());
-    if (highlight && editorRef.current?.editor) {
-      console.log('Clicked on highlight:', highlight);
-      
-      // Focus on the editor
-      editorRef.current.editor.commands.focus();
-    }
-  }, [aiSuggestions]);
-  
-  // Fetch TOEFL question from API (mock implementation)
-  const fetchTOEFLQuestion = async () => {
-    try {
-      // Simulate API call with a timeout
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // This would be replaced with a real API call in production
-      setQuestionData({
-        id: 'toefl-speaking-q1',
-        type: 'independent',
-        title: 'Describe a Memorable Experience',
-        prompt: 'Describe a memorable experience from your childhood. Explain why this experience was meaningful to you and how it has influenced your life. Include specific details in your explanation.',
-        preparationTime: 15,
-        responseTime: 45,
-        difficultyLevel: 3,
-      });
-      
-      // Set initial timer for preparation phase
-      setTimerSeconds(15); // 15 seconds for preparation
-      setCurrentStep('preparation');
-      
-    } catch (error) {
-      console.error('Error fetching TOEFL question:', error);
-      setError('Failed to load question. Please try again.');
-    }
+
+  // Handle starting the speaking portion of the test
+  const handleStartSpeaking = () => {
+    setCurrentStep('speaking');
+    setTimerSeconds(questionData.responseTime);
+    startRecording();
+  };
+
+  // Handle manually stopping the recording
+  const handleManualRecord = () => {
+    stopRecording();
+    setTimerSeconds(0);
+    setCurrentStep('review');
   };
   
   // Web Speech API utility functions
@@ -321,9 +434,9 @@ export default function WebSpeechEnhancedPage() {
     if (!isBrowser) return;
     
     // Define SpeechRecognition - use webkit prefix for Safari
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognitionAPI = SpeechRecognitionPolyfill();
     
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionAPI) {
       console.error('Speech recognition not supported by this browser');
       setIsWebSpeechSupported(false);
       return;
@@ -332,33 +445,45 @@ export default function WebSpeechEnhancedPage() {
     setIsWebSpeechSupported(true);
     
     // Create speech recognition instance
-    const recognition = new SpeechRecognition();
+    const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
     
     // Store the recognition instance
-    speechRecognitionRef.current = recognition;
+    speechRecognitionRef.current = recognition as unknown as ISpeechRecognition;
     
     // Set up event handlers
     recognition.onstart = () => {
       console.log('Speech recognition started');
     };
     
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: Event) => {
+      // Cast the event to access speech recognition properties
+      const speechEvent = event as unknown as {
+        resultIndex: number,
+        results: {
+          length: number,
+          [index: number]: {
+            isFinal: boolean,
+            [index: number]: { transcript: string }
+          }
+        }
+      };
+      
       let currentInterimTranscript = '';
       let finalTranscript = '';
       
       // Process results
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const text = result[0].transcript;
+      for (let i = speechEvent.resultIndex; i < speechEvent.results.length; i++) {
+        const result = speechEvent.results[i];
+        const transcript = result[0].transcript;
         
         if (result.isFinal) {
-          finalTranscript += text;
-          console.log('Final transcript:', text);
+          finalTranscript += transcript;
+          console.log('Final transcript:', transcript);
         } else {
-          currentInterimTranscript += text;
+          currentInterimTranscript += transcript;
         }
       }
       
@@ -408,290 +533,39 @@ export default function WebSpeechEnhancedPage() {
     // Start recognition
     recognition.start();
   };
-  
-  // Audio recording functions
-  const startRecording = async () => {
-    // Guard against server-side rendering
-    if (!isBrowser) {
-      console.error('Cannot access microphone in server environment');
-      return;
-    }
-    
-    if (isRecording) return;
-    
+
+  // Fetch TOEFL question from API (mock implementation)
+  const fetchTOEFLQuestion = async () => {
     try {
-      setIsRecording(true);
-      audioChunks.current = [];
+      // Simulate API call with a timeout
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Reset audio URL if there was a previous recording
-      if (audioURL) {
-        setAudioURL(null);
-      }
-      
-      // Reset live transcription
-      setLiveTranscription('');
-      setInterimTranscript('');
-      
-      // Also reset editor content
-      if (editorRef.current?.editor) {
-        editorRef.current.editor.commands.setContent('');
-      }
-      
-      console.log('🔴 Starting recording...');
-      
-      // Request microphone access
-      console.log('🎤 Requesting microphone access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { 
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      });
-      console.log('Microphone access granted');
-      
-      // Create MediaRecorder instance
-      const options = { mimeType: 'audio/webm' };
-      const recorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = recorder;
-      
-      // Start Web Speech API for transcription
-      startWebSpeechRecognition();
-      
-      // Handle data availability to collect audio chunks for playback
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          audioChunks.current.push(e.data);
-        }
+      // This would be replaced with a real API call in production
+      const toeflQ = {
+        id: 'toefl-speaking-q1',
+        type: 'independent',
+        title: 'Describe a Memorable Experience',
+        prompt: 'Describe a memorable experience from your childhood. Explain why this experience was meaningful to you and how it has influenced your life. Include specific details in your explanation.',
+        preparationTime: 15,
+        responseTime: 45,
+        difficultyLevel: 3,
       };
       
-      // Handle recording stop
-      recorder.onstop = () => {
-        console.log('Recording stopped, creating audio blob...');
-        
-        // Stop speech recognition
-        if (speechRecognitionRef.current) {
-          speechRecognitionRef.current.stop();
-          speechRecognitionRef.current = null;
-        }
-        
-        // Create audio blob for playback
-        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        setAudioURL(audioUrl);
-        setIsRecording(false);
-        
-        // Clear interim transcript
-        setInterimTranscript('');
-      };
+      setToeflQuestion(toeflQ);
+      setQuestionData(toeflQ);
       
-      // Start recording with small time slices for real-time processing
-      recorder.start(250);
+      // Set initial timer for preparation phase
+      setTimerSeconds(15); // 15 seconds for preparation
+      setCurrentStep('preparation');
       
     } catch (error) {
-      console.error('Error starting recording:', error);
-      setIsRecording(false);
+      console.error('Error fetching TOEFL question:', error);
+      setError('Failed to load question. Please try again.');
     }
   };
   
-  // Stop recording function
-  const stopRecording = () => {
-    if (!isRecording) return;
-    
-    console.log('Stopping recording...');
-    
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      
-      // Stop all tracks on the stream
-      if (mediaRecorderRef.current.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      }
-    }
-    
-    // Stop Web Speech API
-    if (speechRecognitionRef.current) {
-      speechRecognitionRef.current.stop();
-      speechRecognitionRef.current = null;
-    }
-    
-    setInterimTranscript('');
-    setIsRecording(false);
-  };
-  
-  // Handle manual recording button
-  const handleManualRecord = () => {
-    if (isRecording) {
-      stopRecording();
-      // Move to review step
-      setCurrentStep('review');
-    } else {
-      startRecording();
-    }
-  };
-  
-  // Handle try again
-  const handleTryAgain = () => {
-    // Reset states and go back to preparation
-    setLiveTranscription('');
-    setInterimTranscript('');
-    setAudioURL(null);
-    setCurrentStep('preparation');
-    setTimerSeconds(questionData.preparationTime);
-  };
-  
-  // Handle next question
-  const handleNextQuestion = () => {
-    // In a real app, you would fetch a new question here
-    // For now, just reset everything and start over
-    handleTryAgain();
-    fetchTOEFLQuestion();
-  };
-  
-  // Start the speaking test phase
-  const startSpeakingPhase = () => {
-    setCurrentStep('speaking');
-    // Start timer for speaking duration
-    setTimerSeconds(questionData.responseTime);
-    
-    // Start recording
-    startRecording();
-  };
-  
-  // Handle completing preparation phase
-  const handleStartSpeaking = () => {
-    startSpeakingPhase();
-  };
-  
-  // Handle skipping preparation
-  const handleSkipPreparation = () => {
-    setCurrentStep('speaking');
-    setTimerSeconds(questionData.responseTime);
-    startRecording();
-  };
-  
-  // Handle starting practice
-  const handleStartPractice = () => {
-    setCurrentStep('preparation');
-    setTimerSeconds(questionData.preparationTime);
-  };
-  
-  // Updates from EditorContent
-  const handleEditorUpdate = useCallback(({ editor }: { editor: Editor }) => {
-    if (editor) {
-      // Count words
-      const text = editor.getText();
-      const words = text.trim().split(/\s+/).filter(word => word.length > 0);
-      setWordCount(words.length);
-      
-      // Send content to AI for suggestions if connected
-      if (isConnected && sendMessage) {
-        const content = editor.getHTML();
-        // Only send if content changed
-        if (lastSentContentRef.current !== content) {
-          lastSentContentRef.current = content;
-          const message: TextUpdateMessage = {
-            type: 'text_update',
-            content,
-            timestamp: Date.now()
-          };
-
-          // Send the message
-          if (message) {
-            sendMessage(message);
-          }
-        }
-      }
-    }
-  }, [isConnected, sendMessage]);
-
-  // Listen for Socket.IO events after connection is established
-  useEffect(() => {
-    if (isConnected && socket) {
-      console.log('Socket connected, setting up listeners');
-      
-      // Listen for AI suggestions
-      socket.on('ai_suggestion', (data) => {
-        console.log('Received AI suggestion event:', data);
-        handleAiSuggestion(data);
-      });
-      
-      // Clean up listeners
-      return () => {
-        socket.off('ai_suggestion');
-      };
-    }
-  }, [isConnected, socket, handleAiSuggestion]);
-
-  // Listen for interim transcript changes to send to server
-  useEffect(() => {
-    // Only send to the server if the text has actually changed and there is a connection
-    if (liveTranscription !== lastSentContentRef.current && isConnected && sendMessage) {
-      console.log('Sending live transcription update:', liveTranscription);
-      lastSentContentRef.current = liveTranscription;
-      
-      // Prepare the message
-      const message: TextUpdateMessage = {
-        type: 'text_update',
-        content: liveTranscription,
-        timestamp: Date.now()
-      };
-
-      // Send the message
-      if (message) {
-        sendMessage(message);
-      }
-    }
-  }, [isConnected, socket, handleAiSuggestion]);
-
-// Listen for interim transcript changes to send to server
-useEffect(() => {
-  // Only send to the server if the text has actually changed and there is a connection
-  if (liveTranscription !== lastSentContentRef.current && isConnected && sendMessage) {
-    console.log('Sending live transcription update:', liveTranscription);
-    lastSentContentRef.current = liveTranscription;
-    
-    // Prepare the message
-    const message: TextUpdateMessage = {
-      type: 'text_update',
-      content: liveTranscription,
-      timestamp: Date.now()
-    };
-
-    // Send the message
-    if (message) {
-      sendMessage(message);
-    }
-  }
-}, [isConnected, sendMessage, liveTranscription]);
-
-// Initial test message to verify Socket.IO connection
-useEffect(() => {
-  if (isConnected && sendMessage) {
-    sendMessage({
-      type: 'test_message',
-      content: 'Hello from Web Speech Enhanced page',
-      timestamp: Date.now()
-    });
-  }
-}, [isConnected, sendMessage]);
-
-// Socket cleanup effect
-useEffect(() => {
-  if (socket) {
-    return () => {
-      // Clean up socket event listeners on unmount
-      if (socket) {
-        socket.off('ai_suggestion');
-      }
-    };
-  }
-}, [socket]);
-
-// ... (rest of the code remains the same)
-
-// Render the page
-return (
+  // Render the page
+  return (
   <ProtectedRoute>
     <div className="min-h-screen bg-gray-50">
       <main className="flex flex-col h-screen">

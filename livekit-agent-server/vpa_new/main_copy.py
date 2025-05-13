@@ -13,6 +13,7 @@ import argparse
 import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
+import json
 
 # --- (Keep your existing logging setup) ---
 logging.basicConfig(level=logging.DEBUG,
@@ -26,6 +27,7 @@ try:
     from livekit.plugins import noise_cancellation
     from livekit.plugins import deepgram, silero # Removed openai import
     from livekit.plugins.turn_detector.multilingual import MultilingualModel
+    from livekit.plugins import avatar # Import avatar plugin
 except ImportError as e:
     logger.error(f"Failed to import required packages: {e}")
     # Adjusted pip install command if needed (removed openai)
@@ -52,6 +54,10 @@ else:
 
 # Verify critical environment variables (removed OPENAI_API_KEY)
 required_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "DEEPGRAM_API_KEY", "MY_CUSTOM_AGENT_URL"] # Added custom agent URL
+
+# Optional avatar service environment variables
+AVATAR_SERVICE_URL = os.getenv("AVATAR_SERVICE_URL", "https://avatar.livekit.io")  # Default to LiveKit's service
+AVATAR_API_KEY = os.getenv("AVATAR_API_KEY", "")  # Optional API key for avatar service
 for var in required_vars:
     value = os.getenv(var)
     if not value:
@@ -68,6 +74,11 @@ GLOBAL_PAGE_PATH = "speakingpage"
 GLOBAL_MODEL = "aura-asteria-en" # Deepgram TTS model
 # GLOBAL_TEMPERATURE = 0.7 # No longer directly used by OpenAI LLM here
 GLOBAL_INSTRUCTIONS = "You are a helpful voice AI assistant powered by a custom backend. Be concise." # Updated instructions slightly
+
+# Avatar configuration
+GLOBAL_AVATAR_ENABLED = True  # Enable/disable avatar feature
+GLOBAL_AVATAR_MODEL = "default"  # Avatar model to use
+GLOBAL_AVATAR_STYLE = "casual"  # Avatar style (e.g., casual, business)
 
 
 # --- (Keep your Assistant class as is) ---
@@ -105,6 +116,32 @@ async def entrypoint(ctx: agents.JobContext):
 
     try:
         logger.info("Creating agent session with VPA pipeline using CustomLLMBridge...")
+        
+        # Configure avatar if enabled
+        avatar_plugin = None
+        if GLOBAL_AVATAR_ENABLED:
+            logger.info(f"Configuring avatar with model: {GLOBAL_AVATAR_MODEL}, style: {GLOBAL_AVATAR_STYLE}")
+            # Create avatar configuration
+            avatar_config = {
+                "model": GLOBAL_AVATAR_MODEL,
+                "style": GLOBAL_AVATAR_STYLE,
+                # Add additional configuration as needed
+                "voice_sync": True,  # Synchronize avatar with voice
+                "background": "transparent"  # Transparent background
+            }
+            
+            # Initialize avatar plugin
+            try:
+                avatar_plugin = avatar.AvatarRenderer(
+                    service_url=AVATAR_SERVICE_URL,
+                    api_key=AVATAR_API_KEY if AVATAR_API_KEY else None,
+                    config=avatar_config
+                )
+                logger.info("Avatar plugin initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize avatar plugin: {e}")
+                avatar_plugin = None
+        
         session = AgentSession(
             stt=deepgram.STT(model="nova-3", language="multi"),
             # --- Use your CustomLLMBridge here ---
@@ -113,6 +150,8 @@ async def entrypoint(ctx: agents.JobContext):
             tts=deepgram.TTS(model=GLOBAL_MODEL),
             vad=silero.VAD.load(),
             turn_detection=MultilingualModel(),
+            # Add avatar plugin if enabled
+            avatar=avatar_plugin
         )
         logger.info("Agent session created successfully")
 
@@ -157,6 +196,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--page-path', type=str, help='Path to web page')
     parser.add_argument('--tts-model', type=str, help='Deepgram TTS model to use')
+    # Add avatar-related arguments
+    parser.add_argument('--avatar-enabled', type=bool, help='Enable or disable avatar')
+    parser.add_argument('--avatar-model', type=str, help='Avatar model to use')
+    parser.add_argument('--avatar-style', type=str, help='Avatar style to use')
     # parser.add_argument('--temperature', type=float, help='LLM temperature') # Removed
 
     args, _ = parser.parse_known_args()
@@ -168,6 +211,19 @@ if __name__ == "__main__":
     if args.tts_model:
         GLOBAL_MODEL = args.tts_model
         logger.info(f"Using TTS model: {GLOBAL_MODEL}")
+        
+    # Handle avatar-related arguments
+    if args.avatar_enabled is not None:
+        GLOBAL_AVATAR_ENABLED = args.avatar_enabled
+        logger.info(f"Avatar {'enabled' if GLOBAL_AVATAR_ENABLED else 'disabled'}")
+        
+    if args.avatar_model:
+        GLOBAL_AVATAR_MODEL = args.avatar_model
+        logger.info(f"Using avatar model: {GLOBAL_AVATAR_MODEL}")
+        
+    if args.avatar_style:
+        GLOBAL_AVATAR_STYLE = args.avatar_style
+        logger.info(f"Using avatar style: {GLOBAL_AVATAR_STYLE}")
 
     # if args.temperature is not None: # Removed
     #     GLOBAL_TEMPERATURE = args.temperature
@@ -179,7 +235,7 @@ if __name__ == "__main__":
     while i < len(sys.argv):
         arg = sys.argv[i]
         # Updated list of flags to remove
-        if arg in ['--page-path', '--tts-model'] and i + 1 < len(sys.argv):
+        if arg in ['--page-path', '--tts-model', '--avatar-enabled', '--avatar-model', '--avatar-style'] and i + 1 < len(sys.argv):
             i += 2  # Skip both the flag and its value
         else:
             filtered_argv.append(arg)

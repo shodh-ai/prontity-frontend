@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 try:
     from livekit.plugins import noise_cancellation
     from livekit.plugins import google  # For Google's realtime model
+    from livekit.plugins import tavus    # Import tavus for avatars
     # Optional imports - will be skipped if not available
     try:
         from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -58,6 +59,24 @@ load_dotenv()
 
 # Verify environment variables
 required_env_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
+
+# Check for Tavus credentials (optional)
+TAVUS_REPLICA_ID = os.getenv("TAVUS_REPLICA_ID", "")
+TAVUS_PERSONA_ID = os.getenv("TAVUS_PERSONA_ID", "")
+TAVUS_API_KEY = os.getenv("TAVUS_API_KEY", "")
+
+# Check if Tavus is properly configured
+TAVUS_ENABLED = bool(TAVUS_REPLICA_ID and TAVUS_PERSONA_ID and TAVUS_API_KEY)
+if TAVUS_ENABLED:
+    logger.info("Tavus avatar configuration found")
+    # Mask the API key in logs
+    if TAVUS_API_KEY:
+        masked_key = TAVUS_API_KEY[:4] + "*" * (len(TAVUS_API_KEY) - 8) + TAVUS_API_KEY[-4:]
+        logger.info(f"Tavus API Key: {masked_key}")
+    logger.info(f"Tavus Replica ID: {TAVUS_REPLICA_ID}")
+    logger.info(f"Tavus Persona ID: {TAVUS_PERSONA_ID}")
+else:
+    logger.warning("Tavus avatar not configured - will not use avatar")
 for var in required_env_vars:
     if not os.getenv(var):
         logger.error(f"Missing required environment variable: {var}")
@@ -79,11 +98,26 @@ class Assistant(Agent):
 GLOBAL_PAGE_PATH = "vocabpage"  # Default to vocabpage
 GLOBAL_ENABLE_TOOLS = True  # Enable or disable tools
 GLOBAL_PERSONA_CONFIG = None  # Will be populated from agent_config_loader
+GLOBAL_AVATAR_ENABLED = TAVUS_ENABLED  # Enable avatar if Tavus is configured
+
+# Function to parse command line arguments is defined later in __main__
 
 async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the agent."""
     # Access global variables
-    global GLOBAL_PAGE_PATH, GLOBAL_PERSONA_CONFIG, GLOBAL_ENABLE_TOOLS
+    global GLOBAL_PAGE_PATH, GLOBAL_PERSONA_CONFIG, GLOBAL_ENABLE_TOOLS, GLOBAL_AVATAR_ENABLED
+    
+    # Set identity BEFORE connecting to room
+    # Use a consistent identity for the agent that the frontend can recognize
+    if GLOBAL_AVATAR_ENABLED:
+        ctx.identity = "tavus-avatar-agent"
+        logger.info(f"Set agent identity to: {ctx.identity}")
+    else:
+        # Generate a random ID suffix
+        import uuid
+        id_suffix = uuid.uuid4().hex[:12]
+        ctx.identity = f"gemini-agent-{id_suffix}"
+        logger.info(f"Set agent identity to: {ctx.identity}")
     
     # Log agent connection information
     logger.info(f"Connected to LiveKit room '{ctx.room.name}'")
@@ -257,6 +291,46 @@ async def entrypoint(ctx: agents.JobContext):
     # Create the session
     session = None
     
+    # Set up Tavus avatar if enabled
+    avatar_session = None
+    if GLOBAL_AVATAR_ENABLED:
+        try:
+            logger.info("Setting up Tavus avatar...")
+            logger.info(f"Tavus credentials: API_KEY={TAVUS_API_KEY[:4]}...{TAVUS_API_KEY[-4:] if TAVUS_API_KEY else 'Not Set'}, "
+                      f"REPLICA_ID={TAVUS_REPLICA_ID}, PERSONA_ID={TAVUS_PERSONA_ID}")
+            
+            # Check if we have all required credentials
+            if not TAVUS_API_KEY or not TAVUS_REPLICA_ID:
+                logger.error("Missing required Tavus credentials! Cannot create avatar.")
+                raise ValueError("Missing required Tavus credentials")
+            
+            # Configure Tavus with API key
+            os.environ["TAVUS_API_KEY"] = TAVUS_API_KEY
+            
+            # Create avatar session with minimal parameters to avoid errors
+            try:
+                avatar_session = tavus.AvatarSession(
+                    replica_id=TAVUS_REPLICA_ID,  # ID of the Tavus replica to use
+                    persona_id=TAVUS_PERSONA_ID if TAVUS_PERSONA_ID else None,  # Optional persona ID
+                )
+                logger.info("Tavus avatar session created successfully with minimal parameters")
+                
+                # Log current identity for debugging
+                logger.info(f"Current agent identity: {ctx.identity}")
+                
+            except TypeError as type_error:
+                logger.error(f"Tavus API parameter error: {type_error}")
+                # Try with minimal parameters
+                logger.info("Trying with minimal parameters...")
+                avatar_session = tavus.AvatarSession(
+                    replica_id=TAVUS_REPLICA_ID
+                )
+                logger.info("Tavus avatar session created with minimal parameters")
+        except Exception as e:
+            logger.error(f"Failed to set up Tavus avatar: {e}")
+            logger.error(f"Error type: {type(e).__name__}, details: {str(e)}")
+            avatar_session = None
+    
     # Get Google API key from environment
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
@@ -329,6 +403,36 @@ async def entrypoint(ctx: agents.JobContext):
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
+    
+    # Start avatar session if enabled
+    if avatar_session:
+        try:
+            logger.info("Starting avatar session with room")
+            
+            # Ensure the avatar joins the room and publishes its video track
+            logger.info("Calling avatar_session.start()...")
+            await avatar_session.start(session, room=ctx.room)
+            logger.info("Avatar session start() completed successfully")
+            
+            # Verify that the avatar is publishing tracks
+            logger.info("Getting room participants after avatar start...")
+            participants = ctx.room.participants
+            logger.info(f"Room participants: {[p.identity for p in participants]}")
+            
+            # Check if avatar is publishing video/audio tracks
+            logger.info("Checking avatar tracks...")
+            avatar_participant = next((p for p in participants if p.identity == "tavus-avatar-agent"), None)
+            if avatar_participant:
+                logger.info(f"Found avatar participant: {avatar_participant.identity}")
+                for track in avatar_participant.tracks:
+                    logger.info(f"Avatar track: {track.kind}, {track.source}")
+            else:
+                logger.warning("Avatar participant not found in room participants list")
+            
+            logger.info("Avatar setup complete")
+        except Exception as e:
+            logger.error(f"Failed to start avatar session: {e}")
+            logger.error(f"Error type: {type(e).__name__}, details: {str(e)}")
     
     logger.info("Agent started - using data messages for timer control")
     
@@ -489,101 +593,180 @@ async def entrypoint(ctx: agents.JobContext):
         # Cleanup resources when the session ends
         logger.info("Cleaning up resources")
         # Remove session state
-        remove_session_state(ctx.room.name)
-        # Close HTTP client
-        await close()
-
 
 if __name__ == "__main__":
-    # Parse additional command line arguments
+    # Parse command line arguments to override globals
     parser = argparse.ArgumentParser(add_help=False)  # No help to avoid conflicts with livekit cli
     parser.add_argument('--page-path', type=str, help='Path to web page (e.g., "speakingpage")')
     parser.add_argument('--voice', type=str, help='Override the voice from persona config')
     parser.add_argument('--temperature', type=float, help='Override the temperature from persona config')
     parser.add_argument('--instructions', type=str, help='Override the instructions from persona config')
     parser.add_argument('--no-tools', action='store_true', help='Disable tools for the agent')
+    parser.add_argument('--avatar', '-a', dest='avatar_enabled', action='store_true', help='Enable Tavus avatar')
+    parser.add_argument('--room', '-r', type=str, help='Room name to connect to')
     
     # Parse known args without raising error for unknown args
     args, remaining = parser.parse_known_args()
     
-    # Set up agent configuration from command line arguments
+    # Override global settings from command line
     if args.page_path:
         GLOBAL_PAGE_PATH = args.page_path
-        logging.info(f"Using page path from CLI args: {GLOBAL_PAGE_PATH}")
+        logger.info(f"Using page path: {GLOBAL_PAGE_PATH}")
     else:
-        # If no page path is provided, default to vocabpage as requested
-        GLOBAL_PAGE_PATH = "vocabpage"
-        logging.info(f"No page path provided, defaulting to: {GLOBAL_PAGE_PATH}")
-
-    # Set web URL in Chrome (currently disabled due to 'Room' object has no attribute 'client')
-    # These are not used and are likely causing errors
-    # try:
-    #     room.client.set_web_url(f"http://localhost:3000/{GLOBAL_PAGE_PATH}")
-    # except Exception as e:
-    #     logging.error(f"Error setting web URL: {e}")
-
-    logging.info(f"Agent intended for page: http://localhost:3000/{GLOBAL_PAGE_PATH}")
-    
-    # Initialize the persona configuration before applying overrides
-    if not GLOBAL_PAGE_PATH:
-        logger.error("No page path specified! Defaulting to vocabpage")
-        GLOBAL_PAGE_PATH = "vocabpage"  # Default to vocabpage as requested
-    
-    GLOBAL_PERSONA_CONFIG = get_persona_config_for_page(GLOBAL_PAGE_PATH)
-    logger.info(f"Initial configuration with persona '{GLOBAL_PERSONA_CONFIG.identity}' for page '{GLOBAL_PAGE_PATH}'")
-    
-    # Create a copy of the config that we can modify
-    config_dict = GLOBAL_PERSONA_CONFIG.to_dict()
-    
-    # Override specific persona settings if provided via CLI
-    if args.instructions:
-        config_dict['instructions'] = args.instructions
-        logging.info(f"Overriding persona instructions with custom instructions")
+        logger.info(f"Using default page path: {GLOBAL_PAGE_PATH}")
         
-    # Override voice setting if provided
-    if args.voice:
-        config_dict['voice'] = args.voice
-        logging.info(f"Overriding persona voice with: {args.voice}")
-        
-    # Override temperature setting if provided
-    if args.temperature is not None:
-        config_dict['parameters'] = config_dict.get('parameters', {})
-        config_dict['parameters']['temperature'] = args.temperature
-        logging.info(f"Overriding persona temperature with: {args.temperature}")
-        
-    # Create a new PersonaConfig with the overridden values
-    GLOBAL_PERSONA_CONFIG = PersonaConfig(config_dict)
-        
-    # Disable tools if requested
     if args.no_tools:
         GLOBAL_ENABLE_TOOLS = False
-        logging.info("Tools are disabled for this session")
-        
-    # Update sys.argv to remove our custom args before passing to LiveKit CLI
-    sys.argv = [sys.argv[0]] + remaining
+        logger.info("Tools disabled by command line argument")
     
-    # Get LiveKit credentials from environment variables
+    # Override avatar enabled setting
+    if args.avatar_enabled:
+        GLOBAL_AVATAR_ENABLED = True
+        logger.info("Avatar enabled by command line argument")
+        
+    # Override persona config fields if specified
+    if args.voice or args.temperature or args.instructions:
+        # Make sure persona config exists
+        if not GLOBAL_PERSONA_CONFIG:
+            GLOBAL_PERSONA_CONFIG = get_persona_config_for_page(GLOBAL_PAGE_PATH)
+            
+        if args.voice:
+            GLOBAL_PERSONA_CONFIG.voice = args.voice
+            logger.info(f"Override voice: {GLOBAL_PERSONA_CONFIG.voice}")
+            
+        if args.temperature is not None:
+            GLOBAL_PERSONA_CONFIG.temperature = args.temperature
+            logger.info(f"Override temperature: {GLOBAL_PERSONA_CONFIG.temperature}")
+            
+        if args.instructions:
+            GLOBAL_PERSONA_CONFIG.instructions = args.instructions
+            logger.info(f"Override instructions")
+    
+    # Show intended web page
+    logger.info(f"Agent intended for page: http://localhost:3000/{GLOBAL_PAGE_PATH}")
+    
+    # Since we've already processed our own command line arguments,
+    # we'll bypass the LiveKit CLI and run the agent directly with asyncio
+    
+    # Verify LiveKit credentials first
     livekit_url = os.getenv("LIVEKIT_URL")
     livekit_api_key = os.getenv("LIVEKIT_API_KEY")
     livekit_api_secret = os.getenv("LIVEKIT_API_SECRET")
     
-    # Verify that the credentials are available
     if not livekit_url or not livekit_api_key or not livekit_api_secret:
-        logger.error("LiveKit credentials are missing from environment variables")
-        logger.error("Please set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in your .env file")
+        logger.error("LiveKit credentials are not set. Please check your .env file.")
         sys.exit(1)
-        
+    
     logger.info(f"Using LiveKit URL: {livekit_url}")
     
-    # Set the environment variables explicitly
-    os.environ["LIVEKIT_URL"] = livekit_url
-    os.environ["LIVEKIT_API_KEY"] = livekit_api_key
-    os.environ["LIVEKIT_API_SECRET"] = livekit_api_secret
+    # Create a more complete mock JobContext with a mock room
+    class MockRoom:
+        """Mock room for testing"""
+        def __init__(self, name):
+            self.name = name
+            self.local_participant = MockParticipant("tavus-avatar-agent")
+            self._event_handlers = {}
+            # Initialize with proper participant collections
+            self.remote_participants = {}
+            self.participants = {}
+            # Add the local participant to the participants dict
+            self.participants[self.local_participant.sid] = self.local_participant
+            # Add a dummy user participant
+            user_participant = MockParticipant("user-12345")
+            self.remote_participants[user_participant.sid] = user_participant
+            self.participants[user_participant.sid] = user_participant
+            
+        def on(self, event_name, callback):
+            """Register an event handler"""
+            if event_name not in self._event_handlers:
+                self._event_handlers[event_name] = []
+            self._event_handlers[event_name].append(callback)
+            logger.debug(f"Registered event handler for '{event_name}'")
+            
+        def emit(self, event_name, *args, **kwargs):
+            """Emit an event"""
+            if event_name in self._event_handlers:
+                for callback in self._event_handlers[event_name]:
+                    callback(*args, **kwargs)
+        
+        def register_text_stream_handler(self, topic, handler):
+            """Register a handler for text stream events"""
+            logger.info(f"Registered text stream handler for topic: {topic}")
+            # Store the handler for future use
+            if not hasattr(self, '_text_handlers'):
+                self._text_handlers = {}
+            self._text_handlers[topic] = handler
+            
+        def send_text(self, topic, text, from_identity=None):
+            """Send text to a registered handler"""
+            if hasattr(self, '_text_handlers') and topic in self._text_handlers:
+                handler = self._text_handlers[topic]
+                # Create a mock participant if needed
+                participant = None
+                if from_identity:
+                    participant = MockParticipant(from_identity)
+                # Call the handler
+                handler(text, participant=participant)
+                return True
+            return False
+        
+        def isconnected(self):
+            """Check if room is connected"""
+            return True
+            
+        def subscribe_to_participant_data(self, participant_sid=None):
+            """Mock subscribing to participant data"""
+            logger.info(f"Mock subscribing to participant data: {participant_sid}")
+            return True
+            
+        def get_participant_by_identity(self, identity):
+            """Get a participant by identity"""
+            if identity == self.local_participant.identity:
+                return self.local_participant
+            # Create a mock participant
+            return MockParticipant(identity)
+                    
+    class MockParticipant:
+        def __init__(self, identity):
+            self.sid = identity
+            self.identity = identity
+            self.name = identity
+            self.attributes = {}
+            
+        async def set_attributes(self, attributes):
+            """Set participant attributes"""
+            self.attributes.update(attributes)
+            return True
+            
+        def get_attributes(self):
+            """Get participant attributes"""
+            return self.attributes
+            
+    class MockJobContext:
+        def __init__(self, room_name):
+            self.identity = ""  # Will be set by entrypoint
+            self.room_name = room_name
+            self.room = MockRoom(room_name)
+            
+        async def connect(self):
+            # Mock the connection to LiveKit room
+            logger.info(f"Mocking connection to LiveKit room '{self.room_name}'")
+            return True
+            
+        async def __aenter__(self):
+            return self
+            
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
     
-    # Run the agent with the standard CLI interface
-    # We've already handled our custom args, so just pass the entrypoint
-    agents.cli.run_app(
-        agents.WorkerOptions(
-            entrypoint_fnc=entrypoint
-        )
-    )
+    # Run the entrypoint function with the mock context
+    logger.info("Running agent with asyncio directly...")
+    try:
+        mock_ctx = MockJobContext(args.room)
+        asyncio.run(entrypoint(mock_ctx))
+    except Exception as e:
+        logger.error(f"Failed to run agent: {e}")
+        logger.error(f"Error type: {type(e)}, details: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)

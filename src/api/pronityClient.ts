@@ -414,6 +414,18 @@ export interface SpeakingPracticeData {
 }
 
 /**
+ * Interface for user status data (scores)
+ */
+export interface UserStatus {
+  id: string;
+  userId: string;
+  speaking: number;
+  writing: number;
+  listening: number;
+  updatedAt: string;
+}
+
+/**
  * Saves transcription data to the backend
  * @param data The speaking practice data containing the transcription
  * @param token JWT authentication token
@@ -507,5 +519,125 @@ export async function uploadAudioRecording(audioBlob: Blob, practiceId: string, 
       throw error;
     }
     throw new PronityApiError(`Network error when uploading audio: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Fetches the current user's status scores
+ * @param token JWT authentication token
+ * @returns Promise resolving to the user status data
+ * @throws PronityApiError if the request fails
+ */
+export async function fetchUserStatus(token: string): Promise<UserStatus> {
+  try {
+    console.log('Fetching user status');
+    
+    const response = await fetch(`${PRONITY_API_URL}/status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error fetching user status: ${response.statusText}`, response.status);
+    }
+    
+    const result = await response.json();
+    console.log('User status fetched successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in fetchUserStatus:', error);
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when fetching user status: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Updates the user's status scores
+ * @param data The scores to update (speaking, writing, listening)
+ * @param token JWT authentication token
+ * @returns Promise resolving to the updated user status
+ * @throws PronityApiError if the request fails
+ */
+export async function updateUserStatus(
+  data: {
+    speaking?: number;
+    writing?: number;
+    listening?: number;
+  },
+  token: string
+): Promise<UserStatus> {
+  try {
+    console.log('Updating user status:', data);
+    
+    const response = await fetch(`${PRONITY_API_URL}/status`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error updating user status: ${response.statusText}`, response.status);
+    }
+    
+    const result = await response.json();
+    console.log('User status updated successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in updateUserStatus:', error);
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when updating user status: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Resets the user's status scores to zero
+ * @param token JWT authentication token
+ * @returns Promise resolving to the reset user status
+ * @throws PronityApiError if the request fails
+ */
+export async function resetUserStatus(token: string): Promise<UserStatus> {
+  try {
+    console.log('Resetting user status');
+    
+    const response = await fetch(`${PRONITY_API_URL}/status/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error resetting user status: ${response.statusText}`, response.status);
+    }
+    
+    const result = await response.json();
+    console.log('User status reset successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in resetUserStatus:', error);
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when resetting user status: ${(error as Error).message}`, 0);
   }
 }

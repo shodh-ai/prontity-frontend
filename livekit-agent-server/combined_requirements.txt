@@ -1,0 +1,39 @@
+# Core LiveKit dependencies
+livekit==1.0.6
+livekit_api==1.0.2
+livekit_protocol==1.0.2
+livekit-agents[deepgram,openai,silero,turn-detector]~=1.0
+livekit-plugins-noise-cancellation~=0.2
+
+# Tavus avatar support
+# Make sure the tavus plugin is installed
+
+# Google Gemini support
+google-generativeai>=0.3.0
+
+# Web frameworks
+Flask==3.1.0
+fastapi==0.104.1
+uvicorn==0.23.2
+
+# AI/ML libraries
+openai==1.77.0
+pydantic==2.11.3
+
+# Utilities
+python-dotenv==1.1.0
+requests==2.32.3
+tqdm==4.67.1
+websockets==15.0.1
+httpx==0.28.1
+anyio>=3.7.1,<4.0.0
+aiohttp==3.11.18
+
+# Audio processing
+sounddevice==0.5.1
+psutil==7.0.0
+
+# Note: You may need to install some packages directly from GitHub:
+# pip install git+https://github.com/livekit/agents.git
+# pip install git+https://github.com/livekit/plugins.git
+# pip install git+https://github.com/livekit/python-sdks.git

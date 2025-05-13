@@ -630,8 +630,21 @@ async def message(sid, data):
     logger.info(f"Received message from {sid}: {str(data)[:100]}...")
     
     try:
-        # Handle text update messages
-        if isinstance(data, dict) and data.get('type') == 'text_update':
+        # Highlights update messages - broadcast to all clients
+        if isinstance(data, dict) and data.get('type') == 'highlights_update':
+            logger.info(f"Broadcasting highlights update from {sid} to all clients")
+            highlights = data.get('highlights', [])
+            logger.info(f"Broadcasting {len(highlights)} highlights")
+            
+            # Store highlights for this client
+            client_suggestions[sid] = highlights
+            
+            # Broadcast to all connected clients
+            await sio.emit('highlights_update', data)
+            return
+        
+        # Text content updates from the editor
+        elif isinstance(data, dict) and data.get('type') == 'text_update':
             received_text = data.get('content', '')
             timestamp = data.get('timestamp', 0)
             

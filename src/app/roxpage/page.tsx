@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useSession } from 'next-auth/react';
@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import contentApi from '@/api/contentService';
 import userProgressApi from '@/api/userProgressService';
+import LiveKitSession from '@/components/LiveKitSession';
 
 function RoxPageContent() {
   const router = useRouter();
@@ -22,6 +23,14 @@ function RoxPageContent() {
   const [speakingTopics, setSpeakingTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // LiveKit integration
+  const [showLiveKit, setShowLiveKit] = useState(false);
+  const [agentRoom, setAgentRoom] = useState('');
+  
+  // Button references for the agent to interact with
+  const statusViewButtonRef = useRef<HTMLButtonElement>(null);
+  const startLearningButtonRef = useRef<HTMLButtonElement>(null);
   
   // Get username from session or localStorage when component mounts
   useEffect(() => {
@@ -93,6 +102,33 @@ function RoxPageContent() {
     
     fetchUserData();
   }, [session]);
+
+  // Initialize LiveKit session
+  useEffect(() => {
+    if (userName) {
+      // Generate a unique room name for this user
+      setAgentRoom(`rox-${userName.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`);
+    }
+  }, [userName]);
+  
+  // Function to handle status view button click
+  const handleStatusView = () => {
+    console.log('Status View clicked');
+    // Implement status view logic here
+    // This will be a target for the agent to click
+  };
+
+  // Function to handle start learning button click
+  const handleStartLearning = () => {
+    console.log('Start Learning clicked');
+    // Implement start learning logic here
+    // This will be a target for the agent to click
+  };
+  
+  // Function to toggle LiveKit visibility
+  const toggleLiveKit = () => {
+    setShowLiveKit(!showLiveKit);
+  };
 
   // Navigation to other practice sections with context
   const navigateToSpeaking = () => {
@@ -281,8 +317,36 @@ function RoxPageContent() {
             )}
           </div>
 
+          {/* Action Buttons for Agent Interaction */}
+          <div className="inline-flex items-center gap-[11px] absolute top-[720px] left-[542px]" style={{width: '800px', left: '152px', transform: 'translateX(390px)'}}>
+            <Button
+              ref={statusViewButtonRef}
+              id="statusViewButton"
+              onClick={handleStatusView}
+              className="bg-[#566FE9] text-white hover:bg-[#4A5FCF] px-6 py-3 rounded-md font-medium"
+            >
+              View My Status
+            </Button>
+            
+            <Button
+              ref={startLearningButtonRef}
+              id="startLearningButton"
+              onClick={handleStartLearning}
+              className="bg-[#566FE9] text-white hover:bg-[#4A5FCF] px-6 py-3 rounded-md font-medium"
+            >
+              Start Learning
+            </Button>
+            
+            <Button
+              onClick={toggleLiveKit}
+              className="bg-transparent border border-[#566FE9] text-[#566FE9] hover:bg-[#F0F4FF] px-6 py-3 rounded-md font-medium"
+            >
+              {showLiveKit ? 'Hide Rox' : 'Show Rox'}
+            </Button>
+          </div>
+
           {/* Suggestion cards */}
-          <div className="inline-flex items-center gap-[11px] absolute top-[894px] left-[542px]" style={{width: '800px', left: '152px', transform: 'translateX(390px)'}}>
+          <div className="inline-flex items-center gap-[11px] absolute top-[800px] left-[542px]" style={{width: '800px', left: '152px', transform: 'translateX(390px)'}}>
             {!loading && suggestionCards.map((card, index) => (
               <Card
                 key={index}
@@ -349,6 +413,22 @@ function RoxPageContent() {
             </Button>
           </div>
         </div>
+        
+        {/* LiveKit Session */}
+        {showLiveKit && agentRoom && (
+          <div className="absolute bottom-4 right-4 w-80 h-96 rounded-lg overflow-hidden shadow-lg border border-gray-300">
+            <LiveKitSession
+              roomName={agentRoom}
+              userName={userName || 'User'}
+              sessionTitle="Rox Assistant"
+              pageType="rox"
+              showTimer={false}
+              hideVideo={false}
+              aiAssistantEnabled={true}
+              onLeave={() => setShowLiveKit(false)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ dist-ssr
 
 # Environment files
 .env
+.env.backup
 .env.example
 .env.local
 .env.development.local

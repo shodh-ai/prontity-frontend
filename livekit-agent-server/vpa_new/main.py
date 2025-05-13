@@ -102,10 +102,22 @@ class Assistant(Agent):
 
 async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the agent."""
+    # Set identity BEFORE connecting to room
+    # Use a consistent identity for the agent that the frontend can recognize
+    if GLOBAL_AVATAR_ENABLED:
+        ctx.identity = "tavus-avatar-agent"
+        logger.info(f"Set agent identity to: {ctx.identity}")
+    else:
+        # Generate a random ID suffix
+        import uuid
+        id_suffix = uuid.uuid4().hex[:12]
+        ctx.identity = f"simulated-agent-{id_suffix}"
+        logger.info(f"Set agent identity to: {ctx.identity}")
+    
     # Connect to the room
     try:
         await ctx.connect()
-        logger.info(f"Connected to LiveKit room '{ctx.room.name}'")
+        logger.info(f"Connected to LiveKit room '{ctx.room.name}' as {ctx.identity}")
     except Exception as e:
         logger.error(f"Failed to connect to LiveKit room: {e}")
         return
@@ -177,17 +189,17 @@ async def entrypoint(ctx: agents.JobContext):
                     # Add to avatar config
                     avatar_config["publish_options"] = publish_options
                 
-                # Create avatar session with explicit identity for better track identification
+                # Create avatar session with minimal parameters to avoid errors
+                # Removed avatar_config parameter that was causing errors
                 avatar_session = tavus.AvatarSession(
                     replica_id=TAVUS_REPLICA_ID,  # ID of the Tavus replica to use
                     persona_id=TAVUS_PERSONA_ID if TAVUS_PERSONA_ID else None,  # Optional persona ID
-                    avatar_config=avatar_config,  # Additional configuration
                 )
-                logger.info("Tavus avatar session created successfully with custom video config")
+                logger.info("Tavus avatar session created successfully with minimal parameters")
                 
-                # Set the identity to a consistent value that's easy to identify in the client
-                ctx.identity = 'tavus-avatar-agent'
-                logger.info(f"Set agent identity to: {ctx.identity}")
+                # Identity was already set at the start of the function, so we'll leave it as is
+                # Just log the current identity for debugging
+                logger.info(f"Current agent identity: {ctx.identity}")
                 
                 # Test avatar session capabilities
                 if hasattr(avatar_session, 'get_capabilities'):
@@ -226,6 +238,8 @@ async def entrypoint(ctx: agents.JobContext):
                 model="gpt-4o-mini", 
                 temperature=GLOBAL_TEMPERATURE,
             ),
+            # Use standard Deepgram TTS without custom options
+            # Removed voice and sample_rate parameters that caused errors
             tts=deepgram.TTS(model=GLOBAL_MODEL),
             vad=silero.VAD.load(),
             turn_detection=MultilingualModel(),
@@ -385,9 +399,41 @@ async def entrypoint(ctx: agents.JobContext):
                 # Check avatar's audio status
                 if hasattr(avatar_session, 'is_audio_enabled'):
                     logger.info(f"Avatar audio enabled: {avatar_session.is_audio_enabled}")
+                    # Force enable audio if it's not enabled
+                    if hasattr(avatar_session, 'is_audio_enabled') and not avatar_session.is_audio_enabled:
+                        logger.warning("Avatar audio is not enabled, attempting to enable it...")
+                        if hasattr(avatar_session, 'enable_audio'):
+                            try:
+                                await avatar_session.enable_audio()
+                                logger.info("Successfully enabled avatar audio")
+                            except Exception as audio_err:
+                                logger.error(f"Failed to enable avatar audio: {audio_err}")
+                
                 if hasattr(avatar_session, 'is_video_enabled'):
                     logger.info(f"Avatar video enabled: {avatar_session.is_video_enabled}")
-                    
+                
+                # Ensure audio track is published
+                logger.info("Verifying audio track publication...")
+                audio_track_published = False
+                for p in ctx.room.participants:
+                    if p.identity == 'tavus-avatar-agent':
+                        for track in p.tracks:
+                            if track.kind == 'audio':
+                                audio_track_published = True
+                                logger.info(f"Found audio track for tavus-avatar-agent: {track}")
+                
+                if not audio_track_published:
+                    logger.warning("No audio track found for tavus-avatar-agent, trying to publish audio track...")
+                    try:
+                        # Try to force publish audio track if the method exists
+                        if hasattr(avatar_session, 'publish_audio'):
+                            await avatar_session.publish_audio()
+                            logger.info("Called publish_audio() on avatar session")
+                        else:
+                            logger.warning("No publish_audio method available on avatar session")
+                    except Exception as e:
+                        logger.error(f"Failed to publish audio track: {e}")
+                
                 logger.info("Avatar setup complete")
             except Exception as e:
                 logger.error(f"Failed to start avatar session: {e}")

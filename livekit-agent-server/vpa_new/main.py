@@ -269,8 +269,19 @@ async def entrypoint(ctx: agents.JobContext):
                 
                 # Verify that the avatar is publishing a video track
                 logger.info("Getting room participants after avatar start...")
-                participants = ctx.room.participants
-                logger.info(f"Room participants: {[p.identity for p in participants]}")
+                # Fix: Use get_participants() method instead of accessing participants property
+                participants = []
+                try:
+                    if hasattr(ctx.room, 'get_participants'):
+                        participants = await ctx.room.get_participants()
+                    elif hasattr(ctx.room, 'participants') and ctx.room.participants is not None:
+                        participants = list(ctx.room.participants.values())
+                    else:
+                        logger.warning("No method to access participants found in Room object")
+                except Exception as e:
+                    logger.error(f"Error accessing participants: {e}")
+                    
+                logger.info(f"Room participants: {[p.identity for p in participants] if participants else 'None'}")
                 
                 # Check if tavus-avatar-agent is publishing a video track
                 # If not, try to force the avatar to publish a video track
@@ -300,7 +311,17 @@ async def entrypoint(ctx: agents.JobContext):
                 
                 # Log information about the avatar's tracks again after setup
                 # to verify if video track is now available
-                participants = ctx.room.participants
+                participants = []
+                try:
+                    if hasattr(ctx.room, 'get_participants'):
+                        participants = await ctx.room.get_participants()
+                    elif hasattr(ctx.room, 'participants') and ctx.room.participants is not None:
+                        participants = list(ctx.room.participants.values())
+                    else:
+                        logger.warning("No method found to access room participants")
+                except Exception as e:
+                    logger.error(f"Error accessing participants: {e}")
+                
                 for p in participants:
                     if p.identity == 'tavus-avatar-agent':
                         logger.info(f"Final track check for avatar participant: {p.identity}")
@@ -320,11 +341,19 @@ async def entrypoint(ctx: agents.JobContext):
                     logger.info("No state attribute found on avatar_session")
                 
                 # Get detailed track information
-                if hasattr(ctx.room, 'participants'):
-                    for p in ctx.room.participants:
+                try:
+                    participants = []
+                    if hasattr(ctx.room, 'get_participants'):
+                        participants = await ctx.room.get_participants()
+                    elif hasattr(ctx.room, 'participants') and ctx.room.participants is not None:
+                        participants = list(ctx.room.participants.values())
+                        
+                    for p in participants:
                         logger.info(f"Participant: {p.identity}")
                         if hasattr(p, 'tracks'):
                             logger.info(f"  Tracks for {p.identity}: {p.tracks}")
+                except Exception as e:
+                    logger.error(f"Error getting participant track information: {e}")
                 
                 # Force publishing the avatar video if that method exists
                 avatar_video_published = False
@@ -415,7 +444,16 @@ async def entrypoint(ctx: agents.JobContext):
                 # Ensure audio track is published
                 logger.info("Verifying audio track publication...")
                 audio_track_published = False
-                for p in ctx.room.participants:
+                participants = []
+                try:
+                    if hasattr(ctx.room, 'get_participants'):
+                        participants = await ctx.room.get_participants()
+                    elif hasattr(ctx.room, 'participants') and ctx.room.participants is not None:
+                        participants = list(ctx.room.participants.values())
+                except Exception as e:
+                    logger.error(f"Error accessing participants for audio check: {e}")
+                    
+                for p in participants:
                     if p.identity == 'tavus-avatar-agent':
                         for track in p.tracks:
                             if track.kind == 'audio':
@@ -471,7 +509,23 @@ async def entrypoint(ctx: agents.JobContext):
         except Exception as e:
             logger.error(f"Failed to send greeting: {e}")
         
-        logger.info(f"Voice agent is running for {GLOBAL_PAGE_PATH}")
+        # Use explicit page path from command line args instead of global var
+        # Fix the JobContext job_config error
+        try:
+            # Check if job_config exists
+            if hasattr(ctx, 'job_config') and ctx.job_config is not None:
+                page_path = ctx.job_config.get("page_path", GLOBAL_PAGE_PATH)
+            else:
+                # Fallback to global configuration or command line args
+                logger.info("No job_config found, using global page path")
+                page_path = GLOBAL_PAGE_PATH
+                
+            logger.info(f"Using page path: {page_path}")
+        except Exception as e:
+            logger.error(f"Error accessing job_config: {e}")
+            page_path = GLOBAL_PAGE_PATH
+            logger.info(f"Falling back to global page path: {page_path}")
+        logger.info(f"Voice agent is running for {page_path}")
         
         # Keep the agent running until interrupted
         try:

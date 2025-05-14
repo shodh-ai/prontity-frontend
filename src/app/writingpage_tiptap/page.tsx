@@ -4,7 +4,7 @@
 import '@/styles/tts-highlight.css';
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+// Router removed to prevent any redirects
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
 import TextStyle from '@tiptap/extension-text-style';
@@ -20,8 +20,7 @@ import { Highlight as HighlightType } from '@/components/TiptapEditor/highlightI
 // Import our reusable components
 import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
 import EditorToolbar from '@/components/EditorToolbar';
-import useWritingTTS from '@/components/WritingTTS';
-import NextTaskButton from '@/components/NextTaskButton';
+// TTS functionality removed
 // Import our Socket.IO hook
 import { useSocketIO } from '@/hooks/useSocketIO';
 
@@ -59,15 +58,7 @@ export default function WritingPage() {
   // State for the writing question
   const [question, setQuestion] = useState<Question | null>(null);
   
-  // Get search parameters for flow navigation
-  const searchParams = useSearchParams();
-  const flowPosition = parseInt(searchParams?.get('flowPosition') || '0', 10);
-  const totalTasks = parseInt(searchParams?.get('totalTasks') || '0', 10);
-  const taskId = searchParams?.get('taskId');
-  const topicId = searchParams?.get('topicId');
-  
-  // Router for navigation
-  const router = useRouter();
+  // Router removed to prevent redirects
   
   // Ref for current editor content to avoid stale closures in socket handlers
   const editorContentRef = useRef('');
@@ -78,12 +69,7 @@ export default function WritingPage() {
   // Use our Socket.IO hook for real-time communication
   const { socket, isConnected, sendMessage, aiSuggestion, clientId, error } = useSocketIO();
   
-  // Initialize TTS hook
-  const tts = useWritingTTS({
-    suggestions: aiSuggestions,
-    onSpeakingStateChange: (speaking: boolean) => setIsSpeaking(speaking),
-    onHighlightChange: (highlightId: string | number | null) => setActiveHighlightId(highlightId)
-  });
+  // TTS hook removed
   
   // Function to send text updates to the server
   const sendTextUpdate = useCallback((content: string) => {
@@ -154,53 +140,28 @@ export default function WritingPage() {
     HighlightExtension
   ], []);
 
-  // Effect to load the question from URL parameters or localStorage
+  // Effect to load the question from localStorage
   useEffect(() => {
-    // Check if we have topic and task ID from flow navigation
-    if (topicId && taskId) {
-      console.log(`Loading writing task from flow: Topic ID ${topicId}, Task ID ${taskId}`);
-      
-      // In a real implementation, you would fetch the specific writing task from your API
-      // For now, we'll create a task based on the IDs
-      const flowQuestion: Question = {
-        id: taskId,
-        topicName: `Writing on ${topicId}`,
-        question: `Write a short paragraph about ${topicId.replace('topic-', '')}. This topic was provided by your learning flow.`,
-        level: 'Flow Level'
-      };
-      
-      setQuestion(flowQuestion);
-      
-      if (flowPosition !== null && totalTasks > 0) {
-        console.log(`This is task ${flowPosition + 1} of ${totalTasks} in your learning flow`);
-      }
-      
-      return;
-    }
-    
-    // If no flow parameters, try to load question data from localStorage
-    const savedQuestion = localStorage.getItem('writingQuestion');
-    if (savedQuestion) {
+    const storedQuestion = localStorage.getItem('writingQuestion');
+    if (storedQuestion) {
       try {
-        const parsedQuestion = JSON.parse(savedQuestion) as Question;
+        const parsedQuestion = JSON.parse(storedQuestion);
         setQuestion(parsedQuestion);
-      } catch (e) {
-        console.error('Error parsing saved question:', e);
+      } catch (error) {
+        console.error('Error parsing stored question:', error);
       }
-    }
-    
-    // Default question if none found
-    if (!savedQuestion) {
-      const defaultQuestion: Question = {
-        id: 'default-question',
+    } else {
+      // If no question is found, create a default one instead of redirecting
+      // This prevents redirect loops
+      setQuestion({
+        id: 'default-writing-prompt',
         topicName: 'General Writing',
-        question: 'Describe your ideal vacation. What would you do and where would you go?',
+        question: 'Write about a topic of your choice',
         level: 'Intermediate'
-      };
-      setQuestion(defaultQuestion);
+      });
     }
-  }, [topicId, taskId, flowPosition, totalTasks]);
-
+  }, []);
+  
   // Handle editor updates
   const handleEditorUpdate = useCallback(({ editor }: { editor: Editor }) => {
     // Update word count
@@ -221,19 +182,12 @@ export default function WritingPage() {
     }
   }, [debouncedSendTextUpdate]);
   
-  // Handle click on a highlight
+  // Function to handle when user clicks on a highlighted suggestion
   const handleHighlightClick = useCallback((id: string | number) => {
     console.log('WritingPage: handleHighlightClick called with ID:', id);
-    
-    // Use our enhanced TTS component to both speak and highlight
-    if (!isSpeaking) {
-      tts.speakSuggestionById(id);
-    } else {
-      // If we're already speaking, just stop and restart with this suggestion
-      tts.stopSpeaking();
-      setTimeout(() => tts.speakSuggestionById(id), 100);
-    }
-  }, [tts, isSpeaking]);
+    // Set active highlight for UI feedback
+    setActiveHighlightId(id);
+  }, []);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -252,7 +206,15 @@ export default function WritingPage() {
               </span>
             </div>
             <button 
-              onClick={() => router.push('/writingpage_tiptap/question')} 
+              onClick={() => {
+                // Instead of redirecting, just change the question directly
+                setQuestion({
+                  id: 'alternative-question',
+                  topicName: 'Alternative Topic',
+                  question: 'Write about a different topic of your choice',
+                  level: 'Advanced'
+                });
+              }} 
               className="text-blue-600 hover:text-blue-800 text-sm"
             >
               Change Question
@@ -309,7 +271,7 @@ export default function WritingPage() {
                 className={`px-3 py-1 rounded text-sm ${isSpeaking 
                   ? 'bg-gray-400 text-white cursor-not-allowed' 
                   : 'bg-blue-500 hover:bg-blue-600 text-white transition-colors'}`}
-                onClick={tts.speakAllSuggestions}
+                onClick={() => console.log('TTS functionality removed')}
                 disabled={isSpeaking || aiSuggestions.length === 0}
                 title={isSpeaking ? 'Speaking...' : 'Listen to explanations'}
               >
@@ -348,7 +310,7 @@ export default function WritingPage() {
           {isSpeaking && (
             <button 
               className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              onClick={tts.stopSpeaking}
+              onClick={() => setIsSpeaking(false)}
               title="Stop speaking"
             >
               Stop Speaking
@@ -360,23 +322,6 @@ export default function WritingPage() {
       {/* Accessibility element for screen readers */}
       <div className="sr-only" aria-live="polite">
         {isSpeaking ? `Reading ${activeHighlightId ? 'suggestion ' + activeHighlightId : 'suggestions'} aloud` : 'Ready to read suggestions'}
-      </div>
-      
-      {/* Just the Next Task Button without flow progress header */}
-      <div className="mt-8 mx-auto max-w-3xl">
-        <NextTaskButton 
-          onBeforeNavigate={() => {
-            // Save any necessary data before navigating
-            console.log('Writing task completed');
-            // Save the content to localStorage or your backend here
-            const contentToSave = editorContentRef.current;
-            if (contentToSave) {
-              localStorage.setItem('lastWritingContent', contentToSave);
-            }
-          }}
-          buttonText="Complete & Continue"
-          className="w-full py-3"
-        />
       </div>
     </div>
   );

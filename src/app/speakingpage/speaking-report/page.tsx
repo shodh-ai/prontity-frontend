@@ -2,9 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import LiveKitSession from '@/components/LiveKitSession';
 import '@/styles/enhanced-room.css';
 import '../figma-styles.css';
+
+// Dynamically import the MindMap component with SSR disabled
+const MindMapComponent = dynamic(() => import('../../mindmappage/MindMapComponent').then(mod => ({ default: mod.MindMapComponent })), {
+  ssr: false, // Disable server-side rendering
+  loading: () => <div className="flex items-center justify-center h-full">Loading mind map component...</div>
+});
 
 // Report data interface
 interface ReportData {
@@ -27,6 +34,7 @@ export default function SpeakingReportPage() {
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportData | null>(null);
   const [showLiveKit, setShowLiveKit] = useState(false);
+  const [showMindMap, setShowMindMap] = useState(false);
   
   // For LiveKit session
   const roomName = "SpeakingReport";
@@ -190,6 +198,33 @@ export default function SpeakingReportPage() {
             <div className="bg-gray-50 p-4 rounded border text-gray-700 leading-relaxed">
               {report.transcription}
             </div>
+          </div>
+          
+          {/* Mind Map Section */}
+          <div className="p-6 border-b">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-lg font-medium">Speaking Concept Mind Map</h3>
+              <button 
+                onClick={() => setShowMindMap(!showMindMap)}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                {showMindMap ? 'Hide Mind Map' : 'Show Mind Map'}
+              </button>
+            </div>
+            <p className="text-gray-700 mb-4">
+              Visualize key concepts and ideas related to this speaking topic to improve your coherence and organization.
+            </p>
+            
+            {showMindMap && (
+              <div className="mt-4 border rounded-lg p-4">
+                <MindMapComponent 
+                  initialTopic={report.questionText}
+                  height={500}
+                  showDebugInfo={false}
+                  apiEndpoint="/api/generate-mindmap"
+                />
+              </div>
+            )}
           </div>
           
           {/* Speak with AI tutor */}

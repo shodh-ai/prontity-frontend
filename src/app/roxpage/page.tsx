@@ -3,17 +3,16 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import contentApi from '@/api/contentService';
 import userProgressApi from '@/api/userProgressService';
+import { navigateToCurrentTask } from '@/utils/flowNavigation';
 
 function RoxPageContent() {
   const router = useRouter();
-  const { data: session } = useSession();
   const [userName, setUserName] = useState('');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [userProgress, setUserProgress] = useState<any[]>([]);
@@ -23,14 +22,26 @@ function RoxPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Get username from session or localStorage when component mounts
+  // Get username from localStorage when component mounts
   useEffect(() => {
-    if (session?.user?.name) {
-      setUserName(session.user.name);
-    } else {
-      const storedUserName = localStorage.getItem('userName');
-      if (storedUserName) {
-        setUserName(storedUserName);
+    const storedUserName = localStorage.getItem('userName');
+    if (storedUserName) {
+      setUserName(storedUserName);
+    }
+    
+    // Try to get username from user object in localStorage
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData.email) {
+          // Use email as fallback username if no username is set
+          if (!storedUserName) {
+            setUserName(userData.email.split('@')[0]); // Use part before @ as name
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing stored user data:', e);
       }
     }
     
@@ -92,27 +103,48 @@ function RoxPageContent() {
     };
     
     fetchUserData();
-  }, [session]);
+  }, []);
 
+  // Continue with flow-based learning journey
+  const continueLearningFlow = async () => {
+    try {
+      setLoading(true);
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        router.push('/loginpage');
+        return;
+      }
+      
+      console.log('Starting learning flow with token:', token.substring(0, 10) + '...');
+      await navigateToCurrentTask(router, token);
+    } catch (error: any) {
+      console.error('Error starting learning flow:', error);
+      setError(error.message || 'Failed to start learning flow');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   // Navigation to other practice sections with context
   const navigateToSpeaking = () => {
     // If we have a next task and it's a speaking task, pass the topic ID
     if (nextTask && nextTask.taskType === 'speaking') {
-      router.push(`/speakingpage?topicId=${nextTask.contentRefId}`);
+      router.push(`/speakingpage_update?topicId=${nextTask.contentRefId}`);
     } else if (speakingTopics.length > 0) {
       // Otherwise use the first available topic
-      router.push(`/speakingpage?topicId=${speakingTopics[0].topicId}`);
+      router.push(`/speakingpage_update?topicId=${speakingTopics[0].topicId}`);
     } else {
-      router.push('/speakingpage');
+      router.push('/speakingpage_update');
     }
   };
   
   const navigateToWriting = () => {
     // If we have a next task and it's a writing task, pass the prompt ID
     if (nextTask && nextTask.taskType === 'writing') {
-      router.push(`/writingpage?promptId=${nextTask.contentRefId}`);
+      router.push(`/writingpage_tiptap_update?promptId=${nextTask.contentRefId}`);
     } else {
-      router.push('/writingpage');
+      router.push('/writingpage_tiptap_update');
     }
   };
   
@@ -283,6 +315,21 @@ function RoxPageContent() {
 
           {/* Suggestion cards */}
           <div className="inline-flex items-center gap-[11px] absolute top-[894px] left-[542px]" style={{width: '800px', left: '152px', transform: 'translateX(390px)'}}>
+            {/* Continue Learning Flow Button */}
+            <Card
+              className="inline-flex flex-col items-start gap-2.5 pt-3 pb-4 px-4 relative flex-[0_0_auto] rounded-md border-[none] [background:linear-gradient(357deg,rgba(86,111,233,0.1)_0%,rgba(86,111,233,0.3)_100%)] cursor-pointer hover:shadow-md transition-shadow"
+              onClick={continueLearningFlow}
+            >
+              <CardContent className="inline-flex flex-col items-start gap-2 relative flex-[0_0_auto] p-0">
+                <div className="relative w-fit mt-[-1.00px] font-medium text-black text-base whitespace-nowrap">
+                  Continue Learning
+                </div>
+                <div className="relative w-[194px] font-normal text-black text-sm leading-normal">
+                  Follow your personalized learning flow
+                </div>
+              </CardContent>
+            </Card>
+            
             {!loading && suggestionCards.map((card, index) => (
               <Card
                 key={index}

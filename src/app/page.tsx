@@ -1,12 +1,30 @@
 "use client";
 
-import { redirect } from "next/navigation";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
-  // Auto-redirect to writingpage_tiptap, bypassing login
-  redirect('/writingpage_tiptap');
+  const router = useRouter();
   
-  // Note: The code below won't execute due to the redirect,
-  // but is kept as reference in case you want to restore the navigation page later
-  return null;
+  useEffect(() => {
+    // Check if the user has a valid token
+    const token = localStorage.getItem('token');
+    if (!token) {
+      // No token found, redirect to login page
+      router.push('/loginpage');
+    } else {
+      // Token exists, redirect to roxpage
+      router.push('/roxpage');
+    }
+  }, [router]);
+  
+  // Show loading state while redirecting
+  return (
+    <div className="flex items-center justify-center h-screen w-full">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+        <p className="mt-4">Loading...</p>
+      </div>
+    </div>
+  );
 }

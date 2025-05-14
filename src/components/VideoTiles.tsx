@@ -1,15 +1,40 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useTracks, useParticipants, ConnectionState, useConnectionState } from '@livekit/components-react';
+import { useTracks, useParticipants, ConnectionState, useConnectionState, RoomContext } from '@livekit/components-react';
 import { Track, Participant, Room } from 'livekit-client';
+import VideoPresentationUI from './VideoPresentationUI';
 import '../styles/video-tiles.css';
 
 interface VideoTilesProps {
   userName?: string;
+  room?: Room;
 }
 
-export default function VideoTiles({ userName = 'TestUser' }: VideoTilesProps = {}) {
+export default function VideoTiles({ userName = 'TestUser', room }: VideoTilesProps = {}) {
+  // When no room is provided, render a placeholder
+  if (!room) {
+    return (
+      <div className="video-container">
+        <div className="video-placeholder">
+          <div className="placeholder-content">
+            <div className="placeholder-text">Connecting to video session...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // If we have a room, render the wrapped VideoContent component
+  return (
+    <RoomContext.Provider value={room}>
+      <VideoContent userName={userName} />
+    </RoomContext.Provider>
+  );
+}
+
+// This inner component uses the LiveKit hooks within the RoomContext
+function VideoContent({ userName = 'TestUser' }: { userName?: string }) {
   // Get connection state and participants
   const connectionState = useConnectionState();
   const participants = useParticipants();
@@ -149,73 +174,21 @@ export default function VideoTiles({ userName = 'TestUser' }: VideoTilesProps = 
     console.log('Using user video track');
   }
   
+  // Determine connection state for UI feedback
+  const isAiConnected = !!tavusParticipant || !!simulatedParticipant || !!aiParticipant;
+  const isUserConnected = !!userParticipant;
+  
   return (
-    <div className="video-container">
-      {/* User Participant Tile */}
-      <div className="user-tile">
-        {userTrack && userTrack.publication && userTrack.publication.kind === 'video' ? (
-          <video 
-            className="video-element"
-            ref={el => {
-              if (el && userTrack.publication) {
-                userTrack.publication.track?.attach(el);
-              }
-            }}
-            autoPlay 
-            playsInline
-            muted
-          />
-        ) : (
-          <div className="placeholder-bg user-bg" />
-        )}
-        <div className="user-label">Your Camera</div>
-      </div>
-      
-      {/* AI Participant Tile - Show any available video track */}
-      <div className="ai-tile">
-        {aiTrack && aiTrack.publication ? (
-          <>
-            <video 
-              className="video-element"
-              ref={el => {
-                if (el && aiTrack.publication) {
-                  console.log('Attaching AI video track:', aiTrack.publication.trackSid);
-                  try {
-                    // Force attach the track to the video element
-                    const track = aiTrack.publication.track;
-                    if (track) {
-                      console.log('Track found, attaching...');
-                      track.attach(el);
-                      console.log('Track attached successfully');
-                    } else {
-                      console.log('Track is null or undefined');
-                    }
-                  } catch (err) {
-                    console.error('Error attaching track:', err);
-                  }
-                }
-              }}
-              autoPlay 
-              playsInline
-              controls={false}
-              style={{ objectFit: 'cover' }}
-            />
-            <div className="video-debug-info">
-              Track ID: {aiTrack.publication.trackSid}<br/>
-              Source: {aiTrack.publication.source}
-            </div>
-          </>
-        ) : (
-          <div className="no-track-message">
-            <p>No AI video track available</p>
-            <p className="details">
-              Looking for tavus-avatar-agent video track...
-              {tavusParticipant ? 'Found participant, but no video track' : 'Participant not found'}
-            </p>
-          </div>
-        )}
-        <div className="ai-label">Tavus Avatar</div>
-      </div>
-    </div>
+    <VideoPresentationUI
+      userTrack={userTrack}
+      aiTrack={aiTrack}
+      userName={userName}
+      isAiConnected={isAiConnected}
+      isUserConnected={isUserConnected}
+      customLabels={{
+        userLabel: 'Your Camera',
+        aiLabel: 'Tavus Avatar'
+      }}
+    />
   );
 }

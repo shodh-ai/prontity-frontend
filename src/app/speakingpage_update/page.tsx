@@ -117,7 +117,7 @@ function SpeakingPageContent() {
       console.error('Error recording task completion:', err);
     }
     
-    router.push('/roxpage');
+    // Note: We're not redirecting here anymore as the NextTaskButton will handle navigation
   };
   
   // Handle timer end

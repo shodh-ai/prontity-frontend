@@ -6,7 +6,7 @@
  */
 
 // The base URL for the Pronity backend API
-const PRONITY_API_URL = process.env.NEXT_PUBLIC_PRONITY_API_URL || 'http://localhost:8000';
+export const PRONITY_API_URL = process.env.NEXT_PUBLIC_PRONITY_API_URL || 'http://localhost:8000';
 
 /**
  * Error class for Pronity API related errors
@@ -157,7 +157,9 @@ export async function register(userData: RegisterData): Promise<AuthResponse> {
  */
 export async function fetchUserProfile(token: string): Promise<User> {
   try {
-    const response = await fetch(`${PRONITY_API_URL}/user/profile`, {
+    // Fix: use the correct endpoint '/user/info' instead of '/user/profile'
+    console.log('Fetching user profile from:', `${PRONITY_API_URL}/user/info`);
+    const response = await fetch(`${PRONITY_API_URL}/user/info`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -414,6 +416,32 @@ export interface SpeakingPracticeData {
 }
 
 /**
+ * Interface for flow task data
+ */
+export interface FlowTask {
+  taskId: string;
+  title: string;
+  description: string;
+  taskType: string; // 'reading', 'writing', 'speaking', 'vocab'
+  difficultyLevel: number;
+  topic: {
+    topicId: string;
+    name: string;
+    description: string;
+    isExamTopic: boolean;
+  };
+}
+
+/**
+ * Interface for flow response data
+ */
+export interface FlowResponse {
+  currentPosition: number;
+  totalTasks: number;
+  currentTask: FlowTask;
+}
+
+/**
  * Interface for user status data (scores)
  */
 export interface UserStatus {
@@ -639,5 +667,97 @@ export async function resetUserStatus(token: string): Promise<UserStatus> {
       throw error;
     }
     throw new PronityApiError(`Network error when resetting user status: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Fetches the current flow task for the user
+ * @param token JWT authentication token
+ * @returns Promise resolving to the flow task data
+ * @throws PronityApiError if the request fails
+ */
+export async function fetchFlowTask(token: string): Promise<FlowResponse> {
+  try {
+    // Use the exact same URL and header format that worked in our test
+    const url = `${PRONITY_API_URL}/flow/tasks/flow`;
+    console.log('Fetching flow task from:', url);
+    console.log('Using token:', token ? `${token.substring(0, 10)}...` : 'No token provided');
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+    
+    console.log('Flow API response status:', response.status);
+    
+    if (!response.ok) {
+      // Get more detailed error information if possible
+      let errorDetails = response.statusText;
+      try {
+        const errorJson = await response.json();
+        errorDetails = errorJson.message || errorDetails;
+        console.error('Flow API error details:', errorJson);
+      } catch (e) {
+        // If we can't parse the error as JSON, just use the status text
+      }
+      
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error fetching flow task: ${errorDetails}`, response.status);
+    }
+    
+    const result = await response.json();
+    console.log('Flow task fetched successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in fetchFlowTask:', error);
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when fetching flow task: ${(error as Error).message}`, 0);
+  }
+}
+
+/**
+ * Moves to the next flow task for the user
+ * @param token JWT authentication token
+ * @returns Promise resolving to the next flow task data
+ * @throws PronityApiError if the request fails
+ */
+export async function nextFlowTask(token: string): Promise<FlowResponse> {
+  try {
+    // Use the exact same URL and header format that worked in our test
+    const url = `${PRONITY_API_URL}/flow/tasks/flow/next`;
+    console.log('Moving to next flow task:', url);
+    console.log('Using token:', token ? `${token.substring(0, 10)}...` : 'No token provided');
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PronityApiError('Unauthorized, please login again', 401);
+      }
+      throw new PronityApiError(`Error moving to next flow task: ${response.statusText}`, response.status);
+    }
+    
+    const result = await response.json();
+    console.log('Moved to next flow task successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in nextFlowTask:', error);
+    if (error instanceof PronityApiError) {
+      throw error;
+    }
+    throw new PronityApiError(`Network error when moving to next flow task: ${(error as Error).message}`, 0);
   }
 }

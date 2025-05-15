@@ -27,7 +27,7 @@ from livekit.agents import AgentSession, Agent, RoomInputOptions
 # Import VPA pipeline components
 try:
     from livekit.plugins import noise_cancellation
-    from livekit.plugins import deepgram, silero, tavus # Import tavus for avatars
+    from livekit.plugins import deepgram, silero
     from livekit.plugins.turn_detector.multilingual import MultilingualModel
 except ImportError as e:
     logger.error(f"Failed to import required packages: {e}")
@@ -63,25 +63,6 @@ for var in required_vars:
     if var == "MY_CUSTOM_AGENT_URL":
         logger.info(f"Using custom agent URL: {value}")
 
-# Check for Tavus credentials (optional)
-TAVUS_API_KEY = os.getenv("TAVUS_API_KEY", "")
-TAVUS_REPLICA_ID = os.getenv("TAVUS_REPLICA_ID", "")
-TAVUS_PERSONA_ID = os.getenv("TAVUS_PERSONA_ID", "") # Persona ID is optional for AvatarSession
-
-# Check if Tavus is properly configured
-TAVUS_ENABLED = bool(TAVUS_API_KEY and TAVUS_REPLICA_ID) # Persona ID is not strictly required for AvatarSession init
-if TAVUS_ENABLED:
-    logger.info("Tavus avatar configuration found")
-    masked_key = TAVUS_API_KEY[:4] + "*" * (len(TAVUS_API_KEY) - 8) + TAVUS_API_KEY[-4:] if len(TAVUS_API_KEY) > 8 else "****"
-    logger.info(f"Tavus API Key: {masked_key}")
-    logger.info(f"Tavus Replica ID: {TAVUS_REPLICA_ID}")
-    if TAVUS_PERSONA_ID:
-        logger.info(f"Tavus Persona ID: {TAVUS_PERSONA_ID}")
-    else:
-        logger.info("Tavus Persona ID: Not set (optional)")
-else:
-    logger.warning("Tavus avatar not configured (missing API Key or Replica ID) - will not use avatar.")
-
 # Create a standard Agent implementation for Rox assistant
 class RoxAgent(Agent):
     """Simple Rox AI assistant"""
@@ -107,27 +88,13 @@ GLOBAL_PAGE_PATH = "roxpage"  # Default to roxpage
 GLOBAL_MODEL = "aura-asteria-en"    # Default Deepgram TTS model
 GLOBAL_TEMPERATURE = 0.7            # Default temperature
 
-# Avatar configuration
-GLOBAL_AVATAR_ENABLED = TAVUS_ENABLED  # Enable avatar if Tavus is configured
-
 
 async def entrypoint(ctx: agents.JobContext):
     """Main entrypoint for the agent."""
-    # Set identity BEFORE connecting to room
-    if GLOBAL_AVATAR_ENABLED:
-        ctx.identity = "rox-tavus-avatar-agent"
-        logger.info(f"Set agent identity to: {ctx.identity} for Tavus avatar")
-    else:
-        # Generate a random ID suffix if not using avatar (optional, for clearer logging)
-        import uuid
-        id_suffix = uuid.uuid4().hex[:8]
-        ctx.identity = f"rox-agent-{id_suffix}"
-        logger.info(f"Set agent identity to: {ctx.identity}")
-
     # Connect to the room
     try:
         await ctx.connect()
-        logger.info(f"Connected to LiveKit room '{ctx.room.name}' as {ctx.identity}")
+        logger.info(f"Connected to LiveKit room '{ctx.room.name}'")
     except Exception as e:
         logger.error(f"Failed to connect to LiveKit room: {e}")
         return
@@ -139,37 +106,19 @@ async def entrypoint(ctx: agents.JobContext):
     
     # Create a Rox agent instance
     rox_agent = RoxAgent(page_path=GLOBAL_PAGE_PATH)
-
-    # Set up Tavus avatar if enabled
-    avatar_session = None
-    if GLOBAL_AVATAR_ENABLED:
-        # Already checked TAVUS_ENABLED which ensures API_KEY and REPLICA_ID
-        logger.info("Setting up Tavus avatar session...")
-        # Ensure Tavus API key is available in environment for the plugin if it re-checks internally
-        os.environ["TAVUS_API_KEY"] = TAVUS_API_KEY 
-        avatar_session = tavus.AvatarSession(
-            replica_id=TAVUS_REPLICA_ID,
-            persona_id=TAVUS_PERSONA_ID if TAVUS_PERSONA_ID else None # Pass None if not set
-        )
-        logger.info("Tavus avatar session created.")
-
+    
     try:
         # Create the agent session with the VPA pipeline using CustomLLMBridge
         logger.info("Creating agent session with VPA pipeline using CustomLLMBridge...")
-        from livekit.agents import AgentSession # ensure AgentSession is imported at this scope if not earlier
-        session = agents.AgentSession(
+        session = AgentSession(
+            # Use Deepgram for STT, our custom bridge for LLM, and Deepgram for TTS
             stt=deepgram.STT(model="nova-3", language="multi"),
-            llm=CustomLLMBridge(),
-            tts=deepgram.TTS(model=GLOBAL_MODEL), # TTS is still needed if avatar is disabled
+            llm=CustomLLMBridge(),  # Our custom bridge to the Flask server
+            tts=deepgram.TTS(model=GLOBAL_MODEL),
             vad=silero.VAD.load(),
             turn_detection=MultilingualModel(),
         )
         logger.info("Agent session created successfully")
-
-        if avatar_session: # This implies GLOBAL_AVATAR_ENABLED was true
-            logger.info("Starting Tavus avatar session with agent_session and room...")
-            await avatar_session.start(agent_session=session, room=ctx.room)
-            logger.info("Tavus avatar session started.")
         
         # Start the agent session
         logger.info("Starting agent session...")
@@ -178,9 +127,6 @@ async def entrypoint(ctx: agents.JobContext):
             agent=rox_agent,
             room_input_options=RoomInputOptions(
                 noise_cancellation=noise_cancellation.BVC(),
-            ),
-            room_output_options=agents.RoomOutputOptions( # Use agents.RoomOutputOptions
-                audio_enabled=not avatar_session, # Disable agent's audio if avatar is active
             ),
         )
         logger.info("Agent session started successfully")
@@ -206,8 +152,7 @@ if __name__ == "__main__":
     parser.add_argument('--page-path', type=str, help='Path to web page')
     parser.add_argument('--tts-model', type=str, help='Deepgram TTS model to use')
     parser.add_argument('--temperature', type=float, help='LLM temperature')
-    parser.add_argument('--avatar-enabled', type=lambda x: (str(x).lower() == 'true'), help='Enable or disable Tavus avatar (true/false)')
-
+    
     # Extract our custom arguments without affecting LiveKit's argument parsing
     args, _ = parser.parse_known_args()
     
@@ -223,19 +168,13 @@ if __name__ == "__main__":
     if args.temperature is not None:
         GLOBAL_TEMPERATURE = args.temperature
         logger.info(f"Using temperature: {GLOBAL_TEMPERATURE}")
-
-    if args.avatar_enabled is not None:
-        GLOBAL_AVATAR_ENABLED = args.avatar_enabled
-        logger.info(f"Tavus avatar {'enabled' if GLOBAL_AVATAR_ENABLED else 'disabled'} by command line argument.")
-        if GLOBAL_AVATAR_ENABLED and not TAVUS_ENABLED:
-            logger.warning("Avatar enabled by command line, but Tavus credentials (API Key or Replica ID) are missing or incomplete in .env. Avatar may not function.")
     
     # Remove our custom arguments from sys.argv
     filtered_argv = [sys.argv[0]]
     i = 1
     while i < len(sys.argv):
         arg = sys.argv[i]
-        if arg in ['--page-path', '--tts-model', '--temperature', '--avatar-enabled'] and i + 1 < len(sys.argv):
+        if arg in ['--page-path', '--tts-model', '--temperature'] and i + 1 < len(sys.argv):
             i += 2  # Skip both the flag and its value
         else:
             filtered_argv.append(arg)

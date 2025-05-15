@@ -140,7 +140,7 @@ export default function RoxPage() {
             {/* Suggestion Boxes */}
             <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
               {[ "Summarize my learning so far, what have I covered and how well?", "Improve my speaking skills where am I lacking and how to fix it?", "Show me my mistakes and how I can improve them."].map((text, i) => (
-                <div key={i} className="bg-white border border-gray-200 p-4 rounded-lg hover:bg-gray-50 cursor-pointer transition-all">
+                <div key={i} onClick={() => setUserInput(text)} className="bg-white border border-gray-200 p-4 rounded-lg hover:bg-gray-50 cursor-pointer transition-all">
                   <p className="text-sm text-gray-700 leading-relaxed">{text}</p>
                 </div>
               ))}

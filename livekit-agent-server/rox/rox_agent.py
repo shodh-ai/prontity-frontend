@@ -117,7 +117,7 @@ tools = [
                 "properties": {
                     "button_id": {
                         "type": "string",
-                        "description": "ID of the button to click (statusViewButton or startLearningButton)",
+                        "description": "ID of the button to click. Use 'statusViewButton' to show the student's status panel, 'startLearningButton' to begin a learning session.",
                         "enum": ["statusViewButton", "startLearningButton"]
                     }
                 },

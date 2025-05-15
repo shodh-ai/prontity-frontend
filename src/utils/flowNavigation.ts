@@ -5,7 +5,7 @@ import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.share
 export const TASK_PAGE_MAPPING: Record<string, string> = {
   'reading': '/listeningpage_update',
   'writing': '/writingpage_tiptap_update',
-  'speaking': '/speakingpage_update',
+  'speaking': '/letusspeak',  // Updated to use the enhanced letusspeak page with Web Speech API
   'vocab': '/vocabpage'
 };
 

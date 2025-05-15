@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { Room, RoomEvent } from 'livekit-client';
+import { Room, RoomEvent, RemoteParticipant, DataPacket_Kind } from 'livekit-client';
 import SimpleTavusDisplay from '@/components/SimpleTavusDisplay';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import AgentTextInput from '@/components/ui/AgentTextInput';
 // Import other UI components if needed, e.g., Button from '@/components/ui/button';
+import StudentStatusDisplay from '@/components/StudentStatusDisplay';
 
 export default function RoxPage() {
   const [token, setToken] = useState<string>('');
@@ -15,6 +16,8 @@ export default function RoxPage() {
   const [error, setError] = useState<string | null>(null);
   const [userInput, setUserInput] = useState('');
   const roomRef = useRef<Room | null>(null);
+  const [isStudentStatusDisplayOpen, setIsStudentStatusDisplayOpen] = useState(false);
+  const docsIconRef = useRef<HTMLImageElement>(null);
 
   const roomName = 'Roxpage'; // Or dynamically set if needed
   const userName = 'TestUser'; // Or dynamically set if needed
@@ -50,6 +53,61 @@ export default function RoxPage() {
         setIsConnected(true);
         setRoom(newRoomInstance); // Update state for rendering
         roomRef.current = newRoomInstance; // Store in ref for cleanup
+      });
+
+      newRoomInstance.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant, kind?: DataPacket_Kind, topic?: string) => {
+        if (participant) {
+          console.log(`Received data from participant ${participant.identity} (kind: ${kind}, topic: ${topic})`);
+          try {
+            const messageStr = new TextDecoder().decode(payload);
+            const message = JSON.parse(messageStr);
+            console.log('Decoded message:', message);
+
+            // Check for chat messages with metadata carrying dom_actions
+            // The structure might depend on how CustomLLMBridge wraps it.
+            // Assuming it's a ChatChunk-like structure or similar.
+            if (message?.delta?.metadata?.dom_actions) {
+              const domActionsStr = message.delta.metadata.dom_actions;
+              try {
+                const domActions = JSON.parse(domActionsStr);
+                if (Array.isArray(domActions)) {
+                  domActions.forEach((actionItem: any) => {
+                    console.log('Processing DOM action from metadata:', actionItem);
+                    if (actionItem.action === 'click' && actionItem.payload?.selector === '#statusViewButton') {
+                      console.log('Agent requested to toggle StudentStatusDisplay via #statusViewButton selector from metadata');
+                      toggleStudentStatusDisplay();
+                    } else if (actionItem.action === 'click' && actionItem.payload?.selector) {
+                      console.log(`Agent requested click on other selector from metadata: ${actionItem.payload.selector}`);
+                      // Potentially handle other selectors if needed in the future, e.g., #startLearningButton
+                    }
+                  });
+                }
+              } catch (e) {
+                console.error('Failed to parse dom_actions from metadata:', e);
+              }
+            }
+            // Fallback: Check for simpler action/payload structure directly if CustomLLMBridge might send it this way.
+            // This is based on rox_agent.py returning dom_actions directly in its JSON response.
+            // CustomLLMBridge might pick this up and send it without the delta/metadata wrapper in some configurations.
+            else if (message?.dom_actions && Array.isArray(message.dom_actions)) {
+                message.dom_actions.forEach((actionItem: any) => {
+                  console.log('Processing DOM action from direct message property:', actionItem);
+                  if (actionItem.action === 'click' && actionItem.payload?.selector === '#statusViewButton') {
+                    console.log('Agent requested to toggle StudentStatusDisplay via #statusViewButton selector from direct message property');
+                    toggleStudentStatusDisplay();
+                  }
+                });
+            }
+            // Further fallback for direct action/payload if it's a single action not in an array
+            else if (message?.action === 'click' && message?.payload?.selector === '#statusViewButton') {
+              console.log('Agent requested to toggle StudentStatusDisplay via #statusViewButton selector from single direct action');
+              toggleStudentStatusDisplay();
+            }
+
+          } catch (e) {
+            console.error('Failed to parse data packet:', e);
+          }
+        }
       });
 
       newRoomInstance.on(RoomEvent.Disconnected, () => {
@@ -96,6 +154,10 @@ export default function RoxPage() {
     // State will update via RoomEvent.Disconnected listener
   };
 
+  const toggleStudentStatusDisplay = () => {
+    setIsStudentStatusDisplayOpen(!isStudentStatusDisplayOpen);
+  };
+
   return (
     <div className="flex h-screen bg-white text-gray-800 overflow-hidden bg-[image:radial-gradient(ellipse_at_top_right,_#B7C8F3_0%,_transparent_70%),_radial-gradient(ellipse_at_bottom_left,_#B7C8F3_0%,_transparent_70%)]">
       {/* Sidebar */}
@@ -105,7 +167,7 @@ export default function RoxPage() {
           <Image src="/user.svg" alt="User Profile" width={24} height={24} className="cursor-pointer hover:opacity-75" />
           <Image src="/mic-on.svg" alt="Mic On" width={24} height={24} className="cursor-pointer hover:opacity-75" />
           <Image src="/next.svg" alt="Next" width={24} height={24} className="cursor-pointer hover:opacity-75" />
-          <Image src="/docs.svg" alt="Docs" width={24} height={24} className="cursor-pointer hover:opacity-75" />
+          <Image ref={docsIconRef} id="statusViewButton" src="/docs.svg" alt="Docs" width={24} height={24} className="cursor-pointer hover:opacity-75" onClick={toggleStudentStatusDisplay} />
         </div>
       </aside>
 
@@ -163,6 +225,11 @@ export default function RoxPage() {
             </button>
         )}
 
+        <StudentStatusDisplay 
+          isOpen={isStudentStatusDisplayOpen} 
+          anchorElement={docsIconRef.current} 
+          onClose={toggleStudentStatusDisplay} 
+        />
       </main>
     </div>
   );

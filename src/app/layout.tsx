@@ -3,7 +3,6 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import "../styles/globals.css";
 import AuthContextProvider from "@/contexts/AuthContext";
 import { SocketIOProvider } from "@/contexts/SocketIOContext";
-import SessionProvider from "@/components/SessionProvider";
 
 const plusJakartaSans = Plus_Jakarta_Sans({ subsets: ["latin"] });
 
@@ -20,13 +19,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={plusJakartaSans.className}>
-        <SessionProvider>
-          <AuthContextProvider>
-            <SocketIOProvider>
-              <main>{children}</main>
-            </SocketIOProvider>
-          </AuthContextProvider>
-        </SessionProvider>
+        <AuthContextProvider>
+          <SocketIOProvider>
+            <main>{children}</main>
+          </SocketIOProvider>
+        </AuthContextProvider>
       </body>
     </html>
   );

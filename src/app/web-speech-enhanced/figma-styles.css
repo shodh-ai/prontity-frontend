@@ -199,7 +199,7 @@
     padding: 4px 10px;
     gap: 10px;
     position: absolute;
-    width: 156px;
+    width: 51px;
     height: 29px;
     left: 8px;
     top: 163px;
@@ -212,4 +212,189 @@
     line-height: 150%;
     color: #566FE9;
     z-index: 10;
+  }
+  
+  /* Progress bar - Group 1000010979 */
+  .figma-progress {
+    position: absolute;
+    width: 610px;
+    height: 10px;
+    left: calc(50% - 610px/2);
+    top: 64px;
+    z-index: 5;
+  }
+  
+  .figma-progress-bg {
+    position: absolute;
+    width: 610px;
+    height: 10px;
+    left: 415px;
+    top: 64px;
+    background: #C7CCF8;
+    opacity: 0.2;
+    border-radius: 6px;
+  }
+  
+  .figma-progress-fill {
+    position: absolute;
+    width: 170.8px;
+    height: 10px;
+    left: 415px;
+    top: 64px;
+    background: #566FE9;
+    opacity: 0.9;
+    border-radius: 6px;
+  }
+  
+  /* Control buttons - Frame 1000011208 */
+  .figma-controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0px;
+    gap: 8px;
+    position: absolute;
+    width: 160px;
+    height: 48px;
+    left: calc(50% - 160px/2);
+    top: 696px;
+    z-index: 5;
+  }
+  
+  .figma-button {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    gap: 10px;
+    width: 48px;
+    height: 48px;
+    background: #FFFFFF;
+    border: 1px solid #566FE9;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .figma-button:hover {
+    background: #f5f7ff;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+  
+  .figma-button-disabled {
+    border-color: #ccc;
+  }
+  
+  .figma-button svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: #566FE9;
+    stroke-width: 2;
+  }
+  
+  /* AI icon styling */
+  .ai-icon-container {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    padding: 5px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+  
+  .ai-icon-container:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+  }
+  
+  .ai-icon {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .ai-label-small {
+    font-size: 8px;
+    font-weight: bold;
+    color: #566FE9;
+    margin-top: 2px;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 1440px) {
+    .figma-content {
+      width: 95%;
+      height: 95%;
+      max-width: 1280px;
+      max-height: 740px;
+    }
+    
+    .figma-video-container {
+      right: 5%;
+    }
+    
+    .figma-question-container {
+      width: 60%;
+      left: 5%;
+    }
+    
+    .figma-question-label,
+    .figma-question-text {
+      width: 100%;
+    }
+  }
+  
+  @media (max-width: 992px) {
+    .figma-content {
+      width: 95%;
+      height: 95%;
+    }
+    
+    .figma-video-container {
+      flex-direction: row;
+      width: 90%;
+      height: auto;
+      right: auto;
+      left: 5%;
+      top: auto;
+      bottom: 100px;
+      justify-content: center;
+      gap: 20px;
+    }
+    
+    .figma-controls {
+      bottom: 30px;
+    }
+    
+    .figma-question-container {
+      width: 90%;
+      left: 5%;
+      top: 100px;
+    }
+  }
+  
+  /* Session title - Speaking Practice Session */
+  .figma-session-title {
+    position: absolute;
+    width: 204px;
+    height: 24px;
+    left: 104px;
+    top: 57px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-style: normal;
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 150%;
+    color: #000000;
   }

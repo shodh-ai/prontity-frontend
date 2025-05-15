@@ -46,7 +46,7 @@ interface HighlightType {
 }
 
 // Import styles
-import '../figma-styles.css';
+import './figma-styles.css';
 import '@/styles/enhanced-room.css';
 import '@/styles/tts-highlight.css';
 
@@ -226,6 +226,8 @@ export default function WebSpeechEnhancedPage() {
         setUserName(storedUserName);
       }
     }
+    
+
     
     // Simulate API fetch for the initial question
     fetchTOEFLQuestion();

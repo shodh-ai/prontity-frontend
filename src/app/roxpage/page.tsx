@@ -12,12 +12,12 @@ import userProgressApi from '@/api/userProgressService';
 import LiveKitSession from '@/components/LiveKitSession';
 import { Room, RoomEvent } from 'livekit-client';
 import Link from 'next/link';
-import AvatarVideoDisplay from '@/components/AvatarVideoDisplay';
+import SimpleTavusDisplay from '@/components/roxavatar';
 import { RoomAudioRenderer } from '@livekit/components-react';
-import SimpleTavusDisplay from '@/components/SimpleTavusDisplay';
 import UserStatus from '@/components/UserStatus';
+import BrowserOnly from '@/components/BrowserOnly';
 
-
+// Using SimpleTavusDisplay component from roxavatar.tsx
 
 function RoxPageContent() {
   // No router used in this component to prevent redirects
@@ -43,9 +43,18 @@ function RoxPageContent() {
   // Add the missing roomRef definition
   const roomRef = useRef<Room | null>(null);
   
-  // State to manage UserStatus display
+  // State to manage UserStatus display - Debug with console logging
   const [showUserStatus, setShowUserStatus] = useState(false);
   const [userToken, setUserToken] = useState<string>("");
+  
+  // Debug function for user status toggle
+  const toggleUserStatus = () => {
+    console.log('Toggle user status called, before:', showUserStatus);
+    setShowUserStatus(prevState => {
+      console.log('Setting showUserStatus to:', !prevState);
+      return !prevState;
+    });
+  };
   
   // Get username and token from session or localStorage when component mounts
   useEffect(() => {
@@ -78,10 +87,16 @@ function RoxPageContent() {
       setUserName(storedUserName);
     }
     
-    // Get token for UserStatus component
+    // Get token for UserStatus component with debug logging
     const token = localStorage.getItem('token');
+    console.log('Token from localStorage:', token ? 'Found token' : 'No token found');
     if (token) {
       setUserToken(token);
+      console.log('UserToken state set');
+    } else {
+      // For testing/debugging purposes, set a fallback token
+      console.log('No token found in localStorage, using fallback for testing');
+      setUserToken('testing-fallback-token');
     }
     
     // Fetch user data from services
@@ -478,89 +493,7 @@ function RoxPageContent() {
     { active: false, icon: "/frame-3.svg", alt: "Frame 3" },
   ];
 
-  // Suggestion cards data - dynamically based on user progress
-  const getSuggestionCards = () => {
-    const cards = [
-      {
-        id: 'speaking-practice',
-        title: 'Speaking Practice',
-        description: 'Practice speaking with AI feedback',
-        image: '/img/speaking-icon.svg',
-        buttonText: 'Start Speaking Practice',
-        linkPath: '/speakingpage',
-        action: () => navigateToSpeaking()
-      },
-      {
-        id: 'writing-practice',
-        title: 'Writing Practice',
-        description: 'Improve your writing skills with AI feedback',
-        image: '/img/writing-icon.svg',
-        buttonText: 'Start Writing Practice',
-        linkPath: '/writingpage_tiptap',
-        action: () => navigateToWriting()
-      },
-      {
-        id: 'vocabulary-practice',
-        title: 'Vocabulary Practice',
-        description: 'Learn and practice new words',
-        image: '/img/vocabulary-icon.svg',
-        buttonText: 'Start Vocabulary Practice',
-        linkPath: '/vocabpage',
-        action: () => navigateToVocab()
-      },
-    ];
-    
-    // If we have next task data, replace the first card with personalized suggestion
-    if (nextTask) {
-      let customCard = {
-        id: 'next-task',
-        title: "Continue your learning",
-        description: "Your next task is ready",
-        image: '/img/next-task-icon.svg',
-        buttonText: 'Continue Learning',
-        linkPath: '/speakingpage',
-        action: () => {}
-      };
-      
-      if (nextTask.taskType === 'vocab') {
-        customCard = {
-          id: 'next-task',
-          title: `Learn the word "${nextTask.contentRefId}"`,
-          description: "Continue your vocabulary practice",
-          image: '/img/vocabulary-icon.svg',
-          buttonText: 'Start Vocabulary Practice',
-          linkPath: '/vocabpage',
-          action: navigateToVocab
-        };
-      } else if (nextTask.taskType === 'speaking') {
-        customCard = {
-          id: 'next-task',
-          title: `Practice speaking about ${nextTask.contentRefId}`,
-          description: "Continue your speaking practice",
-          image: '/img/speaking-icon.svg',
-          buttonText: 'Start Speaking Practice',
-          linkPath: '/speakingpage',
-          action: navigateToSpeaking
-        };
-      } else if (nextTask.taskType === 'writing') {
-        customCard = {
-          id: 'next-task',
-          title: `Write about ${nextTask.contentRefId}`,
-          description: "Continue your writing practice",
-          image: '/img/writing-icon.svg',
-          buttonText: 'Start Writing Practice',
-          linkPath: '/writingpage_tiptap',
-          action: navigateToWriting
-        };
-      }
-      
-      return [customCard, ...cards.slice(1)];
-    }
-    
-    return cards;
-  };
-  
-  const suggestionCards = getSuggestionCards();
+
 
   return (
     <div className="bg-white flex flex-col w-full relative min-h-screen">
@@ -607,6 +540,43 @@ function RoxPageContent() {
         </div>
       </div>
       
+      {/* Fixed User Status Button with enhanced interaction */}
+      <div className="fixed top-20 left-5 z-50">
+        {/* Extra debug section */}
+        <div className="mb-2 p-2 bg-black text-white text-xs rounded">
+          Status: {showUserStatus ? 'VISIBLE' : 'HIDDEN'} | Token: {userToken ? 'LOADED' : 'MISSING'}
+        </div>
+        
+        {/* Using regular anchor tag as fallback */}
+        <a 
+          href="#" 
+          onClick={(e) => {
+            e.preventDefault();
+            console.log('CLICK DETECTED');
+            toggleUserStatus();
+          }}
+          className="block cursor-pointer select-none px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-xl font-bold rounded-md hover:from-purple-500 hover:to-blue-500 transition-all duration-300 border-4 border-white shadow-xl active:scale-95 text-center"
+        >
+          {showUserStatus ? '❌ HIDE SKILLS' : '🌟 SHOW MY SKILLS 🌟'}
+        </a>
+        
+        {/* Always show this as a fallback test option */}
+        <button
+          className="mt-2 w-full px-4 py-2 bg-red-500 text-white rounded"
+          onClick={toggleUserStatus}
+        >
+          BACKUP TOGGLE BUTTON
+        </button>
+        
+        {/* User Status Component with explicit conditional rendering */}
+        {showUserStatus ? (
+          <div className="mt-2 border-4 border-blue-300 rounded-lg p-6 bg-white shadow-xl overflow-auto max-h-[600px]" style={{ minWidth: '350px' }}>
+            <h2 className="text-xl font-bold text-blue-600 mb-4 text-center">YOUR LANGUAGE SKILLS</h2>
+            <UserStatus token={userToken} />
+          </div>
+        ) : null}
+      </div>
+      
       <div className="bg-white overflow-hidden w-[1440px] h-[820px]">
         <div className="relative w-[2012px] h-[1284px] top-[-359px] -left-36">
             {/* Background decorative elements with lower z-index to stay behind content */}
@@ -614,23 +584,59 @@ function RoxPageContent() {
             <div className="absolute w-[353px] h-[353px] top-[931px] left-0 bg-[#336de6] rounded-[176.5px] z-[-1]" />
             <div className="absolute w-[1440px] h-[820px] top-[359px] left-36 bg-[#ffffff99] backdrop-blur-[200px] backdrop-brightness-[100%] [-webkit-backdrop-filter:blur(200px)_brightness(100%)] z-[0]" />
             
-            {/* Centered circular avatar placeholder that sits on top of the backdrop */}
-            {roomRef.current && (
-              <div className="absolute w-[250px] h-[250px] top-[500px] left-[760px] flex items-center justify-center overflow-hidden rounded-full border-4 border-[#566fe9] bg-black z-[5] shadow-lg">
-                <div className="absolute top-0 left-0 right-0 text-center mt-2 font-medium text-[#566fe9] text-xs bg-white px-2 py-1 rounded-md shadow z-10">
-                  Tavus Avatar
-                </div>
-                <div className="w-full h-full relative overflow-hidden" style={{ borderRadius: '50%' }}>
-                  {/* Key to force re-render */}
-                  <AvatarVideoDisplay 
-                    key={`avatar-display-${Date.now()}`}
-                    room={roomRef.current}
-                    showUserVideo={false}
-                    showAvatarVideo={true}
+            {/* Single centralized circular Tavus avatar display */}
+            <div className="absolute top-[300px] left-0 right-0 z-[50] flex flex-col items-center justify-center">
+              <div className="text-center mb-4 bg-white px-4 py-2 rounded-lg shadow-md">
+                <h2 className="text-2xl font-bold text-blue-600">Tavus Avatar</h2>
+                <p className="text-sm">Ask me anything using your microphone</p>
+              </div>
+              
+              <div className="flex flex-col items-center space-y-4">
+                {/* Hidden LiveKit session for audio connection only */}
+                <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, zIndex: -1 }}>
+                  <LiveKitSession
+                    roomName={roomName}
+                    userName={userName || 'Guest User'}
+                    sessionTitle="Conversation with Rox"
+                    onLeave={() => {
+                      console.log('LiveKit session ended');
+                      setMicrophoneEnabled(false);
+                    }}
+                    pageType="rox"
+                    hideVideo={true} /* Hide all video tracks from LiveKitSession */
+                    hideAudio={false} /* Keep audio enabled for voice communication */
+                    aiAssistantEnabled={true} /* Keep AI agent enabled for conversation */
+                    showAvatar={false} /* Critical: Disable avatar in LiveKitSession to prevent duplicate */
+                    onRoomCreated={handleRoomCreated}
                   />
                 </div>
+                
+                {/* Avatar display container */}
+                <div className="relative overflow-hidden bg-black rounded-lg shadow-xl" 
+                     style={{
+                       width: '100%', 
+                       maxWidth: '600px', 
+                       height: '400px', 
+                       margin: '0 auto',
+                       border: '2px solid #566FE9',
+                     }}>
+                  {roomRef.current ? (
+                    <SimpleTavusDisplay room={roomRef.current} />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-white">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                      <p>Initializing Rox AI Avatar...</p>
+                      <p className="mt-2 text-xs text-blue-300">Setting up video connection</p>
+                    </div>
+                  )}
+                  
+                  {/* Status badge */}
+                  <div className="absolute top-2 right-2 bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold z-10">
+                    Rox AI
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
 
           {/* Sidebar navigation */}
           <div className="inline-flex flex-col h-[820px] items-center justify-between px-2 py-3.5 absolute top-[359px] left-36">
@@ -677,25 +683,7 @@ function RoxPageContent() {
             </div>
           </div>
 
-          {/* AI Assistant avatar - using LiveKit Tavus avatar */}
-          <div className="absolute w-[250px] h-[250px] top-[519px] left-[767px] flex items-center justify-center overflow-hidden rounded-full">
-            {roomRef.current ? (
-              <AvatarVideoDisplay
-                room={roomRef.current}
-                userName={userName}
-                showUserVideo={false}
-                showAvatarVideo={true}
-              />
-            ) : (
-              <Image
-                className="object-cover"
-                alt="AI Assistant"
-                src="/image-3.png"
-                width={250}
-                height={250}
-              />
-            )}
-          </div>
+          {/* Removed duplicate avatar display - we're now only using the main circular container above */}
 
           {/* AI Assistant greeting with user progress */}
           <div className="absolute w-[700px] top-[792px] left-[542px] font-semibold text-black text-lg text-center leading-normal">
@@ -716,37 +704,7 @@ function RoxPageContent() {
           </div>
 
           {/* Suggestion cards */}
-          <div className="inline-flex items-center gap-[11px] absolute top-[894px] left-[542px]" style={{width: '800px', left: '152px', transform: 'translateX(390px)'}}>
-            {!loading && suggestionCards.map((card, index) => (
-              <Card
-                key={index}
-                className="inline-flex flex-col items-start gap-2.5 pt-3 pb-4 px-4 relative flex-[0_0_auto] rounded-md border-[none] [background:linear-gradient(357deg,rgba(255,255,255,0)_0%,rgba(86,111,233,0.2)_100%)] cursor-pointer hover:shadow-md transition-shadow"
-                onClick={card.action}
-              >
-                <CardContent className="inline-flex flex-col items-start gap-2 relative flex-[0_0_auto] p-0">
-                  <div className="relative w-fit mt-[-1.00px] font-medium text-black text-base whitespace-nowrap">
-                    {card.title}
-                  </div>
-                  <div className="relative w-[194px] font-normal text-black text-sm leading-normal">
-                    {card.description}
-                  </div>
-                  {card.action && (
-                    <Link href={card.linkPath || '#'} passHref>
-                      <Button
-                        className="mt-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg px-4 py-2"
-                        onClick={(e) => {
-                          // Execute the action to prepare data
-                          if (card.action) card.action();
-                        }}
-                      >
-                        {card.buttonText || 'Practice Now'}
-                      </Button>
-                    </Link>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+
 
           {/* Input area */}
           <div className="inline-flex items-center gap-3 absolute top-[830px] left-[542px]" style={{width: '800px', left: '152px', transform: 'translateX(390px)'}}>
@@ -777,120 +735,54 @@ function RoxPageContent() {
                 <h1 className="text-3xl font-bold text-[#566FE9] dark:text-blue-400">Hello, {userName || 'Friend'}</h1>
                 <p className="text-gray-600 dark:text-gray-400 mt-1">Welcome to your personalized language dashboard.</p>
                 
-                {/* User Status Button */}
-                <div className="mt-4">
-                  <button 
-                    onClick={() => setShowUserStatus(!showUserStatus)}
-                    className="px-4 py-2 bg-[#566FE9] text-white rounded-md hover:bg-blue-600 transition-colors"
-                  >
-                    {showUserStatus ? 'Hide My Skills' : 'Show My Skills'}
-                  </button>
-                </div>
-                
-                {/* User Status Component */}
-                {showUserStatus && userToken && (
-                  <div className="mt-6 border rounded-lg p-4 bg-white shadow-md">
-                    <UserStatus token={userToken} />
-                  </div>
-                )}
+                {/* Button removed and moved to fixed position at top of page */}
               </div>
               <div className="static top-0 w-full text-center py-4"> {/* Simplified and centered text */}
                 <h1 className="text-2xl font-bold text-[#566FE9] mb-2">ROX</h1>
                 <h3 className="text-lg font-medium text-gray-800 mb-2">Rox AI Assistant</h3>
                 <p className="text-gray-600 mb-4">Your AI voice assistant is ready to help.</p>
                 
-                {/* Hide the rectangular avatar display since we now have the circular centered one */}
-                {/* Note: The main avatar display is now in the absolute positioned circular container */}
+                {/* Avatar display container */}
+                <div className="avatar-display-container" style={{ width: "100%", maxWidth: "400px", height: "300px", margin: "0 auto", borderRadius: "12px", overflow: "hidden" }}>
+                  {roomRef.current && (
+                    <SimpleTavusDisplay room={roomRef.current} />
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
         
-        {/* Enhanced LiveKit Session with visible Tavus Avatar */}
+        {/* Floating microphone control button */}
         <div style={{
           position: "fixed", 
           bottom: "20px", 
-          right: "20px", 
-          width: "300px", 
-          height: "300px", 
-          zIndex: 10,
-          backgroundColor: "#fff",
-          borderRadius: "12px",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-          overflow: "hidden", 
-          display: "flex",
-          flexDirection: "column"
+          right: "20px",
+          zIndex: 10
         }}>
-          <div style={{ 
-            padding: "10px", 
-            backgroundColor: "#566FE9", 
-            color: "white",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center"
-          }}>
-            <span style={{ fontWeight: "bold" }}>Tavus Avatar</span>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={toggleMicrophone} 
-              style={{ 
-                color: "white",
-                backgroundColor: microphoneEnabled ? "rgba(255,255,255,0.2)" : "transparent"
-              }}
+          <Button 
+            size="lg"
+            onClick={toggleMicrophone} 
+            className={`rounded-full p-4 shadow-lg ${microphoneEnabled ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'}`}
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              width="24" 
+              height="24" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
             >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="16" 
-                height="16" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-              </svg>
-            </Button>
-          </div>
-          
-          <div style={{ flex: 1, position: "relative" }}>
-            {roomRef.current ? (
-              <SimpleTavusDisplay room={roomRef.current} />
-            ) : (
-              <div style={{
-                display: "flex", 
-                height: "100%", 
-                justifyContent: "center", 
-                alignItems: "center",
-                backgroundColor: "#f5f5f5"
-              }}>
-                <p>Connecting to avatar...</p>
-              </div>
-            )}
-          </div>
-          
-          {/* The LiveKitSession component is still needed to establish the connection */}
-          <div style={{ display: "none" }}>
-            <LiveKitSession
-              roomName={roomName}
-              userName={userName || 'Guest User'}
-              sessionTitle="Conversation with Rox"
-              onLeave={() => {
-                console.log('LiveKit session ended');
-                setMicrophoneEnabled(false);
-              }}
-              pageType="rox"
-              hideVideo={true}
-              hideAudio={false} // Never hide audio to keep connection active
-              aiAssistantEnabled={true}
-              showAvatar={true} // Enable the Tavus avatar
-              onRoomCreated={handleRoomCreated}
-            />
-          </div>
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            </svg>
+          </Button>
         </div>
+        
+        {/* LiveKitSession is now integrated directly into the avatar display */}
       </div>
     </div>
   );

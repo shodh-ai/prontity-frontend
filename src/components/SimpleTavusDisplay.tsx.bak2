@@ -131,48 +131,164 @@ export default function SimpleTavusDisplay({
       position: 'relative',
       borderRadius: '50%',
       overflow: 'hidden',
+      margin: '0 auto',
+      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+      border: '4px solid #566FE9'
+    } : {})
+  };
+
+  return (
+    <RoomContext.Provider value={room}>
+      {/* This component handles audio output from remote participants */}
+      <RoomAudioRenderer />
+      
+      <div className={`tavus-display-container ${className} ${centered ? 'centered-mode' : ''}`} 
+           style={centered ? {
+             display: 'flex',
+             flexDirection: 'column',
+             alignItems: 'center',
+             justifyContent: 'center',
+             gap: '16px'
+           } : {}}>
+        
+        {/* Mic status indicators - more subtle in centered mode */}
+        {!centered && (
+          <div style={{ margin: '10px 0', display: 'flex', gap: '10px' }}>
+            {micInitialized ? 
+              <div style={{ 
+                padding: '5px 10px',
+                backgroundColor: '#4caf50', 
+                color: 'white', 
+                borderRadius: '4px',
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <span>Mic Initialized</span>
+                {micActive && <span>✓</span>}
+              </div>
+              : 
+              <div style={{ 
+                padding: '5px 10px',
+                backgroundColor: '#ff9800', 
+                color: 'white', 
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                Initializing Mic...
+              </div>
+            }
+            
+            {micError && (
+              <div style={{ 
+                padding: '5px 10px',
+                backgroundColor: '#f44336', 
+                color: 'white', 
+                borderRadius: '4px',
+                fontSize: '12px'
+              }}>
+                {micError}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Main avatar container with custom styling */}
+        <div style={containerStyles}>
+          <TavusRenderer centered={centered} />
+        </div>
+        }
+        
+        {micError && 
+          <div style={{ 
+            padding: '5px 10px',
+            backgroundColor: '#f44336', 
+            color: 'white', 
+            borderRadius: '4px',
+            display: 'inline-block',
+            fontSize: '12px'
+          }}>{micError}</div>
+        }
+        
+        <button 
+          onClick={enableMicrophone}
+          style={{ 
+            padding: '5px 10px',
+            backgroundColor: '#673ab7', 
+            color: 'white', 
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px'
+          }}
+        >
+          Reconnect Mic
+        </button>
+      </div>
+      
+      <TavusRenderer />
+    </RoomContext.Provider>
+  );
+}
+
+function TavusRenderer({ centered = false }: { centered?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isAttached, setIsAttached] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPlayButton, setShowPlayButton] = useState(false);
-
-  // Get LiveKit participants and tracks using the hooks
+  
+  // Get all participants and find the tavus avatar participant
   const participants = useParticipants();
-  const videoTracks = useTracks([
-    { source: Track.Source.Camera, withPlaceholder: false },
-    { source: Track.Source.ScreenShare, withPlaceholder: false },
-  ]);
-
-  // Filter for the tavus participant
-  const tavusParticipant = participants.find(
-    p => p.identity === 'tavus-avatar-agent'
+  const tavusParticipant = participants.find(p => p.identity === 'tavus-avatar-agent');
+  
+  // Get all remote video AND audio tracks
+  const videoTracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: false },
+    ],
+    { 
+      onlySubscribed: true,
+      updateOnlyOn: [RoomEvent.TrackSubscribed, RoomEvent.TrackUnsubscribed]
+    }
   );
-
+  
+  // Also subscribe to audio tracks from the avatar
+  const audioTracks = useTracks(
+    [
+      { source: Track.Source.Microphone, withPlaceholder: false },
+    ],
+    { 
+      onlySubscribed: true,
+      updateOnlyOn: [RoomEvent.TrackSubscribed, RoomEvent.TrackUnsubscribed]
+    }
+  );
+  
   // Filter for just the tavus avatar tracks
   const tavusTracks = videoTracks.filter(
     track => track.participant?.identity === 'tavus-avatar-agent' && 
              track.publication.kind === Track.Kind.Video
   );
-
+  
   // Debugging info
   useEffect(() => {
     console.log("SimpleTavusDisplay: Rendering component");
     console.log("Participants:", participants.map(p => p.identity));
     console.log("Tavus participant found:", tavusParticipant ? tavusParticipant.identity : 'Not found');
-    console.log("Available tracks:", videoTracks.length);
-    console.log("Tavus tracks found:", tavusTracks.length);
+    console.log("Total video tracks:", videoTracks.length);
+    console.log("Tavus video tracks:", tavusTracks.length);
     
     if (tavusTracks.length > 0) {
-      // Debug more detailed info about the track
-      console.log("First tavus track details:", {
-        trackSid: tavusTracks[0].trackSid,
+      console.log("Tavus track details:", {
+        sid: tavusTracks[0].publication.trackSid,
+        name: tavusTracks[0].publication.trackName,
         kind: tavusTracks[0].publication.kind,
         source: tavusTracks[0].publication.source,
         isSubscribed: tavusTracks[0].publication.isSubscribed,
       });
     }
   }, [participants, videoTracks, tavusTracks]);
-
+  
   // Attach the tavus video track to our video element
   useEffect(() => {
     if (tavusTracks.length === 0 || !videoRef.current) {
@@ -182,17 +298,17 @@ export default function SimpleTavusDisplay({
     const tavusTrack = tavusTracks[0];
     
     if (!tavusTrack.publication.isSubscribed || !tavusTrack.publication.track) {
-      setError("Track not subscribed or available");
+      setError("Track is not subscribed or track object is not available");
       return;
     }
     
     try {
-      // Detach first in case it's already attached
+      // Detach from any previous elements
       tavusTrack.publication.track.detach();
       
       // Attach to our video element with explicit logging
       console.log("Attaching Tavus track to video element...");
-      tavusTrack.publication.track?.attach(videoRef.current);
+      tavusTrack.publication.track.attach(videoRef.current);
       console.log("Track attached successfully");
       setIsAttached(true);
       
@@ -247,7 +363,9 @@ export default function SimpleTavusDisplay({
       position: 'relative', 
       width: '100%', 
       height: '100%',
+      minHeight: '240px', 
       backgroundColor: '#000',
+      borderRadius: '8px',
       overflow: 'hidden'
     }}>
       {tavusParticipant && tavusTracks.length > 0 ? (

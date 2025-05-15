@@ -8,7 +8,7 @@ import Image from 'next/image';
 import LiveKitSession from '@/components/LiveKitSession';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useSession } from 'next-auth/react';
-import ImageGenerationHandler from '@/components/vocabulary/ImageGenerationHandler';
+// Image handler is now imported from ClientImageHandler
 
 // Import CSS 
 import styles from './vocabnewpage.module.css';
@@ -17,6 +17,7 @@ import styles from './vocabnewpage.module.css';
 import TextInput from '@/components/vocabulary/TextInput';
 import VocabAgentActionHandler from '@/components/vocabulary/VocabAgentActionHandler';
 import BrowserOnly from '../../components/BrowserOnly';
+import ClientImageHandler from '../../components/vocabulary/ClientImageHandler';
 
 // Local dummy data
 const vocabData = {
@@ -86,55 +87,81 @@ function VocabImageGallery({
     });
   }, []);
 
-  // Subscribe to a custom event for receiving images
+  // Subscribe to custom events for receiving images
   useEffect(() => {
-    const handleImageEvent = (event: CustomEvent) => {
-      const { imageUrl, word, prompt } = event.detail;
-      console.log('VocabImageGallery received image for word:', word);
-      
-      // Add to image history
-      setImages(prev => [...prev, { 
-        id: `ai-${Date.now()}`, 
-        url: imageUrl, 
-        word: vocabularyWord || 'vocabulary' 
-      }]);
-      
-      // Reset loading state
-      setIsGeneratingAI(false);
-    };
-    
-    // Add event listener for custom image event
-    window.addEventListener('vocab-image-generated' as any, handleImageEvent as any);
-    
-    // Clean up
-    return () => {
-      window.removeEventListener('vocab-image-generated' as any, handleImageEvent as any);
-    };
-  }, []);
-  
-  // Listen for newly generated AI images to display in the gallery
-  useEffect(() => {
-    const handleAIImageGenerated = (event: CustomEvent) => {
-      console.log("VocabImageGallery received image for word:", vocabularyWord);
-      
-      if (event.detail) {
-        const { imageUrl, imageId } = event.detail;
-        setImages(prev => [
-          ...prev,
-          { id: imageId || `ai-${Date.now()}`, url: imageUrl, word: vocabularyWord || 'vocabulary' }
-        ]);
+    // Handle vocab image event
+    const handleVocabImageEvent = (event: any) => {
+      const vocab = event.detail;
+      console.log("vocab image event", vocab);
+      if (vocab.imageUrl) {
+        // Add the new image to our images array
+        setImages(prevImages => {
+          const exists = prevImages.some(img => img.url === vocab.imageUrl);
+          if (exists) return prevImages;
+          return [{
+            id: `vocab-${Date.now()}`,
+            url: vocab.imageUrl,
+            word: vocabularyWord || "vocabulary"
+          }, ...prevImages];
+        });
       }
     };
     
-    // Add event listener
-    window.addEventListener('ai-image-generated' as any, handleAIImageGenerated);
+    // Handle direct agent-generated images
+    const handleAgentImageEvent = (event: any) => {
+      const imageData = event.detail;
+      console.log('Received agent-generated image:', imageData.word);
+      
+      setImages(prevImages => {
+        // Avoid duplicates
+        const exists = prevImages.some(img => 
+          img.url === imageData.url || 
+          (img.word === imageData.word && img.id === imageData.id)
+        );
+        if (exists) return prevImages;
+        return [imageData, ...prevImages];
+      });
+    };
+
+    // Register event listeners
+    window.addEventListener('vocab-image-generated', handleVocabImageEvent);
+    window.addEventListener('agent-image-generated', handleAgentImageEvent);
     
     // Cleanup function
     return () => {
-      window.removeEventListener('ai-image-generated' as any, handleAIImageGenerated);
+      window.removeEventListener('vocab-image-generated', handleVocabImageEvent);
+      window.removeEventListener('agent-image-generated', handleAgentImageEvent);
     };
-  }, [vocabularyWord, setImages]);
+  }, [vocabularyWord]);
   
+  // Listen for newly generated AI images to display in the gallery
+  useEffect(() => {
+    const handleAIImageGenerated = (event: any) => {
+      const { imageUrl, imageId } = event.detail;
+      
+      // Add the new image to our list
+      if (imageUrl) {
+        setImages(prevImages => {
+          // Check for duplicates
+          const exists = prevImages.some(img => img.url === imageUrl);
+          if (exists) return prevImages;
+          
+          return [{
+            id: imageId || `ai-${Date.now()}`,
+            url: imageUrl,
+            word: vocabularyWord || "vocabulary"
+          }, ...prevImages];
+        });
+      }
+    };
+    
+    window.addEventListener('ai-image-generated', handleAIImageGenerated);
+    
+    return () => {
+      window.removeEventListener('ai-image-generated', handleAIImageGenerated);
+    };
+  }, [vocabularyWord]);
+
   // Automatic trigger for image generation when word changes
   useEffect(() => {
     // Generate an image for serendipity when the page loads
@@ -430,7 +457,7 @@ function VocabNewPageContent() {
       {/* Action handlers for processing agent commands */}
       <VocabAgentActionHandler />
       <BrowserOnly>
-        <ImageGenerationHandler onImageGenerated={handleAgentImageReceived} />
+        <ClientImageHandler />
       </BrowserOnly>
       
       {/* Main content */}

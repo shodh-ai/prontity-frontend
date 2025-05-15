@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import styles from './login.module.css';
-import userProgressApi from '@/api/mockUserProgressService';
+// Import only Pronity API for authentication
+import { login as pronityLogin, PronityApiError, AuthResponse, fetchUserProfile, User } from '@/api/pronityClient';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,15 +24,17 @@ export default function LoginPage() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Verify token by getting user profile
-      userProgressApi.getUserProfile()
+      // Verify token by getting user profile using Pronity API
+      fetchUserProfile(token)
         .then(data => {
           setIsLoggedIn(true);
           setUserProfile(data);
         })
-        .catch(() => {
+        .catch((error) => {
           // Token invalid or expired
+          console.error('Token validation error:', error);
           localStorage.removeItem('token');
+          localStorage.removeItem('user');
           setIsLoggedIn(false);
         });
     }
@@ -44,7 +47,9 @@ export default function LoginPage() {
 
   // Add function to logout current user
   const handleLogout = () => {
-    userProgressApi.logout();
+    // Remove token and user data from localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUserProfile(null);
     setErrorMessage('You have been logged out. Please log in again.');
@@ -65,27 +70,55 @@ export default function LoginPage() {
     setIsLoading(true);
     setErrorMessage('');
     
+    console.log('Attempting login with:', { email }); // Debug login attempt
+    
     try {
-      // Sign in using user progress service
-      const result = await userProgressApi.login(email, password);
+      // Sign in with Pronity backend
+      const credentials = { email, password };
+      console.log('Using API URL:', window.location.origin); // Show base URL for debugging
+      const result = await pronityLogin(credentials);
+      console.log('Login successful, got token:', result.token ? 'token-received' : 'no-token'); // Debug token receipt
       
-      if (result.token && result.user) {
-        setIsLoggedIn(true);
-        setUserProfile(result.user);
-        router.push('/roxpage');
-      } else {
-        throw new Error('Invalid response from server');
-      }
+      // Store token and user info in localStorage
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
+      console.log('Saved token to localStorage');
+      
+      setIsLoggedIn(true);
+      setUserProfile(result.user);
+      console.log('Redirecting to main page');
+      router.push('/roxpage');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Invalid email or password');
+      let errorMsg = 'Invalid email or password';
+      
+      console.error('Login failed with error:', err); // More detailed error logging
+      
+      if (err instanceof PronityApiError) {
+        console.error('Pronity API error:', { message: err.message, statusCode: err.statusCode });
+        errorMsg = err.message;
+        
+        // Add more user-friendly messages for specific error codes
+        if (err.statusCode === 401) {
+          errorMsg = 'Invalid email or password';
+        } else if (err.statusCode === 404) {
+          errorMsg = 'User not found. Please register first.';
+        } else if (err.statusCode >= 500) {
+          errorMsg = 'Server error. Please try again later.';
+        }
+      } else {
+        // Handle network errors better
+        errorMsg = `Connection error: ${err.message}. Please check if the backend server is running.`;
+      }
+      
+      setErrorMessage(errorMsg);
       setIsLoading(false);
     }
   };
 
-  // Handle social media login - would need to be implemented in user-progress-service
+  // Handle social media login - would need to be implemented in Pronity backend
   // For now, we'll keep the UI but show an alert that it's not implemented
   const handleSocialLogin = async (provider: string) => {
-    setErrorMessage(`Social login with ${provider} not yet implemented in the user-progress-service`);
+    setErrorMessage(`Social login with ${provider} is not yet implemented in the Pronity backend`);
     // Future implementation would connect to the appropriate endpoint
   };
 

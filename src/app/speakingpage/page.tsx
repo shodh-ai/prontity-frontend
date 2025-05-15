@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import LiveKitSession from '@/components/LiveKitSession';
 import SpeakingTimer from '@/components/SpeakingTimer';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import NextTaskButton from '@/components/NextTaskButton';
 import { useSession } from 'next-auth/react';
 
 // Import API clients
@@ -25,6 +26,11 @@ function SpeakingPageContent() {
     promptText: string;
     difficultyLevel?: number | null;
   } | null>(null);
+  
+  // Flow navigation parameters from URL
+  const flowPosition = parseInt(searchParams?.get('flowPosition') || '0', 10);
+  const totalTasks = parseInt(searchParams?.get('totalTasks') || '0', 10);
+  const taskId = searchParams?.get('taskId');
   
   // Room configuration
   const roomName = 'Speakingpage';
@@ -53,6 +59,10 @@ function SpeakingPageContent() {
         // Default topic IDs from the API documentation
         const availableTopicIds = ['topic-daily-routine', 'topic-climate-change', 'topic-technology'];
         
+        if (topicIdFromUrl) {
+          console.log(`Loading topic ID from flow: ${topicIdFromUrl}`);
+        }
+        
         // Use the topic ID from URL or default to the first in our list
         const targetTopicId = topicIdFromUrl || availableTopicIds[0];
         
@@ -60,6 +70,9 @@ function SpeakingPageContent() {
         const topicData = await contentApi.getSpeakingTopic(targetTopicId);
         setTopic(topicData);
         
+        if (flowPosition !== null && totalTasks > 0) {
+          console.log(`This is task ${flowPosition + 1} of ${totalTasks} in your learning flow`);
+        }
       } catch (err) {
         console.error('Error fetching speaking topic:', err);
         setError('Failed to load speaking topic. Please try again later.');
@@ -69,7 +82,7 @@ function SpeakingPageContent() {
     };
     
     fetchSpeakingTopic();
-  }, [searchParams]);
+  }, [searchParams, flowPosition, totalTasks]);
   
   // Function to load a different speaking topic
   const loadNewTopic = () => {
@@ -142,6 +155,15 @@ function SpeakingPageContent() {
         New Topic
       </button>
       
+      {/* Flow Navigation component - just the button */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4">
+        <NextTaskButton 
+          onBeforeNavigate={handleLeave}
+          buttonText="Complete & Continue"
+          className="w-full py-3"
+        />
+      </div>
+      
       {loading ? (
         <div className="flex items-center justify-center h-screen w-full">
           <div className="text-center">
@@ -188,21 +210,9 @@ function SpeakingPageContent() {
 }
 
 export default function Page() {
-  // We're going to redirect to the practice-session page which has the updated UI
-  const router = useRouter();
-  
-  useEffect(() => {
-    router.push('/speakingpage/practice-session');
-  }, [router]);
-  
   return (
     <ProtectedRoute>
-      <div className="flex items-center justify-center h-screen w-full">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4">Loading speaking practice...</p>
-        </div>
-      </div>
+      <SpeakingPageContent />
     </ProtectedRoute>
   );
 }

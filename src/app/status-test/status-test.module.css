@@ -1,0 +1,231 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+.headerSection {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #eaeaea;
+  padding-bottom: 1rem;
+}
+
+.title {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.description {
+  color: #666;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.link {
+  color: #0070f3;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.tokenWarning {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #ffeeba;
+}
+
+.errorMessage {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #f5c6cb;
+}
+
+.successMessage {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 1rem;
+  border-radius: 0.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #c3e6cb;
+}
+
+.actionsSection, .currentStatus, .updateSection {
+  background-color: white;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.actionsSection h2, .currentStatus h2, .updateSection h2 {
+  margin-top: 0;
+  font-size: 1.5rem;
+  color: #333;
+  margin-bottom: 1rem;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 1rem;
+}
+
+.actionButton {
+  padding: 0.5rem 1rem;
+  border-radius: 0.25rem;
+  border: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.actionButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.actionButton {
+  background-color: #0070f3;
+  color: white;
+}
+
+.actionButton:hover:not(:disabled) {
+  background-color: #0062d6;
+}
+
+.resetButton {
+  background-color: #f44336;
+}
+
+.resetButton:hover:not(:disabled) {
+  background-color: #e53935;
+}
+
+.updateButton {
+  background-color: #4caf50;
+  margin-top: 1rem;
+}
+
+.updateButton:hover:not(:disabled) {
+  background-color: #43a047;
+}
+
+.statusValues {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.label {
+  width: 100px;
+  font-weight: 500;
+  color: #555;
+}
+
+.value {
+  font-weight: 600;
+  color: #333;
+  width: 40px;
+  text-align: center;
+}
+
+.progressBar {
+  flex: 1;
+  height: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 200px;
+}
+
+.progressFill {
+  height: 100%;
+  background-color: #0070f3;
+  border-radius: 4px;
+}
+
+.updatedAt {
+  font-size: 0.875rem;
+  color: #777;
+  margin-top: 1rem;
+}
+
+.noStatus {
+  color: #666;
+  padding: 1rem 0;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.inputItem {
+  display: flex;
+  align-items: center;
+}
+
+.inputItem label {
+  flex: 0 0 150px;
+  font-weight: 500;
+  color: #555;
+}
+
+.numberInput {
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid #ddd;
+  width: 60px;
+  text-align: center;
+}
+
+/* Media queries for responsiveness */
+@media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+  
+  .buttonGroup {
+    flex-direction: column;
+  }
+  
+  .statusItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .progressBar {
+    width: 100%;
+  }
+  
+  .inputItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .inputItem label {
+    margin-bottom: 0.25rem;
+  }
+}

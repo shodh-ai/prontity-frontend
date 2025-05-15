@@ -1,0 +1,769 @@
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { debounce } from 'lodash';
+import { useRouter } from 'next/navigation';
+import StarterKit from '@tiptap/starter-kit';
+import { Editor } from '@tiptap/react';
+import Placeholder from '@tiptap/extension-placeholder';
+import Highlight from '@tiptap/extension-highlight';
+import TextStyle from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import { useSession } from 'next-auth/react';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension';
+import { Highlight as HighlightType } from '@/components/TiptapEditor/highlightInterface';
+import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
+import EditorToolbar from '@/components/EditorToolbar';
+import AudioVisualizer from '@/components/AudioVisualizer';
+import { useSocketIO } from '@/hooks/useSocketIO';
+import '@/styles/tts-highlight.css';
+import '../figma-styles.css';
+import '@/styles/enhanced-room.css';
+
+interface TopicData {
+  id: string;
+  title: string;
+  prompt: string;
+  type: 'independent' | 'integrated';
+  preparationTime: number; // seconds
+  responseTime: number; // seconds
+  tips: string[];
+}
+
+// Mock data for topics - would come from API in production
+const MOCK_TOPICS: TopicData[] = [
+  {
+    id: 'topic-1',
+    title: 'Describe a Challenging Experience',
+    prompt: 'Describe a challenging experience you faced in your life. What made it challenging and how did you overcome it? Include specific details in your response.',
+    type: 'independent',
+    preparationTime: 15, // seconds
+    responseTime: 45, // seconds
+    tips: [
+      'Organize your thoughts clearly',
+      'Include specific examples',
+      'Explain why it was challenging',
+      'Describe how you overcame it'
+    ]
+  },
+  {
+    id: 'topic-2',
+    title: 'Favorite Leisure Activity',
+    prompt: 'Describe your favorite leisure activity. Explain why you enjoy it and how it benefits you. Include specific details and examples in your response.',
+    type: 'independent',
+    preparationTime: 15, // seconds
+    responseTime: 45, // seconds
+    tips: [
+      'Focus on one specific activity',
+      'Provide clear reasons for why you enjoy it',
+      'Describe how it impacts your life',
+      'Use specific examples'
+    ]
+  },
+  {
+    id: 'topic-3',
+    title: 'Important Life Decision',
+    prompt: 'Describe an important decision you had to make in your life. Explain why this decision was important and how it affected you. Include specific details in your explanation.',
+    type: 'independent',
+    preparationTime: 15, // seconds
+    responseTime: 45, // seconds
+    tips: [
+      'Choose one significant decision',
+      'Explain the context and options you had',
+      'Describe your reasoning process',
+      'Explain the impact of the decision'
+    ]
+  }
+];
+
+const EnhancedSpeakingTestPage = () => {
+  const router = useRouter();
+  const { data: session } = useSession();
+  const { socket, isConnected, lastMessage, sendMessage } = useSocketIO();
+  
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [currentStep, setCurrentStep] = useState<'intro' | 'preparation' | 'speaking' | 'review'>('intro');
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [transcript, setTranscript] = useState('');
+  const [audioURL, setAudioURL] = useState<string | null>(null);
+  
+  // Media recording
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Editor state
+  const editorRef = useRef<TiptapEditorHandle>(null);
+  const [liveHighlights, setLiveHighlights] = useState<HighlightType[]>([]);
+  const [wordCount, setWordCount] = useState(0);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | number | null>(null);
+  
+  // Topic state
+  const [topicData, setTopicData] = useState<TopicData>(MOCK_TOPICS[0]);
+  const [topics, setTopics] = useState<TopicData[]>(MOCK_TOPICS);
+  
+  // User experience state
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [isMicAccessGranted, setIsMicAccessGranted] = useState<boolean | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Define Tiptap extensions
+  const extensions = [
+    StarterKit,
+    Highlight,
+    TextStyle,
+    Color,
+    Placeholder.configure({
+      placeholder: 'Your response will appear here...'
+    }),
+    HighlightExtension.configure({
+      onHighlightClick: (highlightId) => {
+        console.log(`Highlight clicked: ${highlightId}`);
+        // Set the active highlight when clicked
+        setActiveHighlightId(highlightId);
+      }
+    })
+  ];
+  
+  // Check for microphone access on initial load
+  useEffect(() => {
+    const checkMicAccess = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setIsMicAccessGranted(true);
+        // Stop tracks immediately after check
+        stream.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.error('Error checking microphone access:', err);
+        setIsMicAccessGranted(false);
+      }
+    };
+    
+    checkMicAccess();
+  }, []);
+  
+  // Handler for live STT results
+  const handleLiveSTTResult = useCallback((data: { transcript_segment: string }) => {
+    if (!data.transcript_segment || !editorRef.current) return;
+    
+    console.log('Received live STT result:', data.transcript_segment);
+    setTranscript(prev => prev + data.transcript_segment);
+    
+    // Update the editor with the new transcript segment
+    const editor = editorRef.current.editor;
+    if (editor) {
+      // Store current selection to maintain cursor position if user is typing
+      const { from, to } = editor.state.selection;
+      const isUserEditing = from !== to;
+      
+      if (isUserEditing) {
+        // If user is actively editing (has selection), append at end without disrupting
+        const currentContent = editor.getHTML();
+        // Append to last paragraph that isn't empty
+        const updatedContent = currentContent.replace(/<p><\/p>$/, '') + 
+          (currentContent.endsWith('</p>') ? '<p>' + data.transcript_segment + '</p>' : data.transcript_segment);
+        
+        editor.commands.setContent(updatedContent);
+        // Restore user selection
+        editor.commands.setTextSelection({ from, to });
+      } else {
+        // No active selection, append normally
+        const currentContent = editor.getHTML();
+        const updatedContent = currentContent.replace(/<p><\/p>$/, '<p>') + data.transcript_segment;
+        
+        // Set the editor content and move cursor to end
+        editor.commands.setContent(updatedContent);
+        editor.commands.focus('end');
+      }
+      
+      // Count words for display
+      const text = editor.getText();
+      const words = text ? text.trim().split(/\s+/).filter(Boolean) : [];
+      setWordCount(words.length);
+      
+      // Send update to server for grammar analysis
+      if (words.length > 2) {
+        sendTextUpdate(editor.getHTML());
+      }
+    }
+  }, [sendTextUpdate]);
+  
+  // Handler for live grammar highlights
+  const handleLiveGrammarHighlight = useCallback((highlights: HighlightType[]) => {
+    console.log('Received live grammar highlights:', highlights);
+    setLiveHighlights(highlights);
+  }, []);
+  
+  // Handler for test completion
+  const handleTestCompleted = useCallback((data: { reportId: string }) => {
+    console.log('Test completed with report ID:', data.reportId);
+    // In a real app, you might navigate to a results page or show additional feedback
+    localStorage.setItem('lastReportId', data.reportId);
+  }, []);
+  
+  // Hook into Socket.IO events
+  useEffect(() => {
+    if (!socket) return;
+    
+    // Set up listeners
+    socket.on('live_stt_result', handleLiveSTTResult);
+    socket.on('live_grammar_highlight', handleLiveGrammarHighlight);
+    socket.on('test_completed_summary', handleTestCompleted);
+    
+    // Handle AI suggestions from Socket.IO
+    socket.on('ai_suggestion', (data) => {
+      console.log('Received ai_suggestion:', data);
+      try {
+        // Parse the AI suggestion data
+        const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        console.log('Parsed AI suggestion:', parsedData);
+        
+        // Extract the suggestions array
+        if (parsedData && Array.isArray(parsedData.suggestions)) {
+          // Convert to our HighlightType format
+          const newHighlights: HighlightType[] = parsedData.suggestions.map((suggestion: any) => ({
+            id: suggestion.id || `highlight-${Date.now()}-${Math.random()}`,
+            start: suggestion.start || 0,
+            end: suggestion.end || 0,
+            type: suggestion.type || 'suggestion',
+            message: suggestion.message || '',
+            wrongVersion: suggestion.wrongVersion,
+            correctVersion: suggestion.correctVersion
+          }));
+          
+          setLiveHighlights(newHighlights);
+        }
+      } catch (error) {
+        console.error('Error processing AI suggestion:', error);
+      }
+    });
+    
+    return () => {
+      // Clean up listeners
+      socket.off('live_stt_result', handleLiveSTTResult);
+      socket.off('live_grammar_highlight', handleLiveGrammarHighlight);
+      socket.off('test_completed_summary', handleTestCompleted);
+      socket.off('ai_suggestion');
+    };
+  }, [socket, handleLiveSTTResult, handleLiveGrammarHighlight, handleTestCompleted]);
+  
+  // Audio recording functions
+  const startRecording = useCallback(async () => {
+    try {
+      // Reset state
+      setErrorMessage(null);
+      audioChunksRef.current = [];
+      setTranscript('');
+      setWordCount(0);
+      setLiveHighlights([]);
+      
+      // Reset the editor content
+      if (editorRef.current?.editor) {
+        editorRef.current.editor.commands.setContent('');
+      }
+      
+      // Get microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      
+      streamRef.current = stream;
+      setIsMicAccessGranted(true);
+      
+      // Create a new MediaRecorder instance
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: 'audio/webm;codecs=opus' 
+      });
+      mediaRecorderRef.current = mediaRecorder;
+      
+      // Handle audio data as it becomes available
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          
+          // Send this chunk to the server for STT processing
+          if (isConnected && socket) {
+            console.log('Sending audio chunk for STT processing...');
+            // For development, we'll send the audio as base64
+            // In production, you would use a more efficient method
+            const reader = new FileReader();
+            reader.readAsDataURL(event.data);
+            reader.onloadend = () => {
+              // Strip off the data URL prefix to get just the base64 string
+              const base64Data = reader.result?.toString().split(',')[1];
+              if (base64Data) {
+                // Send directly as audio_chunk event (not through sendMessage)
+                socket.emit('audio_chunk', {
+                  audio_data: base64Data,
+                  mime_type: event.data.type,
+                  topic_id: topicData.id
+                });
+                console.log('Audio chunk sent to server');
+              }
+            };
+          }
+        }
+      };
+      
+      // Start recording, capturing chunks at regular intervals
+      mediaRecorder.start(1000); // Capture a chunk every 1 second
+      setIsRecording(true);
+      
+      // Let the server know we're starting a test
+      if (isConnected && socket) {
+        sendMessage({
+          type: 'start_speaking_test',
+          topic_id: topicData.id,
+          timestamp: Date.now()
+        });
+      }
+      
+      // Set up a timer for recording time
+      let startTime = Date.now();
+      timerRef.current = setInterval(() => {
+        const currentTime = Math.floor((Date.now() - startTime) / 1000);
+        setTimerSeconds(currentTime);
+        
+        // Auto-stop recording when time is up
+        if (currentStep === 'speaking' && currentTime >= topicData.responseTime) {
+          stopRecording();
+          setCurrentStep('review');
+        }
+      }, 100);
+    } catch (err) {
+      console.error('Error starting recording:', err);
+      setErrorMessage('Failed to access microphone. Please check your permissions and try again.');
+      setIsMicAccessGranted(false);
+    }
+  }, [currentStep, isConnected, sendMessage, socket, topicData.id, topicData.responseTime]);
+  
+  // Stop recording function
+  const stopRecording = useCallback(() => {
+    // Stop the media recorder if it exists and is recording
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    // Clear the timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Stop and release the microphone stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    
+    // Create a full audio blob from all chunks
+    if (audioChunksRef.current.length > 0) {
+      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm;codecs=opus' });
+      const url = URL.createObjectURL(audioBlob);
+      setAudioURL(url);
+      
+      // Let the server know we're ending the test
+      if (isConnected && socket) {
+        sendMessage({
+          type: 'end_speaking_test',
+          topic_id: topicData.id,
+          transcript: transcript,
+          timestamp: Date.now()
+        });
+      }
+    }
+    
+    setIsRecording(false);
+  }, [isConnected, sendMessage, socket, topicData.id, transcript]);
+  
+  // Timer for preparation phase
+  useEffect(() => {
+    if (currentStep === 'preparation') {
+      setTimerSeconds(topicData.preparationTime);
+      
+      const timer = setInterval(() => {
+        setTimerSeconds(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            setCurrentStep('speaking');
+            startRecording();
+            return topicData.responseTime;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+      return () => clearInterval(timer);
+    }
+  }, [currentStep, startRecording, topicData.preparationTime, topicData.responseTime]);
+  
+  // Format timer as MM:SS
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  
+  // Handle start preparation phase
+  const handleStartPreparation = () => {
+    setShowInstructions(false);
+    setCurrentStep('preparation');
+    setIsPreparing(true);
+  };
+  
+  // Handle skip preparation
+  const handleSkipPreparation = () => {
+    setShowInstructions(false);
+    setCurrentStep('speaking');
+    startRecording();
+  };
+  
+  // Handle try again
+  const handleTryAgain = () => {
+    setCurrentStep('preparation');
+    setAudioURL(null);
+  };
+  
+  // Handle select new topic
+  const handleSelectNewTopic = () => {
+    // Randomly select a different topic
+    const currentIndex = topics.findIndex(t => t.id === topicData.id);
+    let newIndex = currentIndex;
+    while (newIndex === currentIndex) {
+      newIndex = Math.floor(Math.random() * topics.length);
+    }
+    setTopicData(topics[newIndex]);
+    setCurrentStep('intro');
+    setShowInstructions(true);
+    setAudioURL(null);
+  };
+  
+  // Handle exit
+  const handleExit = () => {
+    router.push('/speakingpage');
+  };
+  
+  // Function to send text updates to the server
+  const sendTextUpdate = useCallback((content: string) => {
+    if (isConnected) {
+      sendMessage({
+        type: 'text_update',
+        content,
+        timestamp: Date.now()
+      });
+    } else {
+      console.warn('Failed to send text update - not connected');
+    }
+  }, [isConnected, sendMessage]);
+
+  // Create a debounced version of the send function
+  const debouncedSendTextUpdate = useCallback(
+    debounce((content: string) => sendTextUpdate(content), 500, { maxWait: 2000 }),
+    [sendTextUpdate]
+  );
+  
+  // Handle editor updates
+  const handleEditorUpdate = useCallback(({ editor }: { editor: Editor }) => {
+    if (!editor) return;
+    
+    // Get content as HTML
+    const html = editor.getHTML();
+    
+    // Count words
+    const text = editor.getText();
+    const words = text ? text.trim().split(/\s+/).filter(Boolean) : [];
+    setWordCount(words.length);
+    
+    // Send update to socket server for AI processing if sufficient content
+    if (words.length > 2) {
+      debouncedSendTextUpdate(html);
+    }
+  }, [debouncedSendTextUpdate]);
+  
+  return (
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-white shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between h-16 items-center">
+              <h1 className="text-xl font-bold text-gray-900">TOEFL Speaking Test</h1>
+              <div className="flex items-center space-x-4">
+                <div className={`px-3 py-1 rounded-full text-xs ${
+                  isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
+                  {isConnected ? 'AI Connected' : 'AI Disconnected'}
+                </div>
+                <button
+                  onClick={handleExit}
+                  className="inline-flex items-center px-3 py-1.5 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none"
+                >
+                  Exit
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+        
+        {/* Main content */}
+        <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+            {/* Topic header */}
+            <div className="px-4 py-5 sm:px-6 bg-indigo-50">
+              <h2 className="text-lg leading-6 font-medium text-gray-900">
+                {topicData.title}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {topicData.type === 'independent' ? 'Independent Speaking Task' : 'Integrated Speaking Task'}
+              </p>
+              
+              {/* Current phase indicator */}
+              <div className="mt-2">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  {currentStep === 'intro' && 'Instructions'}
+                  {currentStep === 'preparation' && 'Preparation Phase'}
+                  {currentStep === 'speaking' && 'Speaking Phase'}
+                  {currentStep === 'review' && 'Review Phase'}
+                </span>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="border-t border-gray-200">
+              {/* Instructions overlay (shown on first load) */}
+              {showInstructions && (
+                <div className="p-6">
+                  <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
+                    <h3 className="text-lg font-medium text-blue-900 mb-4">How This Test Works</h3>
+                    
+                    <ol className="list-decimal pl-5 space-y-3 text-blue-800">
+                      <li>
+                        <span className="font-medium">Preparation Phase ({topicData.preparationTime} seconds):</span>
+                        <p className="text-sm mt-1">You'll have time to think about your response to the topic.</p>
+                      </li>
+                      <li>
+                        <span className="font-medium">Speaking Phase ({topicData.responseTime} seconds):</span>
+                        <p className="text-sm mt-1">Speak clearly into your microphone. Your response will be transcribed in real-time and analyzed for grammar and content.</p>
+                      </li>
+                      <li>
+                        <span className="font-medium">Review Phase:</span>
+                        <p className="text-sm mt-1">You'll be able to review your spoken response and see grammar feedback.</p>
+                      </li>
+                    </ol>
+                    
+                    {/* Microphone access status */}
+                    <div className="mt-6 flex items-center">
+                      <div className={`h-3 w-3 rounded-full mr-2 ${
+                        isMicAccessGranted === true ? 'bg-green-500' :
+                        isMicAccessGranted === false ? 'bg-red-500' : 'bg-gray-400'
+                      }`}></div>
+                      <span className="text-sm">
+                        {isMicAccessGranted === true ? 'Microphone access granted' :
+                         isMicAccessGranted === false ? 'Microphone access denied' : 'Checking microphone access...'}
+                      </span>
+                    </div>
+                    
+                    {/* Error message if any */}
+                    {errorMessage && (
+                      <div className="mt-3 text-sm text-red-600">
+                        {errorMessage}
+                      </div>
+                    )}
+                    
+                    <div className="mt-6 flex space-x-4">
+                      <button
+                        onClick={handleStartPreparation}
+                        className="inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none"
+                        disabled={isMicAccessGranted === false}
+                      >
+                        Start with Preparation
+                      </button>
+                      <button
+                        onClick={handleSkipPreparation}
+                        className="inline-flex justify-center py-2 px-4 border border-blue-500 rounded-md shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none"
+                        disabled={isMicAccessGranted === false}
+                      >
+                        Skip to Speaking
+                      </button>
+                    </div>
+                    
+                    {/* Microphone permission help */}
+                    {isMicAccessGranted === false && (
+                      <div className="mt-4 text-sm text-red-600">
+                        <p>This test requires microphone access. Please enable it in your browser settings and refresh the page.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Main test content (shown after instructions) */}
+              {!showInstructions && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
+                  {/* Left column - Topic & Transcript */}
+                  <div className="md:col-span-2 space-y-6">
+                    {/* Topic section */}
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Topic</h3>
+                      <div className="prose max-w-none">
+                        <p>{topicData.prompt}</p>
+                      </div>
+                      
+                      {/* Tips */}
+                      <div className="mt-6">
+                        <h4 className="font-medium text-gray-900 mb-2">Tips</h4>
+                        <ul className="list-disc pl-5 space-y-1">
+                          {topicData.tips.map((tip, index) => (
+                            <li key={index} className="text-sm text-gray-600">{tip}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                                        {/* Transcript and editor section */}
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-medium text-gray-900">Response Editor</h3>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-gray-500">
+                            Words: {wordCount}
+                          </span>
+                          {isRecording && (
+                            <>
+                              <span className="h-1 w-1 bg-gray-300 rounded-full"></span>
+                              <span className="text-sm font-medium text-indigo-500 animate-pulse">
+                                Speech-to-text active
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Editor toolbar */}
+                      <EditorToolbar 
+                        editor={editorRef.current?.editor ?? null} 
+                        className="mb-4" 
+                      />
+                      
+                      {/* TiptapEditor for transcript and manual editing */}
+                      <div className="min-h-[200px] bg-gray-50 rounded border border-gray-200 p-4">
+                        <TiptapEditor
+                          ref={editorRef}
+                          initialContent="<p>Your response will appear here as you speak. You can also type or edit directly.</p>"
+                          isEditable={true} // Allow manual editing alongside STT
+                          extensions={extensions}
+                          onUpdate={handleEditorUpdate}
+                          onHighlightClick={(id) => setActiveHighlightId(id)}
+                          highlightData={liveHighlights}
+                          activeHighlightId={activeHighlightId}
+                          className="prose max-w-none min-h-[180px] focus:outline-none"
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Audio playback in review phase */}
+                    {currentStep === 'review' && audioURL && (
+                      <div className="mb-6">
+                        <h4 className="font-medium text-gray-900 mb-2">Your Recording</h4>
+                        <audio
+                          src={audioURL}
+                          controls
+                          className="w-full"
+                        ></audio>
+                            ? 'text-red-600 animate-pulse' 
+                            : 'text-indigo-600'
+                        }`}>
+                          {formatTime(timerSeconds)}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {currentStep === 'preparation' && 'Preparation Time Remaining'}
+                          {currentStep === 'speaking' && 'Speaking Time Remaining'}
+                          {currentStep === 'intro' && 'Ready to begin'}
+                          {currentStep === 'review' && 'Test Complete'}
+                        </p>
+                      </div>
+                      
+                      {/* Audio visualization */}
+                      {isRecording && streamRef.current && (
+                        <div className="mb-6">
+                          <AudioVisualizer
+                            stream={streamRef.current}
+                            isRecording={isRecording}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Audio playback in review phase */}
+                      {currentStep === 'review' && audioURL && (
+                        <div className="mb-6">
+                          <h4 className="font-medium text-gray-900 mb-2">Your Recording</h4>
+                          <audio
+                            src={audioURL}
+                            controls
+                            className="w-full"
+                          ></audio>
+                        </div>
+                      )}
+                      
+                      {/* Phase-specific controls */}
+                      <div className="mt-auto space-y-3">
+                        {currentStep === 'preparation' && (
+                          <button
+                            onClick={handleSkipPreparation}
+                            className="w-full inline-flex justify-center py-2 px-4 border border-indigo-500 rounded-md shadow-sm text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 focus:outline-none"
+                          >
+                            Skip Preparation
+                          </button>
+                        )}
+                        
+                        {currentStep === 'speaking' && (
+                          <button
+                            onClick={stopRecording}
+                            className="w-full inline-flex justify-center py-2 px-4 border border-red-500 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none"
+                          >
+                            Stop Recording
+                          </button>
+                        )}
+                        
+                        {currentStep === 'review' && (
+                          <>
+                            <button
+                              onClick={handleTryAgain}
+                              className="w-full inline-flex justify-center py-2 px-4 border border-indigo-500 rounded-md shadow-sm text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 focus:outline-none"
+                            >
+                              Try Again
+                            </button>
+                            <button
+                              onClick={handleSelectNewTopic}
+                              className="w-full inline-flex justify-center py-2 px-4 border border-green-500 rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none"
+                            >
+                              Try Different Topic
+                            </button>
+                            <button
+                              onClick={handleExit}
+                              className="w-full inline-flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none"
+                            >
+                              Finish Practice
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    </ProtectedRoute>
+  );
+};
+
+export default EnhancedSpeakingTestPage;

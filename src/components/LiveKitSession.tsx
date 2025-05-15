@@ -1,26 +1,24 @@
 'use client';
 
 import {
-  GridLayout,
-  ParticipantTile,
-  RoomAudioRenderer,
-  useTracks,
   RoomContext,
-  useLocalParticipant
+  useLocalParticipant,
+  RoomAudioRenderer
 } from '@livekit/components-react';
 import { Room, Track } from 'livekit-client';
 import { useEffect, useState, useCallback } from 'react';
 import AgentController from '@/components/AgentController';
 import CustomControls from '@/components/CustomControls';
-import VideoTiles from '@/components/VideoTiles';
-import TimerController from '@/components/TimerController';
+import LiveKitSessionUI from '@/components/LiveKitSessionUI';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
 import '@/app/speakingpage/figma-styles.css';
 import '@/styles/figma-exact.css';
 import '@/styles/enhanced-room.css';
+import '@/styles/video-controls.css';
+import '@/styles/livekit-session-ui.css';
 
-export type PageType = 'speaking' | 'speakingpage' | 'writing' | 'vocab' | 'reflection' | 'rox' | 'login' | 'default';
+import { PageType } from '@/components/LiveKitSessionUI';
 
 interface LiveKitSessionProps {
   roomName: string;
@@ -35,6 +33,9 @@ interface LiveKitSessionProps {
   hideVideo?: boolean;
   hideAudio?: boolean;
   aiAssistantEnabled?: boolean;
+  showAvatar?: boolean;
+  // New prop for passing the room instance to parent (if needed)
+  onRoomCreated?: (room: Room) => void;
 }
 
 export default function LiveKitSession({
@@ -49,11 +50,14 @@ export default function LiveKitSession({
   customControls,
   hideVideo = false,
   hideAudio = false,
-  aiAssistantEnabled = true
+  aiAssistantEnabled = true,
+  showAvatar = false,
+  onRoomCreated
 }: LiveKitSessionProps) {
   const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
+  const [videoEnabled, setVideoEnabled] = useState<boolean>(!hideVideo);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [micHeartbeat, setMicHeartbeat] = useState<NodeJS.Timeout | null>(null);
   const [roomInstance] = useState(() => new Room({
@@ -61,32 +65,22 @@ export default function LiveKitSession({
     adaptiveStream: true,
     // Enable automatic quality optimization
     dynacast: true,
+    // Disable simulcast for better compatibility with avatars
+    // Setting higher default video quality
+    videoCaptureDefaults: {
+      resolution: { width: 640, height: 480, frameRate: 30 }
+    },
     // Basic audio configuration
     audioCaptureDefaults: {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
-    }
+    },
+    // Only use officially supported options in the Room constructor
+    // These are important for avatar compatibility
+    stopLocalTrackOnUnpublish: false
   }));
 
-  // Helper function to determine page-specific styles and components
-  const getPageSpecificClasses = () => {
-    switch (pageType) {
-      case 'speaking':
-        return 'speaking-page-container';
-      case 'writing':
-        return 'writing-page-container';
-      case 'vocab':
-        return 'vocab-page-container';
-      case 'reflection':
-        return 'reflection-page-container';
-      case 'rox':
-        return 'rox-page-container';
-      default:
-        return 'default-page-container';
-    }
-  };
-  
   // Helper function to toggle audio on/off
   const toggleAudio = useCallback(() => {
     setAudioEnabled(prev => {
@@ -110,6 +104,39 @@ export default function LiveKitSession({
       return newState;
     });
   }, [roomInstance]);
+  
+  // Helper function to toggle camera on/off
+  const toggleCamera = useCallback(async () => {
+    try {
+      // Get local participant
+      const localParticipant = roomInstance.localParticipant;
+      if (!localParticipant) {
+        console.error('No local participant found');
+        return;
+      }
+      
+      // Check if camera is currently enabled
+      const currentState = videoEnabled;
+      const newState = !currentState;
+      
+      if (newState) {
+        // Enable camera
+        console.log('Enabling camera...');
+        await localParticipant.setCameraEnabled(true);
+        console.log('Camera enabled successfully');
+      } else {
+        // Disable camera
+        console.log('Disabling camera...');
+        await localParticipant.setCameraEnabled(false);
+        console.log('Camera disabled successfully');
+      }
+      
+      // Update state
+      setVideoEnabled(newState);
+    } catch (err) {
+      console.error('Error toggling camera:', err);
+    }
+  }, [roomInstance, videoEnabled]);
 
   // Function to enable microphone with auto-reconnect
   const enableMicrophone = useCallback(async () => {
@@ -160,26 +187,15 @@ export default function LiveKitSession({
         // Resume the audio context
         if (audioContext.state === 'suspended') {
           audioContext.resume().then(() => {
-            console.log('AudioContext resumed successfully');
-          }).catch(err => {
-            console.error('Failed to resume AudioContext:', err);
+            console.log('Audio context resumed');
           });
         }
         
-        // The stream can be stopped since LiveKit will request it again
+        // Stop the local tracks as LiveKit will manage them
         stream.getTracks().forEach(track => track.stop());
         
+        // Set audio as initialized
         setAudioInitialized(true);
-        console.log('Audio initialization complete');
-        
-        // Clean up this temporary audio context if needed
-        if (audioContext.state !== 'closed') {
-          setTimeout(() => {
-            audioContext.close().catch(err => {
-              console.error('Failed to close temporary AudioContext:', err);
-            });
-          }, 1000);
-        }
         
         // Enable microphone after audio initialization
         enableMicrophone();
@@ -192,16 +208,9 @@ export default function LiveKitSession({
 
   // Connect to LiveKit room when component mounts and audio is initialized
   useEffect(() => {
-    if (!audioInitialized && !hideAudio) {
-      // If audio isn't initialized and we need it, don't proceed yet
-      console.log('Waiting for audio initialization before connecting...');
-      return;
-    }
-
-    console.log('Audio initialized or not needed, proceeding with LiveKit connection');
-
     let mounted = true;
-    
+    let audioContext: AudioContext | null = null;
+
     const connectToRoom = async () => {
       try {
         console.log(`Connecting to room: ${roomName} as ${userName}`);
@@ -213,6 +222,7 @@ export default function LiveKitSession({
         const fetchOptions: RequestInit = {
           headers: {}
         };
+        
         if (tokenServiceConfig.includeApiKeyInClient && tokenServiceConfig.apiKey) {
           (fetchOptions.headers as Record<string, string>)['x-api-key'] = tokenServiceConfig.apiKey;
         }
@@ -232,6 +242,41 @@ export default function LiveKitSession({
           await roomInstance.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL || data.wsUrl, data.token);
           console.log('Successfully connected to LiveKit room');
           
+          // Configure audio handling for better avatar compatibility
+          if (showAvatar) {
+            // Set up enhanced track subscription handling
+            roomInstance.on('trackSubscribed', (track, publication, participant) => {
+              console.log(`🎧 Track subscribed: ${track.kind} from ${participant.identity}`);
+              // Make sure all audio tracks are enabled
+              if (track.kind === 'audio') {
+                // Log details about the audio track
+                console.log('Audio track details:', {
+                  trackName: publication.trackName,
+                  isMuted: publication.isMuted,
+                  isEnabled: publication.isEnabled,
+                  participantId: participant.identity
+                });
+                
+                // Try to ensure track is playing
+                try {
+                  const audioElement = track.attach();
+                  audioElement.volume = 1.0;
+                  audioElement.muted = false;
+                  document.body.appendChild(audioElement); // Attach to DOM to enable audio
+                  console.log('Audio track attached to DOM');
+                } catch (err) {
+                  console.error('Failed to attach audio track:', err);
+                }
+              }
+            });
+          }
+          
+          // Notify parent component of room creation immediately after connecting
+          if (onRoomCreated) {
+            console.log('Calling onRoomCreated with room instance');
+            onRoomCreated(roomInstance);
+          }
+          
           // Start AI agent
           fetch(`/api/agent?room=${roomName}`).catch(e => 
             console.error('Error starting AI agent:', e)
@@ -244,7 +289,39 @@ export default function LiveKitSession({
       }
     };
     
-    connectToRoom();
+    if (token) {
+      try {
+        // Set up event listeners for monitoring participants and tracks
+        roomInstance.on('participantConnected', (participant) => {
+          console.log(`Participant connected: ${participant.identity}`);
+          
+          // Log all tracks for this participant
+          const tracks = Array.from(participant.trackPublications.values());
+          console.log('Available tracks:', tracks.map(t => ({
+            kind: t.kind,
+            source: t.source,
+            trackSid: t.trackSid
+          })));
+        });
+        
+        roomInstance.on('trackSubscribed', (track, publication, participant) => {
+          console.log(`Track subscribed: ${track.kind} from ${participant.identity}`);
+          console.log('Track details:', { 
+            trackSid: publication.trackSid,
+            source: publication.source,
+            kind: track.kind
+          });
+        });
+        
+        // Connect to the room
+        connectToRoom();
+        console.log("Connecting to room...");
+      } catch (err) {
+        console.error("Error connecting to room:", err);
+      }
+    } else {
+      connectToRoom();
+    }
     
     // Cleanup when component unmounts
     return () => {
@@ -262,7 +339,7 @@ export default function LiveKitSession({
   // Show audio initialization prompt if audio isn't initialized yet
   if (!audioInitialized && !hideAudio) {
     return (
-      <div className={`figma-room-container ${getPageSpecificClasses()}`}>
+      <div className="figma-room-container">
         <div className="figma-content">
           <h3>Enable Audio</h3>
           <p>To participate in this session, we need permission to use your microphone.</p>
@@ -282,135 +359,56 @@ export default function LiveKitSession({
   
   // Show loading state while waiting for token
   if (token === '') {
-    return <div className={`figma-room-container ${getPageSpecificClasses()}`}>
+    return <div className="figma-room-container">
       <div className="figma-content">Connecting to session...</div>
     </div>;
   }
 
-
-
   // Handle leaving the session
   const handleLeave = () => {
+    // Call the onLeave callback if provided, but don't redirect
     if (onLeave) {
       onLeave();
     } else {
-      window.location.href = '/';
+      console.log('Session ended - no redirect');
+      // Clean up room connection
+      roomInstance.disconnect();
     }
   };
 
-  // Prepare additional page-specific props for each page type
-  const getPageSpecificProps = () => {
-    // You can extend this function to add more page-specific props as needed
-    switch (pageType) {
-      case 'speaking':
-      case 'speakingpage':
-        return {
-          showAgentStatus: true,
-          showTimer: true
-        };
-      case 'writing':
-        return {
-          showAgentStatus: true,
-          showTimer: false
-        };
-      case 'vocab':
-        return {
-          showAgentStatus: false,
-          showTimer: false
-        };
-      default:
-        return {
-          showAgentStatus: true,
-          showTimer: false
-        };
-    }
-  };
-  
-  // Get the specific props for this page type
-  const pageProps = getPageSpecificProps();
 
   return (
     <RoomContext.Provider value={roomInstance}>
-      <div className={`session-container ${getPageSpecificClasses()}`}>
-        {/* Add RoomAudioRenderer for audio output */}
-        <RoomAudioRenderer />
-        <div className="header">
-          <h2>{sessionTitle}</h2>
-          {pageType !== 'login' && (
-            <div className="question-container">
-              {questionText && (
-                <div className="question-card">
-                  <h3>Question:</h3>
-                  <p>{questionText}</p>
-                </div>
-              )}
-              
-              {/* Timer will appear here when activated by the agent */}
-              {token && (pageType === 'speaking' || pageType === 'speakingpage') && (
-                <TimerController visible={true} />
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="conference-container">
-          {/* Only render video conference if connected to room and video should be shown */}
-          {token && !hideVideo && (
-            <VideoTiles />
-          )}
-
-          {/* Controls rendered separately from video */}
-          <div className="custom-controls">
-            {/* Microphone toggle button */}
-            {!hideAudio && (
-              <button 
-                className="custom-button" 
-                onClick={toggleAudio}
-                style={{
-                  background: audioEnabled ? '#FFFFFF' : '#D7D7D7',
-                  border: audioEnabled ? '1px solid #566FE9' : '1px solid #888888'
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" 
-                    stroke={audioEnabled ? '#566FE9' : '#888888'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" 
-                    stroke={audioEnabled ? '#566FE9' : '#888888'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  {!audioEnabled && (
-                    <path d="M3 3l18 18" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  )}
-                </svg>
-              </button>
-            )}
-
-            {/* Custom controls can be injected here */}
-            {customControls}
-
-            {/* Leave session button */}
-            <button 
-              className="custom-button" 
-              onClick={handleLeave}
-              style={{
-                background: '#FFFFFF',
-                border: '1px solid #566FE9'
-              }}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="#566FE9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M16 17l5-5-5-5" stroke="#566FE9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M21 12H9" stroke="#566FE9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
+      <LiveKitSessionUI
+        token={token}
+        pageType={pageType}
+        sessionTitle={sessionTitle}
+        questionText={questionText}
+        userName={userName}
+        audioEnabled={audioEnabled}
+        videoEnabled={videoEnabled}
+        hideAudio={hideAudio}
+        hideVideo={hideVideo}
+        showTimer={showTimer}
+        toggleAudio={toggleAudio}
+        toggleCamera={toggleCamera}
+        handleLeave={handleLeave}
+        customControls={customControls}
+      >
         {/* AI Agent Controller - silently initialized in the background */}
         {aiAssistantEnabled && audioInitialized && (
           <div className="hidden">
-            <AgentController roomName={roomName} pageType={pageType} />
+            <AgentController 
+              roomName={roomName} 
+              pageType={pageType} 
+              showAvatar={showAvatar}
+            />
           </div>
         )}
-      </div>
+        
+        {/* Audio renderer for LiveKit audio playback */}
+        {token && <RoomAudioRenderer />}
+      </LiveKitSessionUI>
     </RoomContext.Provider>
   );
 }

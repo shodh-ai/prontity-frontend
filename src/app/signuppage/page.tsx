@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
 import Link from 'next/link';
+import { register as pronityRegister, PronityApiError } from '@/api/pronityClient';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -32,46 +32,51 @@ export default function SignupPage() {
     setErrorMessage('');
     
     try {
-      // In a real application, you would make an API call to your registration endpoint
-      // For this demo, we'll simulate a successful registration and redirect to login
+      // Register the user with Pronity backend
+      const userData = {
+        name,
+        email,
+        password
+      };
       
-      // Example of what a real registration might look like:
-      // const response = await fetch('/api/auth/register', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ name, email, password }),
-      // });
+      console.log('Registering user with Pronity backend:', { email });
+      const result = await pronityRegister(userData);
       
-      // if (!response.ok) {
-      //   const data = await response.json();
-      //   throw new Error(data.message || 'Registration failed');
-      // }
+      // Store token and user info in localStorage
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('user', JSON.stringify(result.user));
       
-      // For demo purposes, we'll just wait a bit and redirect to login
-      setTimeout(() => {
-        // Redirect to login page
-        router.push('/loginpage?registered=true');
-      }, 1000);
+      console.log('Registration successful, redirecting to main page');
+      // Redirect to main page after successful registration
+      router.push('/roxpage');
     } catch (err) {
+      console.error('Registration error:', err);
+      
       let message = 'Registration failed';
-      if (err instanceof Error) {
+      if (err instanceof PronityApiError) {
+        if (err.statusCode === 409) {
+          message = 'This email is already registered. Please use a different email or try to login.';
+        } else {
+          message = err.message;
+        }
+      } else if (err instanceof Error) {
         message = err.message;
       }
+      
       setErrorMessage(message);
       setIsLoading(false);
     }
   };
   
-  // Handle social sign up (same as login with NextAuth)
+  // Handle social sign up (placeholder - would need to be implemented in Pronity backend)
   const handleSocialSignup = async (provider: string) => {
     setIsLoading(true);
     setErrorMessage('');
     
     try {
-      // Use NextAuth signIn method with the specified provider
-      await signIn(provider.toLowerCase(), { callbackUrl: '/roxpage' });
-      
-      // Note: no need to set isLoading to false here as we're redirecting
+      // This is a placeholder - social login would need to be implemented in the Pronity backend
+      setErrorMessage(`Social signup with ${provider} is not yet implemented in the Pronity backend`);
+      setIsLoading(false);
     } catch (err) {
       setErrorMessage(`Error signing up with ${provider}`);
       setIsLoading(false);

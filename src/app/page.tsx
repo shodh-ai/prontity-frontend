@@ -3,10 +3,10 @@
 import { redirect } from "next/navigation";
 
 export default function Home() {
-  // Auto-redirect to login page
+  // In a client component, we should redirect to the login page first
+  // This ensures that authentication is checked before showing any content
   redirect('/loginpage');
   
-  // Note: The code below won't execute due to the redirect,
-  // but is kept as reference in case you want to restore the navigation page later
+  // This code will never execute due to the redirect
   return null;
 }

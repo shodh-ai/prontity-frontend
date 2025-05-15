@@ -4,6 +4,7 @@
 import '@/styles/tts-highlight.css';
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+// Router removed to prevent any redirects
 import StarterKit from '@tiptap/starter-kit';
 import Highlight from '@tiptap/extension-highlight';
 import TextStyle from '@tiptap/extension-text-style';
@@ -19,7 +20,7 @@ import { Highlight as HighlightType } from '@/components/TiptapEditor/highlightI
 // Import our reusable components
 import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
 import EditorToolbar from '@/components/EditorToolbar';
-import useWritingTTS from '@/components/WritingTTS';
+// TTS functionality removed
 // Import our Socket.IO hook
 import { useSocketIO } from '@/hooks/useSocketIO';
 
@@ -28,6 +29,14 @@ interface TextUpdateMessage {
   type: 'text_update';
   content: string;
   timestamp: number;
+}
+
+// Interface for question data received from question page
+interface Question {
+  id: string;
+  topicName: string;
+  question: string;
+  level: string;
 }
 
 export default function WritingPage() {
@@ -46,6 +55,11 @@ export default function WritingPage() {
   // State for editor content (for debouncing)
   const [editorContent, setEditorContent] = useState('');
   
+  // State for the writing question
+  const [question, setQuestion] = useState<Question | null>(null);
+  
+  // Router removed to prevent redirects
+  
   // Ref for current editor content to avoid stale closures in socket handlers
   const editorContentRef = useRef('');
   
@@ -55,12 +69,7 @@ export default function WritingPage() {
   // Use our Socket.IO hook for real-time communication
   const { socket, isConnected, sendMessage, aiSuggestion, clientId, error } = useSocketIO();
   
-  // Initialize TTS hook
-  const tts = useWritingTTS({
-    suggestions: aiSuggestions,
-    onSpeakingStateChange: (speaking: boolean) => setIsSpeaking(speaking),
-    onHighlightChange: (highlightId: string | number | null) => setActiveHighlightId(highlightId)
-  });
+  // TTS hook removed
   
   // Function to send text updates to the server
   const sendTextUpdate = useCallback((content: string) => {
@@ -131,6 +140,28 @@ export default function WritingPage() {
     HighlightExtension
   ], []);
 
+  // Effect to load the question from localStorage
+  useEffect(() => {
+    const storedQuestion = localStorage.getItem('writingQuestion');
+    if (storedQuestion) {
+      try {
+        const parsedQuestion = JSON.parse(storedQuestion);
+        setQuestion(parsedQuestion);
+      } catch (error) {
+        console.error('Error parsing stored question:', error);
+      }
+    } else {
+      // If no question is found, create a default one instead of redirecting
+      // This prevents redirect loops
+      setQuestion({
+        id: 'default-writing-prompt',
+        topicName: 'General Writing',
+        question: 'Write about a topic of your choice',
+        level: 'Intermediate'
+      });
+    }
+  }, []);
+  
   // Handle editor updates
   const handleEditorUpdate = useCallback(({ editor }: { editor: Editor }) => {
     // Update word count
@@ -151,26 +182,52 @@ export default function WritingPage() {
     }
   }, [debouncedSendTextUpdate]);
   
-  // Handle click on a highlight
+  // Function to handle when user clicks on a highlighted suggestion
   const handleHighlightClick = useCallback((id: string | number) => {
     console.log('WritingPage: handleHighlightClick called with ID:', id);
-    
-    // Use our enhanced TTS component to both speak and highlight
-    if (!isSpeaking) {
-      tts.speakSuggestionById(id);
-    } else {
-      // If we're already speaking, just stop and restart with this suggestion
-      tts.stopSpeaking();
-      setTimeout(() => tts.speakSuggestionById(id), 100);
-    }
-  }, [tts, isSpeaking]);
+    // Set active highlight for UI feedback
+    setActiveHighlightId(id);
+  }, []);
 
   return (
-    <div className="writing-page p-8 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Writing Page</h1>
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <h1 className="text-3xl font-bold mb-4 text-center">Writing with AI Assistance</h1>
+      
+      {/* Display question if available */}
+      {question && (
+        <div className="mb-6 bg-white shadow rounded-lg p-4 border-l-4 border-blue-500">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">
+                {question.level}
+              </span>
+              <span className="inline-block bg-gray-100 text-gray-800 text-xs font-semibold px-2.5 py-0.5 rounded ml-2">
+                Topic: {question.topicName}
+              </span>
+            </div>
+            <button 
+              onClick={() => {
+                // Instead of redirecting, just change the question directly
+                setQuestion({
+                  id: 'alternative-question',
+                  topicName: 'Alternative Topic',
+                  question: 'Write about a different topic of your choice',
+                  level: 'Advanced'
+                });
+              }} 
+              className="text-blue-600 hover:text-blue-800 text-sm"
+            >
+              Change Question
+            </button>
+          </div>
+          <h2 className="text-lg font-medium mb-2">Question:</h2>
+          <p className="text-gray-700">{question.question}</p>
+        </div>
+      )}
+      
+      <div className="flex justify-between items-center mb-4">
         <div className="connection-status">
-          <span className="mr-2">Connection:</span>
+          <span className="mr-2">Connection Status:</span>
           <span className={`px-2 py-1 rounded text-sm font-medium ${
             isConnected 
               ? 'bg-green-100 text-green-800' 
@@ -178,6 +235,9 @@ export default function WritingPage() {
           }`}>
             {isConnected ? 'Connected' : 'Disconnected'}
           </span>
+        </div>
+        <div className="text-sm text-gray-600">
+          Word count: {wordCount}
         </div>
       </div>
       
@@ -191,7 +251,7 @@ export default function WritingPage() {
         {/* Our reusable TiptapEditor component */}
         <TiptapEditor
           ref={editorRef}
-          initialContent="<p>This is a sample paragraph with some text that will have highlights applied to it. You can click on the highlights to see the associated message. Try typing more text to see how the editor behaves.</p>"
+          initialContent="<p>Start writing your response here...</p>"
           isEditable={true}
           extensions={extensions}
           onUpdate={handleEditorUpdate}
@@ -211,7 +271,7 @@ export default function WritingPage() {
                 className={`px-3 py-1 rounded text-sm ${isSpeaking 
                   ? 'bg-gray-400 text-white cursor-not-allowed' 
                   : 'bg-blue-500 hover:bg-blue-600 text-white transition-colors'}`}
-                onClick={tts.speakAllSuggestions}
+                onClick={() => console.log('TTS functionality removed')}
                 disabled={isSpeaking || aiSuggestions.length === 0}
                 title={isSpeaking ? 'Speaking...' : 'Listen to explanations'}
               >
@@ -244,14 +304,13 @@ export default function WritingPage() {
           </div>
         </div>
         <div className="text-right text-gray-600">
-          <div className="mb-2">Word count: {wordCount}</div>
-          <div className="text-xs text-gray-400">
+          <div className="text-xs text-gray-400 mb-2">
             {isConnected ? 'Changes are saved automatically' : 'Changes will be saved when connected'}
           </div>
           {isSpeaking && (
             <button 
-              className="mt-2 px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              onClick={tts.stopSpeaking}
+              className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              onClick={() => setIsSpeaking(false)}
               title="Stop speaking"
             >
               Stop Speaking

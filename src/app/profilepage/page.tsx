@@ -8,20 +8,14 @@ import dynamic from 'next/dynamic';
 // Import CSS normally - CSS modules in Next.js are handled specially
 import styles from './profile.module.css';
 import userProgressApi from '@/api/mockUserProgressService';
+import UserStatus from '@/components/UserStatus';
 
 function UserProfileContent() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<{name?: string, email?: string, userId?: string} | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
-  // Skills data for progress bars
-  const skills = [
-    { name: 'Vocabulary skills', progress: 65 },
-    { name: 'Speaking Skills', progress: 47 },
-    { name: 'Listening skills', progress: 65 },
-    { name: 'Writing skills', progress: 22 }
-  ];
+  const [authToken, setAuthToken] = useState<string>('');
   
   // Sample user data (would come from backend in a real app)
   const userData = {
@@ -43,6 +37,8 @@ function UserProfileContent() {
         
         // Try to get user profile from token
         const token = localStorage.getItem('token');
+        setAuthToken(token || '');
+        
         if (token) {
           try {
             const profileData = await userProgressApi.getUserProfile();
@@ -178,19 +174,11 @@ function UserProfileContent() {
                   <div className={styles.userName}>{userProfile?.name || `${userData.firstName} ${userData.lastName}`}</div>
                 </div>
                 
-                <div className={styles.skillsContainer}>
-                  {skills.map((skill, index) => (
-                    <div key={index} className={styles.skillItem}>
-                      <div className={styles.skillName}>{skill.name}</div>
-                      <div className={styles.progressBar}>
-                        <div 
-                          className={styles.progressFill} 
-                          style={{width: `${skill.progress}%`}}
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                {authToken ? (
+                  <UserStatus token={authToken} />
+                ) : (
+                  <div className={styles.noAuth}>Sign in to view your skills</div>
+                )}
               </div>
               
               {/* Right panel - User details form */}

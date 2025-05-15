@@ -23,10 +23,6 @@ import { useSocketIO } from '@/hooks/useSocketIO';
 // Import API functions for saving transcription and audio
 import { saveTranscription, uploadAudioRecording, SpeakingPracticeData } from '@/api/pronityClient';
 
-// Import Deepgram utilities for live transcription
-import { DeepgramLiveTranscription, DeepgramStreamOptions } from '@/utils/DeepgramUtils';
-import { DEEPGRAM_CONFIG } from '@/config/deepgram';
-
 // Define highlight interface that matches the component's expectations
 interface HighlightType {
   id: string;
@@ -54,15 +50,46 @@ import './figma-styles.css';
 import '@/styles/enhanced-room.css';
 import '@/styles/tts-highlight.css';
 
-// Interface for managing Deepgram transcription state in the component
-interface DeepgramTranscriptionState {
-  isListening: boolean;
-  isSupported: boolean;
-  transcription: {
-    interim: string;
-    final: string;
+// Use more permissive types for the Web Speech API to avoid conflicts
+interface ISpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: { transcript: string; confidence: number };
+    };
   };
-  instance: DeepgramLiveTranscription | null;
+}
+
+interface ISpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: (event: ISpeechRecognitionEvent) => void;
+  onend: (event: Event) => void;
+  onerror: (event: Event) => void;
+  onstart: (event: Event) => void;
+  stream?: MediaStream;
+}
+
+// Declare the Speech Recognition API for TypeScript type checking
+const SpeechRecognitionPolyfill = () => {
+  if (typeof window !== 'undefined') {
+    return window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+  }
+  return null;
+};
+
+// For TypeScript compatibility with Window object
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
 }
 
 // Type for messages to the socket server
@@ -93,9 +120,9 @@ export default function WebSpeechEnhancedPage() {
   const recordingStartTimeRef = useRef<number | null>(null);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   
-  // Deepgram transcription state
-  const [isDeepgramSupported, setIsDeepgramSupported] = useState(true);
-  const deepgramRef = useRef<DeepgramLiveTranscription | null>(null);
+  // Speech recognition related state
+  const speechRecognitionRef = useRef<ISpeechRecognition | null>(null);
+  const [isWebSpeechSupported, setIsWebSpeechSupported] = useState(false);
   const [liveTranscription, setLiveTranscription] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [wordCount, setWordCount] = useState(0);
@@ -181,16 +208,8 @@ export default function WebSpeechEnhancedPage() {
     }
   }, [timerSeconds, currentStep, questionData.responseTime, isRecording]);
   
-  // Check if browser speech recognition is supported
-  const isSpeechRecognitionSupported = typeof window !== 'undefined' && 
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
-  
-  // Create a reference to the SpeechRecognition object
-  const SpeechRecognition = typeof window !== 'undefined' ? 
-    (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
-  
-  // Create a speech recognition instance
-  const recognitionRef = useRef<any>(null);
+  // Browser detection
+  const isBrowser = typeof window !== 'undefined' && typeof window.navigator !== 'undefined';
   
   // Initialize component
   useEffect(() => {
@@ -198,21 +217,21 @@ export default function WebSpeechEnhancedPage() {
     
     setLoading(false);
     
-  //   // Get username
-  //   if (session?.user?.name) {
-  //     setUserName(session.user.name);
-  //   } else {
-  //     const storedUserName = localStorage.getItem('userName');
-  //     if (storedUserName) {
-  //       setUserName(storedUserName);
-  //     }
-  //   }
+    // Get username
+    if (session?.user?.name) {
+      setUserName(session.user.name);
+    } else {
+      const storedUserName = localStorage.getItem('userName');
+      if (storedUserName) {
+        setUserName(storedUserName);
+      }
+    }
     
 
     
-  //   // Simulate API fetch for the initial question
-  //   fetchTOEFLQuestion();
-  // }, [session, isBrowser]);
+    // Simulate API fetch for the initial question
+    fetchTOEFLQuestion();
+  }, [session, isBrowser]);
   
   // Function to start audio recording
   const startRecording = async () => {
@@ -258,8 +277,8 @@ export default function WebSpeechEnhancedPage() {
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
       
-      // Start Deepgram transcription to capture speech
-      startDeepgramTranscription();
+      // Start Web Speech API for transcription
+      startWebSpeechRecognition();
       
       // Handle data availability to collect audio chunks for playback
       recorder.ondataavailable = (e) => {
@@ -272,8 +291,11 @@ export default function WebSpeechEnhancedPage() {
       recorder.onstop = async () => {
         console.log('Recording stopped, creating audio blob...');
         
-        // Stop Deepgram transcription if it's running
-        stopDeepgramTranscription();
+        // Stop speech recognition
+        if (speechRecognitionRef.current) {
+          speechRecognitionRef.current.stop();
+          speechRecognitionRef.current = null;
+        }
         
         // Calculate recording duration
         if (recordingStartTimeRef.current) {
@@ -409,97 +431,109 @@ export default function WebSpeechEnhancedPage() {
     setCurrentStep('review');
   };
   
-  // Deepgram transcription utility functions
-  const startDeepgramTranscription = async () => {
+  // Web Speech API utility functions
+  const startWebSpeechRecognition = () => {
     if (!isBrowser) return;
     
-    try {
-      // Validate API key first
-      if (!DEEPGRAM_CONFIG.API_KEY) {
-        console.error('Deepgram API key is missing. Please add it to your .env file or deepgram.ts config.');
-        setError('Deepgram API key is missing. Please configure it before continuing.');
-        return;
-      }
-      
-      // Log the API key (masked) for debugging
-      const maskedKey = DEEPGRAM_CONFIG.API_KEY.substring(0, 4) + '...' + 
-                        DEEPGRAM_CONFIG.API_KEY.substring(DEEPGRAM_CONFIG.API_KEY.length - 4);
-      console.log(`Using Deepgram API key: ${maskedKey}`);
-      console.log('Environment variable check:', process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY ? 'Available' : 'Missing');
-      
-      setIsDeepgramSupported(true);
-      
-      // Configure Deepgram options
-      const options: DeepgramStreamOptions = {
-        ...DEEPGRAM_CONFIG.DEFAULT_OPTIONS,
-      };
-      
-      console.log('Deepgram options:', options);
-      
-      // Create new Deepgram transcription instance
-      const deepgramTranscription = new DeepgramLiveTranscription(
-        DEEPGRAM_CONFIG.API_KEY,
-        options,
-        handleTranscriptionResult
-      );
-      
-      // Store the transcription instance
-      deepgramRef.current = deepgramTranscription;
-      
-      // Start transcription
-      await deepgramTranscription.start();
-      console.log('Deepgram transcription started');
-    } catch (error) {
-      console.error('Error starting Deepgram transcription:', error);
-      setError('Failed to start speech recognition. Please check your microphone permissions.');
+    // Define SpeechRecognition - use webkit prefix for Safari
+    const SpeechRecognitionAPI = SpeechRecognitionPolyfill();
+    
+    if (!SpeechRecognitionAPI) {
+      console.error('Speech recognition not supported by this browser');
+      setIsWebSpeechSupported(false);
+      return;
     }
-  };
-  
-  // Handle transcription results from Deepgram
-  const handleTranscriptionResult = (transcript: string, isFinal: boolean) => {
-    if (isFinal) {
-      // Handle final transcription
-      console.log('Final transcript:', transcript);
-      
-      // Update state with transcription
-      setLiveTranscription(prev => {
-        const updated = prev ? `${prev} ${transcript}` : transcript;
-        
-        // Update the editor content with the transcription
-        if (editorRef.current) {
-          const editor = editorRef.current.editor;
-          if (editor) {
-            // Instead of replacing all content, append to the end
-            const currentPos = editor.state.doc.content.size;
-            editor.commands.insertContentAt(currentPos, ` ${transcript}`);
-            
-            // Count words for display
-            const content = editor.getText();
-            const wordCount = content.trim().split(/\s+/).length;
-            setWordCount(wordCount || 0);
+    
+    setIsWebSpeechSupported(true);
+    
+    // Create speech recognition instance
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    
+    // Store the recognition instance
+    speechRecognitionRef.current = recognition as unknown as ISpeechRecognition;
+    
+    // Set up event handlers
+    recognition.onstart = () => {
+      console.log('Speech recognition started');
+    };
+    
+    recognition.onresult = (event: Event) => {
+      // Cast the event to access speech recognition properties
+      const speechEvent = event as unknown as {
+        resultIndex: number,
+        results: {
+          length: number,
+          [index: number]: {
+            isFinal: boolean,
+            [index: number]: { transcript: string }
           }
         }
+      };
+      
+      let currentInterimTranscript = '';
+      let finalTranscript = '';
+      
+      // Process results
+      for (let i = speechEvent.resultIndex; i < speechEvent.results.length; i++) {
+        const result = speechEvent.results[i];
+        const transcript = result[0].transcript;
         
-        return updated.trim();
-      });
+        if (result.isFinal) {
+          finalTranscript += transcript;
+          console.log('Final transcript:', transcript);
+        } else {
+          currentInterimTranscript += transcript;
+        }
+      }
       
-      // Clear the interim transcript since we have the final version
-      setInterimTranscript('');
+      // Update state with transcription
+      if (finalTranscript) {
+        setLiveTranscription(prev => {
+          const updated = prev ? `${prev} ${finalTranscript}` : finalTranscript;
+          
+          // Update the editor content with the transcription
+          if (editorRef.current) {
+            const editor = editorRef.current.editor;
+            if (editor) {
+              // Instead of replacing all content, append to the end
+              const currentPos = editor.state.doc.content.size;
+              editor.commands.insertContentAt(currentPos, ` ${finalTranscript}`);
+              
+              // Count words for display
+              const content = editor.getText();
+              const wordCount = content.trim().split(/\s+/).length;
+              setWordCount(wordCount || 0);
+            }
+          }
+          
+          return updated.trim();
+        });
+      }
       
-    } else {
-      // Handle interim results
-      setInterimTranscript(transcript);
-      console.log('Interim transcript:', transcript);
-    }
-  };
-  
-  // Stop Deepgram transcription
-  const stopDeepgramTranscription = () => {
-    if (deepgramRef.current) {
-      deepgramRef.current.stop();
-      deepgramRef.current = null;
-      console.log('Deepgram transcription stopped');
-    }
+      // Show interim results
+      if (currentInterimTranscript) {
+        setInterimTranscript(currentInterimTranscript);
+        console.log('Interim transcript:', currentInterimTranscript);
+      }
+    };
+    
+    recognition.onerror = (event: Event) => {
+      console.error('Speech recognition error:', event);
+    };
+    
+    recognition.onend = () => {
+      console.log('Speech recognition ended');
+      // Restart recognition if still recording
+      if (isRecording && speechRecognitionRef.current) {
+        speechRecognitionRef.current.start();
+      }
+    };
+    
+    // Start recognition
+    recognition.start();
   };
 
   // Fetch TOEFL question from API (mock implementation)
@@ -581,14 +615,6 @@ export default function WebSpeechEnhancedPage() {
                   <p>{questionData.title}</p>
                 </div>
               </div>
-              
-              {/* Device support section */}
-              {!isDeepgramSupported && (
-                <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6">
-                  <h3 className="font-bold">Speech Recognition Not Supported</h3>
-                  <p>Your browser does not support microphone access or the Deepgram API key is not configured. Please check your settings and permissions.</p>
-                </div>
-              )}
               
               <div className="flex-1 overflow-auto">
                 <div className="mb-4">

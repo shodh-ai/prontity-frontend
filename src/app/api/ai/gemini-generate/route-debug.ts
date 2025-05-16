@@ -92,8 +92,14 @@ export async function POST(req: NextRequest) {
             resultMessage = part.text;
             console.log('Found text part:', part.text.substring(0, 50) + '...');
           } else if ('inlineData' in part && part.inlineData) {
-            resultImageData = part.inlineData.data;
-            console.log('Found image data of length:', resultImageData.length);
+            const inlineDataContent = part.inlineData.data;
+            if (typeof inlineDataContent === 'string') {
+              resultImageData = inlineDataContent;
+              console.log('Found image data of length:', inlineDataContent.length); // Log length of the confirmed string
+            } else {
+              console.log('Warning: inlineData.data was present but not a string. Actual data:', inlineDataContent);
+              // resultImageData remains null or its value from a previous part, if any
+            }
           }
         }
 
@@ -136,8 +142,13 @@ export async function POST(req: NextRequest) {
             if ('text' in part && part.text) {
               resultMessage = part.text;
             } else if ('inlineData' in part && part.inlineData) {
-              resultImageData = part.inlineData.data;
-              console.log('Found text-to-image data of length:', resultImageData.length);
+              const inlineDataContent = part.inlineData.data;
+              if (typeof inlineDataContent === 'string') {
+                resultImageData = inlineDataContent;
+                console.log('Found text-to-image data of length:', inlineDataContent.length);
+              } else {
+                console.log('Warning: text-to-image inlineData.data was present but not a string. Actual data:', inlineDataContent);
+              }
             }
           }
         } else {

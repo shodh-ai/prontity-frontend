@@ -22,8 +22,14 @@ let imageQueue: string[] = [];
 // Track acknowledged images for 5 minutes to avoid duplicates
 const acknowledgedImages: Set<string> = new Set();
 
-// Function to add an image to the queue
-export function addImage(word: string, prompt: string, imageData: string): string {
+// API route to add an image (handles POST requests)
+export async function POST(request: Request) {
+  try {
+    const { word, prompt, imageData } = await request.json();
+
+    if (!word || !prompt || !imageData) {
+      return NextResponse.json({ success: false, error: 'Missing word, prompt, or imageData' }, { status: 400 });
+    }
   // Generate a unique ID for the image
   const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   
@@ -43,7 +49,11 @@ export function addImage(word: string, prompt: string, imageData: string): strin
   imageQueue.push(id);
   
   console.log(`Added image for word "${word}" to queue with ID: ${id}`);
-  return id;
+  return NextResponse.json({ success: true, imageId: id, message: 'Image added successfully' });
+  } catch (error) {
+    console.error('Error in POST /api/check-images:', error);
+    return NextResponse.json({ success: false, error: 'Failed to add image' }, { status: 500 });
+  }
 }
 
 // API route to check for new images

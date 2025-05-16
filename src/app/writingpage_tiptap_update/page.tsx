@@ -20,7 +20,7 @@ import { Highlight as HighlightType } from '@/components/TiptapEditor/highlightI
 // Import our reusable components
 import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
 import EditorToolbar from '@/components/EditorToolbar';
-import useWritingTTS from '@/components/WritingTTS';
+
 import NextTaskButton from '@/components/NextTaskButton';
 // Import our Socket.IO hook
 import { useSocketIO } from '@/hooks/useSocketIO';
@@ -78,13 +78,7 @@ export default function WritingPage() {
   // Use our Socket.IO hook for real-time communication
   const { socket, isConnected, sendMessage, aiSuggestion, clientId, error } = useSocketIO();
   
-  // Initialize TTS hook
-  const tts = useWritingTTS({
-    suggestions: aiSuggestions,
-    onSpeakingStateChange: (speaking: boolean) => setIsSpeaking(speaking),
-    onHighlightChange: (highlightId: string | number | null) => setActiveHighlightId(highlightId)
-  });
-  
+
   // Function to send text updates to the server
   const sendTextUpdate = useCallback((content: string) => {
     if (isConnected && content !== lastSentContentRef.current) {
@@ -226,14 +220,14 @@ export default function WritingPage() {
     console.log('WritingPage: handleHighlightClick called with ID:', id);
     
     // Use our enhanced TTS component to both speak and highlight
-    if (!isSpeaking) {
-      tts.speakSuggestionById(id);
-    } else {
-      // If we're already speaking, just stop and restart with this suggestion
-      tts.stopSpeaking();
-      setTimeout(() => tts.speakSuggestionById(id), 100);
-    }
-  }, [tts, isSpeaking]);
+    // if (!isSpeaking) {
+    //   // tts.speakSuggestionById(id);
+    // } else {
+    //   // If we're already speaking, just stop and restart with this suggestion
+    //   // tts.stopSpeaking();
+    //   // setTimeout(() => tts.speakSuggestionById(id), 100);
+    // }
+  }, [isSpeaking]);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -309,7 +303,7 @@ export default function WritingPage() {
                 className={`px-3 py-1 rounded text-sm ${isSpeaking 
                   ? 'bg-gray-400 text-white cursor-not-allowed' 
                   : 'bg-blue-500 hover:bg-blue-600 text-white transition-colors'}`}
-                onClick={tts.speakAllSuggestions}
+                // onClick={tts.speakAllSuggestions} // TTS functionality removed
                 disabled={isSpeaking || aiSuggestions.length === 0}
                 title={isSpeaking ? 'Speaking...' : 'Listen to explanations'}
               >
@@ -348,7 +342,7 @@ export default function WritingPage() {
           {isSpeaking && (
             <button 
               className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              onClick={tts.stopSpeaking}
+              // onClick={tts.stopSpeaking} // TTS functionality removed
               title="Stop speaking"
             >
               Stop Speaking

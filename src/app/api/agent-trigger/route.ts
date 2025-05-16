@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { addImage } from '../check-images/route';
 
 interface AgentRequestLog {
   timestamp: number;
@@ -84,8 +83,32 @@ export async function POST(request: Request) {
         const result = await response.json();
         
         if (result.imageData) {
-          // Add the generated image to the queue for frontend to pick up
-          const imageId = addImage(word, prompt, result.imageData);
+          // Add the generated image to the queue for frontend to pick up by calling the /api/check-images endpoint
+          const addImageApiUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/check-images`;
+          const addImageResponse = await fetch(addImageApiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              word,
+              prompt,
+              imageData: result.imageData,
+            }),
+          });
+
+          if (!addImageResponse.ok) {
+            const errorBody = await addImageResponse.text();
+            console.error(`Failed to add image to queue via API. Status: ${addImageResponse.status}, Body: ${errorBody}`);
+            throw new Error(`Failed to add image to queue: ${addImageResponse.status}`);
+          }
+
+          const addImageResult = await addImageResponse.json();
+          if (!addImageResult.success || !addImageResult.imageId) {
+            console.error('API call to add image was not successful or imageId missing in response:', addImageResult);
+            throw new Error('Adding image to queue API call failed or imageId missing.');
+          }
+          const imageId = addImageResult.imageId;
           
           // Log the request
           requestLog.push({

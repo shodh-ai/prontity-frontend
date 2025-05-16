@@ -85,9 +85,13 @@ export async function POST(req: NextRequest) {
               apiResponse.message = part.text;
               console.log('Received text response:', part.text);
             } else if ('inlineData' in part && part.inlineData) {
-              const imageData = part.inlineData.data;
-              console.log('Received image data, length:', imageData.length);
-              apiResponse.imageData = imageData;
+              const inlineDataContent = part.inlineData.data;
+              if (typeof inlineDataContent === 'string'){
+                console.log('Received image data, length:', inlineDataContent.length);
+                apiResponse.imageData = inlineDataContent;
+              } else {
+                console.log('Warning: edit-drawing inlineData.data was present but not a string. Actual data:', inlineDataContent);
+              }
             }
           }
         } else {

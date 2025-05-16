@@ -92,9 +92,14 @@ export async function POST(req: NextRequest) {
             response.message = part.text;
             console.log('Text response:', part.text.substring(0, 100) + '...');
           } else if ('inlineData' in part && part.inlineData) {
-            // Construct a data URL for the frontend to use directly
-            response.imageData = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            console.log('Image data received, length:', part.inlineData.data.length);
+            const inlineDataContent = part.inlineData.data;
+            if (typeof inlineDataContent === 'string') {
+              // Construct a data URL for the frontend to use directly
+              response.imageData = `data:${part.inlineData.mimeType};base64,${inlineDataContent}`;
+              console.log('Image data received, length:', inlineDataContent.length);
+            } else {
+              console.log('Warning: direct-edit-drawing inlineData.data was present but not a string. Actual data:', inlineDataContent);
+            }
           }
         }
       }

@@ -203,28 +203,21 @@ class CustomLLMBridge(LLM):
                     logger.error(f"An unexpected error occurred in CustomLLMBridge: {e}")
                     response_text = "Sorry, an unexpected error occurred." # Generic error message
 
-                # Yield the response back to the LiveKit pipeline as a single chunk
-                # LiveKit expects an AsyncIterable of ChatChunk
+                # Prepare metadata if dom_actions are present
+                current_metadata = None
+                if dom_actions:
+                    current_metadata = {"dom_actions": json.dumps(dom_actions)}
+                
+                # Yield the response back to the LiveKit pipeline as a single chunk,
+                # including dom_actions in metadata if they exist.
                 yield ChatChunk(
                     id=str(uuid.uuid4()),
                     delta=ChoiceDelta(
                         role='assistant',
-                        content=response_text
+                        content=response_text,
+                        metadata=current_metadata # dom_actions are now here
                     )
-                )
-                
-                # If DOM actions are present, include them in metadata
-                if dom_actions:
-                    # For browsers/environments that support DOM manipulation
-                    metadata = {"dom_actions": json.dumps(dom_actions)}
-                    yield ChatChunk(
-                        id=str(uuid.uuid4()),
-                        delta=ChoiceDelta(
-                            role='assistant',
-                            metadata=metadata
-                        )
-                    )
-                
+                )            
                 logger.debug("Finished yielding response from CustomLLMBridge.")
             
             # Yield the async generator

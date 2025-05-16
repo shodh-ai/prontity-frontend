@@ -159,6 +159,17 @@ def process_transcript():
 
     transcript = data['transcript']
     logger.info(f"Received transcript: '{transcript}'")
+
+    # Initialize dom_actions for UI manipulation - will be populated by 'hello' or LLM tool call
+    dom_actions = None
+
+    # Rule: If transcript starts with "hello" (case-insensitive), prepare to click statusViewButton
+    if transcript.lower().strip().startswith("hello"):
+        logger.info("Transcript starts with 'hello', preparing to click statusViewButton as a direct rule.")
+        dom_actions = [{
+            "action": "click",
+            "payload": {"selector": "#statusViewButton"}
+        }]
     
     # --- Step 1: Get student data to personalize the experience ---
     student_data = get_student_data()
@@ -187,8 +198,8 @@ def process_transcript():
 
         tool_calls = response_message.tool_calls
         
-        # Initialize dom_actions for UI manipulation
-        dom_actions = None
+        # dom_actions may have been set by the 'hello' rule. 
+        # If the LLM makes a tool_call to click_ui_button, it will overwrite dom_actions here.
 
         # --- Step 3: Process any function calls ---
         if tool_calls:
@@ -277,6 +288,7 @@ def process_transcript():
         if dom_actions:
             result["dom_actions"] = dom_actions
         
+        logger.info(f"Final result being returned: {result}")
         return jsonify(result)
         
     except Exception as e:

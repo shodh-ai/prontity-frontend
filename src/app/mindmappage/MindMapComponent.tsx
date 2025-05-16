@@ -6,6 +6,13 @@ import { KonvaEventObject } from "konva/lib/Node";
 import axios from "axios";
 
 // Interfaces for Mind Map data and components
+interface MindMapConnection {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  fromId: string;
+  toId: string;
+}
+
 export interface MindMapNode {
   id: string;
   text: string;
@@ -220,7 +227,7 @@ const MindMapVisualization: React.FC<MindMapVisualizationProps> = ({ data, width
 
   // Find parent-child connections
   const findConnections = () => {
-    const connections = [];
+    const connections: MindMapConnection[] = [];
     
     // Connect root to first-level nodes
     const rootPos = positions.find(p => p.id === "root");

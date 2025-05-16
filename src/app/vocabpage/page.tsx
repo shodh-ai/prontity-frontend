@@ -271,7 +271,7 @@ function VocabPageContent() {
         const imageUrl = `data:image/png;base64,${data.imageData}`;
         
         // Preload the image to get dimensions
-        const img = new Image();
+        const img: HTMLImageElement = new window.Image();
         
         img.onload = () => {
           // Once image is loaded, we know its dimensions

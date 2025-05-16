@@ -500,7 +500,7 @@ export default function WebSpeechEnhancedPage() {
               localStorage.setItem('lastSavedTranscriptionTime', new Date().toISOString());
               
               // Store API URL info for debugging
-              const apiUrl = PRONITY_API_URL || 'http://localhost:8000';
+              const apiUrl = process.env.NEXT_PUBLIC_PRONITY_API_URL || 'http://localhost:8000';
               
               // Log what would be sent to the speakingreport page later
               console.log('📊 Data that will be used to retrieve this transcription:', {

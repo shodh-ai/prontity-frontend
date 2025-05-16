@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/contexts/AuthContext';
 import Image from 'next/image';
 import _ from 'lodash';
 import { Editor } from '@tiptap/react';
@@ -104,7 +104,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => <>{child
 
 export default function WebSpeechEnhancedPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user, isLoading: authIsLoading, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(true);
   const [savingData, setSavingData] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -215,23 +215,26 @@ export default function WebSpeechEnhancedPage() {
   useEffect(() => {
     if (!isBrowser) return;
     
-    setLoading(false);
-    
     // Get username
-    if (session?.user?.name) {
-      setUserName(session.user.name);
-    } else {
-      const storedUserName = localStorage.getItem('userName');
-      if (storedUserName) {
-        setUserName(storedUserName);
-      }
+    if (user?.name) {
+      setUserName(user.name);
+    } else if (!authIsLoading && !isAuthenticated) {
+      // Fallback if session doesn't have user name (e.g., user not logged in)
+      setUserName('Guest User'); // Or retrieve from localStorage if preferred
     }
-    
+    // Only set loading to false if auth is not loading and user data is available or definitively not available
+    if (!authIsLoading) {
+        setLoading(false);
+    }
+  }, [user, authIsLoading, isAuthenticated]);
 
-    
-    // Simulate API fetch for the initial question
-    fetchTOEFLQuestion();
-  }, [session, isBrowser]);
+  useEffect(() => {
+    // Simulate API fetch for the initial question only when in browser and authenticated
+    if (isBrowser && !authIsLoading && isAuthenticated) {
+      fetchTOEFLQuestion();
+    }
+  }, [isBrowser, authIsLoading, isAuthenticated]);
+
   
   // Function to start audio recording
   const startRecording = async () => {
@@ -406,7 +409,7 @@ export default function WebSpeechEnhancedPage() {
     
     // Release microphone access
     if (mediaRecorderRef.current.stream) {
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current.stream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
     }
   };
 

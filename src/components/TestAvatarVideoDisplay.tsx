@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Track, RemoteParticipant, RemoteTrackPublication } from 'livekit-client';
+import { Track, RemoteParticipant, RemoteTrackPublication, TrackEvent } from 'livekit-client';
 
 interface TestAvatarVideoDisplayProps {
   participant: RemoteParticipant | null;
@@ -29,21 +29,21 @@ export const TestAvatarVideoDisplay: React.FC<TestAvatarVideoDisplayProps> = ({ 
     console.log(`TestAvatarVideoDisplay: Participant ${participant.identity} provided`);
     
     // Log all tracks from this participant
-    const tracks = Array.from(participant.tracks.values());
-    console.log(`TestAvatarVideoDisplay: Participant has ${tracks.length} tracks:`, 
-      tracks.map(t => ({ sid: t.trackSid, name: t.trackName, kind: t.kind, isSubscribed: t.isSubscribed })));
+    const trackPublications = Array.from(participant.trackPublications.values());
+    console.log(`TestAvatarVideoDisplay: Participant has ${trackPublications.length} track publications:`, 
+      trackPublications.map(t => ({ sid: t.trackSid, name: t.trackName, kind: t.kind, isSubscribed: t.isSubscribed })));
     
     // Find the video track
-    const videoTracks = tracks.filter(pub => pub.kind === Track.Kind.Video);
-    console.log(`TestAvatarVideoDisplay: Found ${videoTracks.length} video tracks`);
+    const videoTrackPublications = trackPublications.filter(pub => pub.kind === Track.Kind.Video);
+    console.log(`TestAvatarVideoDisplay: Found ${videoTrackPublications.length} video track publications`);
     
-    if (videoTracks.length === 0) {
+    if (videoTrackPublications.length === 0) {
       setError('No video tracks found for this participant');
       return;
     }
     
     // Take the first video track
-    const videoTrack = videoTracks[0];
+    const videoTrack = videoTrackPublications[0];
     setCurrentTrack(videoTrack);
     
     // Log track details
@@ -106,15 +106,18 @@ export const TestAvatarVideoDisplay: React.FC<TestAvatarVideoDisplayProps> = ({ 
       handleSubscribedChanged(videoTrack.track);
     }
     
-    const onSubscriptionChanged = (track: Track) => {
-      handleSubscribedChanged(track);
+    const onTrackSubscribed = (track: Track) => { // The 'track' argument here is the actual RemoteTrack
+      // We might want to ensure this is the specific videoTrack we are interested in, though often it will be.
+      if (videoTrack.trackSid === track.sid) {
+        handleSubscribedChanged(track);
+      }
     };
     
-    videoTrack.on('subscriptionChanged', onSubscriptionChanged);
+    videoTrack.on(TrackEvent.Subscribed, onTrackSubscribed);
     
     return () => {
       if (videoTrack) {
-        videoTrack.off('subscriptionChanged', onSubscriptionChanged);
+        videoTrack.off(TrackEvent.Subscribed, onTrackSubscribed);
       }
       
       // Cleanup

@@ -11,7 +11,7 @@ import '@/styles/tts-highlight.css';
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 // TipTap editor imports
@@ -45,9 +45,9 @@ interface TextUpdateMessage {
 }
 
 function SpeakingReportContent() {
-  const { data: session } = useSession();
+  const { user, isLoading: authIsLoading, isAuthenticated } = useAuth();
   const router = useRouter();
-  const userName = session?.user?.name || 'Anonymous User';
+  const userName = user?.name || (authIsLoading ? 'Loading...' : (isAuthenticated ? 'User' : 'Anonymous User'));
   
   // Reference to the editor component
   const editorRef = useRef<TiptapEditorHandle>(null);

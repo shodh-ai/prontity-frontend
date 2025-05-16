@@ -54,6 +54,7 @@ export interface ImageElement extends BaseElement {
     originalImage?: string;
     generationDate?: string;
     imageUrl?: string;
+    source?: string;
   };
 }
 
@@ -149,7 +150,7 @@ export const useCanvasStore = create<CanvasStoreState & CanvasStoreActions>((set
     
     const updatedElement = { ...element, ...updates };
     const newElements = new Map(state.elements);
-    newElements.set(id, updatedElement);
+    newElements.set(id, updatedElement as DrawingElement);
     
     return { elements: newElements };
   }),

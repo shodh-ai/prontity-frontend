@@ -1,6 +1,18 @@
-import { Extension } from '@tiptap/core';
+import { Extension, Editor, RawCommands } from '@tiptap/core';
 import { createHighlightPlugin, highlightPluginKey } from './HighlightPluginLogic';
 import { Highlight } from './highlightInterface';
+
+// --- MODULE AUGMENTATION FOR TIPTAP COMMANDS ---
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    highlightExtension: {
+      setHighlights: (highlights: Highlight[]) => ReturnType;
+      setActiveHighlight: (highlightId: string | number | null) => ReturnType;
+      updateHighlightState: (highlights: Highlight[], activeId: string | number | null) => ReturnType;
+    }
+  }
+}
+// --- END MODULE AUGMENTATION ---
 
 // Define options for the Tiptap extension (if any are needed later)
 export interface HighlightExtensionOptions {

@@ -1,4 +1,4 @@
-import { PageType } from '@/components/LiveKitSession';
+import { PageType } from '@/components/LiveKitSessionUI';
 
 // Define agent types and their associated prompts
 export interface AgentConfig {
@@ -13,6 +13,12 @@ const agentConfigurations: Record<PageType, AgentConfig> = {
   'speaking': {
     identity: 'toefl-speaking-assistant',
     instructions: 'You are a TOEFL speaking practice assistant. Evaluate the student\'s response for clarity, coherence, pronunciation, and relevant content. Provide constructive feedback on their speaking performance and suggest improvements. Focus particularly on pronunciation, fluency, and organization of ideas.',
+    voice: 'Echo',
+    temperature: 0.7
+  },
+  'speakingpage': {
+    identity: 'toefl-speaking-assistant',
+    instructions: 'You are a TOEFL speaking practice assistant for this specific page. Evaluate the student\'s response for clarity, coherence, pronunciation, and relevant content. Provide constructive feedback on their speaking performance and suggest improvements. Focus particularly on pronunciation, fluency, and organization of ideas.',
     voice: 'Echo',
     temperature: 0.7
   },

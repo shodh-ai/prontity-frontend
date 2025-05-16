@@ -272,17 +272,17 @@ export default function GeminiDrawingCanvas({
         error: undefined,
       };
 
-      for (const part of response.candidates[0].content.parts) {
+      for (const part of response?.candidates?.[0]?.content?.parts || []) {
         // Based on the part type, either get the text or image data
         if ('text' in part && part.text) {
           data.message = part.text;
           console.log('Received text response:', part.text);
         } else if ('inlineData' in part && part.inlineData) {
           const imageData = part.inlineData.data;
-          console.log('Received image data, length:', imageData.length);
+          console.log('Received image data, length:', typeof imageData === 'string' ? imageData.length : 0);
 
           // Include the base64 data in the response
-          data.imageData = imageData;
+          data.imageData = imageData ?? null;
         }
       }
 

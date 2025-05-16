@@ -7,8 +7,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Line, Rect, Text, Image, Transformer } from 'react-konva';
 import Konva from 'konva';
 import { KonvaEventObject } from 'konva/lib/Node';
-import { useCanvasStore } from '@/state/canvasStore';
-import { DrawingElement } from '@/state/canvasStore';
+import { useCanvasStore, CanvasStoreState, CanvasStoreActions, DrawingElement, ImageElement } from '@/state/canvasStore';
 
 interface CanvasComponentProps {
   width?: number;
@@ -23,26 +22,26 @@ const CanvasComponent: React.FC<CanvasComponentProps> = ({
   const layerRef = useRef<Konva.Layer>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   
-  // Get the store
+  // Get the store instance (includes state and actions)
   const canvasStore = useCanvasStore();
   
   // We'll need to use useState and useEffect to track store values locally in the component
-  // Extract initial state from the store
-  const storeState = canvasStore.getState();
+  // Extract initial state from the store by calling getState() on the hook itself
+  const initialStoreState = useCanvasStore.getState();
   
   // Set up local state for store values
-  const [elements, setElements] = useState<Map<string, DrawingElement>>(storeState.elements);
-  const [viewport, setViewportState] = useState(storeState.viewport);
-  const [currentTool, setCurrentToolState] = useState(storeState.currentTool);
-  const [toolOptions, setToolOptionsState] = useState(storeState.toolOptions);
-  const [selectedElementIds, setSelectedElementIdsState] = useState(storeState.selectedElementIds);
-  const [isDrawing, setIsDrawingState] = useState(storeState.isDrawing);
+  const [elements, setElements] = useState<Map<string, DrawingElement>>(initialStoreState.elements);
+  const [viewport, setViewportState] = useState(initialStoreState.viewport);
+  const [currentTool, setCurrentToolState] = useState(initialStoreState.currentTool);
+  const [toolOptions, setToolOptionsState] = useState(initialStoreState.toolOptions);
+  const [selectedElementIds, setSelectedElementIdsState] = useState(initialStoreState.selectedElementIds);
+  const [isDrawing, setIsDrawingState] = useState(initialStoreState.isDrawing);
   
   // Set up a subscription to the store
   useEffect(() => {
     // This code creates a subscription to the store that updates our local state
     // whenever the store changes
-    const unsubscribe = canvasStore.subscribe((state) => {
+    const unsubscribe = useCanvasStore.subscribe((state: CanvasStoreState & CanvasStoreActions) => {
       setElements(state.elements);
       setViewportState(state.viewport);
       setCurrentToolState(state.currentTool);
@@ -56,11 +55,11 @@ const CanvasComponent: React.FC<CanvasComponentProps> = ({
   }, [canvasStore]);
   
   // Wrap store actions with local functions
-  const setIsDrawing = (value: boolean) => canvasStore.getState().setIsDrawing(value);
-  const addElement = (element: DrawingElement) => canvasStore.getState().addElement(element);
-  const updateElement = (id: string, updates: Partial<DrawingElement>) => canvasStore.getState().updateElement(id, updates);
-  const updateViewport = (updates: Partial<{ x: number; y: number; scale: number }>) => canvasStore.getState().updateViewport(updates);
-  const setSelectedElementIds = (ids: Set<string>) => canvasStore.getState().setSelectedElementIds(ids);
+  const setIsDrawing = (value: boolean) => canvasStore.setIsDrawing(value);
+  const addElement = (element: DrawingElement) => canvasStore.addElement(element);
+  const updateElement = (id: string, updates: Partial<DrawingElement>) => canvasStore.updateElement(id, updates);
+  const updateViewport = (updates: Partial<{ x: number; y: number; scale: number }>) => canvasStore.updateViewport(updates);
+  const setSelectedElementIds = (ids: Set<string>) => canvasStore.setSelectedElementIds(ids);
   
   // Local state for drawing path
   const [currentPath, setCurrentPath] = useState<number[]>([]);
@@ -91,7 +90,7 @@ const CanvasComponent: React.FC<CanvasComponentProps> = ({
       if (loadedImages[imgEl.id]) return;
       
       const img = new window.Image();
-      img.src = imgEl.src;
+      img.src = (imgEl as ImageElement).imageUrl;
       img.onload = () => {
         setLoadedImages(prev => ({
           ...prev,
@@ -154,7 +153,7 @@ const CanvasComponent: React.FC<CanvasComponentProps> = ({
       // Save the path as a new element
       const newElement: DrawingElement = {
         id: `path-${Date.now()}`,
-        type: 'path',
+        type: 'pencil',
         x: 0,
         y: 0,
         points: currentPath,
@@ -248,7 +247,7 @@ const CanvasComponent: React.FC<CanvasComponentProps> = ({
         <Layer ref={layerRef}>
           {/* Render all saved elements */}
           {Array.from(elements.entries()).map(([id, element]) => {
-            if (element.type === 'path') {
+            if (element.type === 'pencil' || element.type === 'line') {
               return (
                 <Line
                   key={id}

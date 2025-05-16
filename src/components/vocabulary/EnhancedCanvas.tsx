@@ -35,7 +35,7 @@ const EnhancedCanvas: React.FC<EnhancedCanvasProps> = ({ apiKey, className = '' 
         y: 50,
         width: 400,
         height: 300,
-        url: generatedImageUrl,
+        imageUrl: generatedImageUrl,
         metadata: {
           prompt: 'Generated with Gemini',
           source: 'gemini'

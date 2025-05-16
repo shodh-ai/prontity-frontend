@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { XIcon } from 'lucide-react';
-import { useSession } from 'next-auth/react';
+import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 export default function PracticePage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user, isLoading: authIsLoading, isAuthenticated } = useAuth();
   const [progress] = useState(35);
   const [wordCount, setWordCount] = useState(0);
   const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'paused'>('idle');

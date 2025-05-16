@@ -1,8 +1,9 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-// import { usePathname } from 'next/navigation'; // Not used in the original, can keep or remove
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+// import { useCanvasStore } from '@/state/canvasStore';
+// Removed redundant: import debounce from 'lodash/debounce';
 import { useAuth } from '@/contexts/AuthContext';
 // import Image from 'next/image'; // Not used, can remove
 import _ from 'lodash';
@@ -11,7 +12,7 @@ import StarterKit from '@tiptap/starter-kit';
 import TextStyle from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Placeholder from '@tiptap/extension-placeholder';
-import { debounce } from 'lodash';
+// Removed redundant: import { debounce } from 'lodash';
 
 // Import the TiptapEditor and necessary extensions
 import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
@@ -112,6 +113,20 @@ export default function WritingRecordPage() {
   const editorRef = useRef<TiptapEditorHandle>(null);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null); // Stores the fetched question
   const lastSentContentRef = useRef('');
+
+  // Placeholder for isConnected state, assuming it's defined elsewhere like:
+  // const [isConnected, setIsConnected] = useState(false);
+
+  const sendContent = useCallback((htmlContent: string) => {
+    // For now, this is a placeholder. Implement your actual socket sending logic here.
+    // You might want to check 'isConnected' before sending.
+    console.log('Simulating debounced content send (placeholder):', htmlContent.substring(0, 50) + '...');
+    lastSentContentRef.current = htmlContent;
+  }, [lastSentContentRef]); // Add dependencies like 'isConnected' or 'socketRef' if used in actual implementation
+
+  const debouncedSendContent = useMemo(() => {
+    return _.debounce(sendContent, 500); // Adjust debounce delay (e.g., 500ms) as needed
+  }, [sendContent]);
   
   const [aiSuggestions, setAiSuggestions] = useState<HighlightType[]>([]);
   const [activeHighlightId, setActiveHighlightId] = useState<string | number | null>(null);
@@ -274,7 +289,7 @@ export default function WritingRecordPage() {
         console.log('------- SAVING WRITING TO PRONITY BACKEND -------');
         console.log('Writing data to save:', {
             userId: writingData.userId,
-            questionTextLength: writingData.questionText.length,
+            questionTextLength: writingData.questionText?.length ?? 0,
             writtenTextLength: writtenTextPlain.length, // Log plain text length
             duration: writingData.duration,
             topicId: writingData.topicId,

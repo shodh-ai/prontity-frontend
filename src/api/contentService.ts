@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Content Service API base URL
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_CONTENT_API_URL || 'http://localhost:3001';
 
 // Adding default timeout and retry logic
 const axiosInstance = axios.create({

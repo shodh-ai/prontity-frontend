@@ -24,7 +24,7 @@ export const SocketIOProvider: React.FC<SocketIOProviderProps> = ({ children }) 
       return;
     }
 
-    const socketIoUrl = process.env.NEXT_PUBLIC_SOCKET_IO_URL || 'ws://localhost:8001';
+    const socketIoUrl = process.env.NEXT_PUBLIC_SOCKET_IO_URL || `ws://${process.env.NEXT_PUBLIC_API_URL?.replace('http://', '')}:8001` || 'ws://localhost:8001';
     console.log(`Attempting to connect to Socket.IO server at ${socketIoUrl}`);
 
     // Prevent multiple connections

@@ -7,7 +7,7 @@
  */
 
 // The base URL for the Pronity backend API
-export const PRONITY_API_URL = process.env.NEXT_PUBLIC_PRONITY_API_URL || 'http://localhost:8000';
+export const PRONITY_API_URL = process.env.NEXT_PUBLIC_PRONITY_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /**
  * Error class for Pronity API related errors

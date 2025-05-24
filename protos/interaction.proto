@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package rox.interaction; // Package name
+
+// For simple notifications if agent calls client and no specific response is needed.
+message Empty {}
+
+// Message sent from frontend when a button is clicked
+message FrontendButtonClickRequest {
+  string button_id = 1;    // Identifier for the button, e.g., "my_action_button"
+  string custom_data = 2;  // Optional: any string data you want to send
+}
+
+// Response from the agent for the button click
+message AgentResponse {
+  string status_message = 1; // e.g., "Button click processed"
+  string data_payload = 2;   // Optional: any data agent wants to return
+}
+
+// Service the agent will implement (called by frontend)
+service AgentInteraction {
+  rpc HandleFrontendButton(FrontendButtonClickRequest) returns (AgentResponse);
+}
+
+// Optional: Service the frontend could implement (called by agent for updates)
+// service ClientNotification {
+//   rpc NotifyClient(AgentUpdate) returns (Empty);
+// }
+// message AgentUpdate {
+//   string update_type = 1;
+//   string content = 2;
+// }

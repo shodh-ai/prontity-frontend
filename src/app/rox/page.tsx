@@ -8,6 +8,9 @@ import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import AgentTextInput from '@/components/ui/AgentTextInput';
 // Import other UI components if needed, e.g., Button from '@/components/ui/button';
 import StudentStatusDisplay from '@/components/StudentStatusDisplay';
+import { Button } from '@/components/ui/button'; // Assuming you have a Button component
+import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession'; // Import LiveKitRpcAdapter
+import { FrontendButtonClickRequest, AgentResponse } from '@/generated/protos/interaction'; // Import message types
 
 export default function RoxPage() {
   const [token, setToken] = useState<string>('');
@@ -15,9 +18,11 @@ export default function RoxPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userInput, setUserInput] = useState('');
+  const [rpcCallStatus, setRpcCallStatus] = useState<string>('');
   const roomRef = useRef<Room | null>(null);
   const [isStudentStatusDisplayOpen, setIsStudentStatusDisplayOpen] = useState(false);
   const docsIconRef = useRef<HTMLImageElement>(null);
+  const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
 
   const roomName = 'Roxpage'; // Or dynamically set if needed
   const userName = 'TestUser'; // Or dynamically set if needed
@@ -26,6 +31,7 @@ export default function RoxPage() {
     const fetchToken = async () => {
       try {
         const tokenUrl = getTokenEndpointUrl(roomName, userName);
+        console.log('[rox/page.tsx] Attempting to fetch token from URL:', tokenUrl);
         const fetchOptions: RequestInit = { headers: {} };
         if (tokenServiceConfig.includeApiKeyInClient && tokenServiceConfig.apiKey) {
           (fetchOptions.headers as Record<string, string>)['x-api-key'] = tokenServiceConfig.apiKey;
@@ -42,6 +48,41 @@ export default function RoxPage() {
     fetchToken();
   }, [roomName, userName]);
 
+  const handleTestRpcCall = async () => {
+    if (!liveKitRpcAdapterRef.current) {
+      const errorMessage = "LiveKitRpcAdapter not available. Cannot call HandleFrontendButton.";
+      console.error(errorMessage);
+      setRpcCallStatus(errorMessage);
+      return;
+    }
+    try {
+      setRpcCallStatus('Sending RPC call...');
+      const requestMessage = FrontendButtonClickRequest.create({
+        buttonId: "test_rpc_button",
+        customData: "Hello from frontend via LiveKitRpcAdapter!"
+      });
+      const serializedRequest = FrontendButtonClickRequest.encode(requestMessage).finish();
+
+      console.log("Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'HandleFrontendButton' with request:", requestMessage);
+      
+      const serializedResponse = await liveKitRpcAdapterRef.current.request(
+        "rox.interaction.AgentInteraction", // Fully qualified service name from proto package and service
+        "HandleFrontendButton",
+        serializedRequest
+      );
+      
+      const responseMessage = AgentResponse.decode(serializedResponse);
+      console.log("RPC Response from HandleFrontendButton:", responseMessage);
+      
+      const successMessage = `RPC call successful: ${responseMessage.statusMessage || 'No status message'}. Data: ${responseMessage.dataPayload || 'No data'}`;
+      setRpcCallStatus(successMessage);
+    } catch (e) {
+      const errorMessage = `Error calling HandleFrontendButton RPC: ${e instanceof Error ? e.message : String(e)}`;
+      console.error(errorMessage, e);
+      setRpcCallStatus(errorMessage);
+    }
+  };
+
   useEffect(() => {
     if (!token || room) return; // Don't connect if no token or already connected/connecting
 
@@ -53,6 +94,64 @@ export default function RoxPage() {
         setIsConnected(true);
         setRoom(newRoomInstance); // Update state for rendering
         roomRef.current = newRoomInstance; // Store in ref for cleanup
+
+        // Setup RPC client once connected
+        if (newRoomInstance.localParticipant) {
+          // Initialize RPC adapter with a fallback identity first - we'll update it when we detect the agent
+          const fallbackAgentIdentity = "rox-custom-llm-agent"; // Fallback identity
+          liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(newRoomInstance.localParticipant, fallbackAgentIdentity);
+          console.log('LiveKitRpcAdapter initialized with fallback identity. Will update when agent is detected.');
+          
+          // Setup a listener for when participants join to identify the agent
+          newRoomInstance.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+            console.log(`New participant connected: ${participant.identity}`);
+            if (participant.identity !== newRoomInstance.localParticipant.identity) {
+              // This is likely the agent
+              console.log(`Found agent with identity: ${participant.identity}`);
+              // Update the RPC adapter with the correct agent identity
+              if (liveKitRpcAdapterRef.current) {
+                liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(
+                  newRoomInstance.localParticipant, 
+                  participant.identity
+                );
+                console.log('LiveKitRpcAdapter updated with detected agent identity.');
+              }
+            }
+          });
+          
+          // Also check if there are already remote participants in the room
+          // In some LiveKit versions, we need to use .remoteParticipants instead of .participants
+          const remoteParticipantsMap = newRoomInstance.remoteParticipants || 
+                                     (newRoomInstance as any).participants;
+                                     
+          if (remoteParticipantsMap && typeof remoteParticipantsMap.values === 'function') {
+            try {
+              const remoteParticipants = Array.from(remoteParticipantsMap.values()) as RemoteParticipant[];
+              console.log('Remote participants already in room:', remoteParticipants.map(p => p.identity));
+              
+              // Find the first participant that's not us
+              const agentParticipant = remoteParticipants.find(p => 
+                p.identity !== newRoomInstance.localParticipant.identity
+              );
+              
+              if (agentParticipant) {
+                console.log(`Found existing agent with identity: ${agentParticipant.identity}`);
+                // Update the RPC adapter with the correct agent identity
+                liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(
+                  newRoomInstance.localParticipant, 
+                  agentParticipant.identity
+                );
+                console.log('LiveKitRpcAdapter updated with existing agent identity.');
+              }
+            } catch (err) {
+              console.warn('Error checking existing participants:', err);
+            }
+          } else {
+            console.log('No remote participants collection available yet or it doesn\'t have a values() method');
+          }
+        } else {
+          console.error('LocalParticipant not available after connection, cannot set up RPC client.');
+        }
       });
 
       newRoomInstance.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant, kind?: DataPacket_Kind, topic?: string) => {
@@ -169,6 +268,19 @@ export default function RoxPage() {
           <Image src="/next.svg" alt="Next" width={24} height={24} className="cursor-pointer hover:opacity-75" />
           <Image ref={docsIconRef} id="statusViewButton" src="/docs.svg" alt="Docs" width={24} height={24} className="cursor-pointer hover:opacity-75" onClick={toggleStudentStatusDisplay} />
         </div>
+        {/* RPC Test Button - Placed in sidebar */}
+        {isConnected && room && (
+          <div className="mt-auto mb-4 w-full flex flex-col items-center">
+            <Button 
+              onClick={handleTestRpcCall} 
+              variant="outline"
+              className="w-full px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md truncate"
+            >
+              Test RPC
+            </Button>
+            {rpcCallStatus && <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 text-center w-full break-words">{rpcCallStatus}</p>}
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}
@@ -179,7 +291,7 @@ export default function RoxPage() {
                 <SimpleTavusDisplay room={room} />
             ) : (
                 <div className="w-40 h-40 bg-slate-200 rounded-full flex items-center justify-center text-gray-700">
-                    <p className="text-sm">{error ? 'Error' : (token ? 'Connecting...' : 'No Token')}</p>
+                  {error && <p className="text-red-500">Error: {error}</p>}
                 </div>
             )}
         </div>

@@ -21,6 +21,7 @@ interface LiveKitSessionUIProps {
   hideAudio?: boolean;
   hideVideo?: boolean;
   showTimer?: boolean;
+  timerDuration?: number;
   
   // Event handlers
   toggleAudio: () => void;

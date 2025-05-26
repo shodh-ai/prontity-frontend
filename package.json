@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.5.0",
+    "@deepgram/sdk": "^4.2.0",
     "@google/genai": "^0.10.0",
     "@google/generative-ai": "^0.24.0",
     "@livekit/components-react": "^2.9.3",

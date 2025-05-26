@@ -13,6 +13,8 @@ import TextStyle from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Placeholder from '@tiptap/extension-placeholder';
 import { debounce } from 'lodash';
+// Import Deepgram SDK
+import { createClient, LiveTranscriptionEvents, LiveTranscriptionOptions } from '@deepgram/sdk';
 
 // Import the TiptapEditor and necessary extensions
 import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor';
@@ -74,40 +76,22 @@ import './figma-styles.css';
 import '@/styles/enhanced-room.css';
 import '@/styles/tts-highlight.css';
 
-// Use more permissive types for the Web Speech API to avoid conflicts
-interface ISpeechRecognitionEvent {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: {
-      isFinal: boolean;
-      [index: number]: { transcript: string; confidence: number };
-    };
+// Deepgram interfaces
+interface DeepgramTranscription {
+  channel: {
+    alternatives: {
+      transcript: string;
+      confidence: number;
+      words: Array<{
+        word: string;
+        start: number;
+        end: number;
+        confidence: number;
+      }>;
+    }[];
   };
+  is_final: boolean;
 }
-
-interface ISpeechRecognition {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: (event: ISpeechRecognitionEvent) => void;
-  onend: (event: Event) => void;
-  onerror: (event: Event) => void;
-  onstart: (event: Event) => void;
-  stream?: MediaStream;
-}
-
-// Access the browser's Speech Recognition API with proper type casting
-const SpeechRecognitionPolyfill = () => {
-  if (typeof window !== 'undefined') {
-    // Use type assertion to match the expected SpeechRecognitionConstructor type
-    return window.SpeechRecognition || window.webkitSpeechRecognition;
-  }
-  return null;
-};
 
 // Type for messages to the socket server
 interface TextUpdateMessage {
@@ -155,12 +139,14 @@ export default function WebSpeechEnhancedPage() {
   const recordingStartTimeRef = useRef<number | null>(null);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   
-  // Speech recognition related state
-  const speechRecognitionRef = useRef<ISpeechRecognition | null>(null);
-  const [isWebSpeechSupported, setIsWebSpeechSupported] = useState(false);
+  // Deepgram related state
+  const [isDeepgramSupported, setIsDeepgramSupported] = useState(true);
   const [liveTranscription, setLiveTranscription] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [wordCount, setWordCount] = useState(0);
+  const deepgramConnectionRef = useRef<any>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  
   const editorRef = useRef<TiptapEditorHandle>(null);
   const [toeflQuestion, setToeflQuestion] = useState<any>(null);
   const lastSentContentRef = useRef('');
@@ -383,13 +369,16 @@ export default function WebSpeechEnhancedPage() {
       });
       console.log('Microphone access granted');
       
-      // Create MediaRecorder instance
+      // Store the microphone stream for Deepgram
+      microphoneStreamRef.current = stream;
+      
+      // Create MediaRecorder instance for saving audio
       const options = { mimeType: 'audio/webm' };
       const recorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = recorder;
       
-      // Start Web Speech API for transcription
-      startWebSpeechRecognition();
+      // Start Deepgram for transcription
+      startDeepgramTranscription(stream);
       
       // Handle data availability to collect audio chunks for playback
       recorder.ondataavailable = (e) => {
@@ -402,10 +391,10 @@ export default function WebSpeechEnhancedPage() {
       recorder.onstop = async () => {
         console.log('Recording stopped, creating audio blob...');
         
-        // Stop speech recognition
-        if (speechRecognitionRef.current) {
-          speechRecognitionRef.current.stop();
-          speechRecognitionRef.current = null;
+        // Stop Deepgram transcription
+        if (deepgramConnectionRef.current) {
+          deepgramConnectionRef.current.finish();
+          deepgramConnectionRef.current = null;
         }
         
         // Calculate recording duration
@@ -536,10 +525,12 @@ export default function WebSpeechEnhancedPage() {
       };
       
       // Start recording with small time slices for real-time processing
-      recorder.start(250);
+      recorder.start(1000); // Collect data in 1-second chunks
+      console.log('MediaRecorder started');
       
-    } catch (error) {
-      console.error('Error starting recording:', error);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      setError('Failed to access microphone. Please check your permissions and try again.');
       setIsRecording(false);
     }
   };
@@ -553,8 +544,9 @@ export default function WebSpeechEnhancedPage() {
     mediaRecorderRef.current.stop();
     
     // Release microphone access
-    if (mediaRecorderRef.current.stream) {
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    if (microphoneStreamRef.current) {
+      microphoneStreamRef.current.getTracks().forEach(track => track.stop());
+      microphoneStreamRef.current = null;
     }
   };
 
@@ -579,109 +571,136 @@ export default function WebSpeechEnhancedPage() {
     setCurrentStep('review');
   };
   
-  // Web Speech API utility functions
-  const startWebSpeechRecognition = () => {
+  // Deepgram utility functions
+  const startDeepgramTranscription = async (stream: MediaStream) => {
     if (!isBrowser) return;
     
-    // Define SpeechRecognition - use webkit prefix for Safari
-    const SpeechRecognitionAPI = SpeechRecognitionPolyfill();
-    
-    if (!SpeechRecognitionAPI) {
-      console.error('Speech recognition not supported by this browser');
-      setIsWebSpeechSupported(false);
-      return;
-    }
-    
-    setIsWebSpeechSupported(true);
-    
-    // Create speech recognition instance
-    const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    
-    // Store the recognition instance
-    speechRecognitionRef.current = recognition as unknown as ISpeechRecognition;
-    
-    // Set up event handlers
-    recognition.onstart = () => {
-      console.log('Speech recognition started');
-    };
-    
-    recognition.onresult = (event: Event) => {
-      // Cast the event to access speech recognition properties
-      const speechEvent = event as unknown as {
-        resultIndex: number,
-        results: {
-          length: number,
-          [index: number]: {
-            isFinal: boolean,
-            [index: number]: { transcript: string }
-          }
-        }
+    try {
+      // You should store your Deepgram API key in an environment variable
+      // For client-side usage, you should proxy the requests through your backend
+      // This is a placeholder for the API key - DO NOT hardcode your real API key here
+      const DEEPGRAM_API_KEY = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
+      
+      if (!DEEPGRAM_API_KEY) {
+        console.error('Deepgram API key is missing. Please provide a valid API key.');
+        setIsDeepgramSupported(false);
+        return;
+      }
+      
+      // Create a Deepgram client
+      const deepgram = createClient(DEEPGRAM_API_KEY);
+      
+      // Configure the live transcription
+      const options: LiveTranscriptionOptions = {
+        language: 'en',
+        model: 'nova-2',
+        interim_results: true,
+        punctuate: true,
+        smart_format: true,
+        diarize: false,
+        encoding: 'linear16',
+        sample_rate: 16000,
       };
       
-      let currentInterimTranscript = '';
-      let finalTranscript = '';
+      // Create a connection to Deepgram
+      const connection = deepgram.listen.live(options);
+      deepgramConnectionRef.current = connection;
       
-      // Process results
-      for (let i = speechEvent.resultIndex; i < speechEvent.results.length; i++) {
-        const result = speechEvent.results[i];
-        const transcript = result[0].transcript;
+      // Set up event handlers
+      connection.on(LiveTranscriptionEvents.Open, () => {
+        console.log('Deepgram connection established');
         
-        if (result.isFinal) {
-          finalTranscript += transcript;
-          console.log('Final transcript:', transcript);
-        } else {
-          currentInterimTranscript += transcript;
-        }
-      }
-      
-      // Update state with transcription
-      if (finalTranscript) {
-        setLiveTranscription(prev => {
-          const updated = prev ? `${prev} ${finalTranscript}` : finalTranscript;
+        // Create a Web Audio context to process the audio stream
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        
+        // Connect the audio processor
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        
+        // Process audio data and send to Deepgram
+        processor.onaudioprocess = (e) => {
+          const inputData = e.inputBuffer.getChannelData(0);
           
-          // Update the editor content with the transcription
-          if (editorRef.current) {
-            const editor = editorRef.current.editor;
-            if (editor) {
-              // Instead of replacing all content, append to the end
-              const currentPos = editor.state.doc.content.size;
-              editor.commands.insertContentAt(currentPos, ` ${finalTranscript}`);
-              
-              // Count words for display
-              const content = editor.getText();
-              const wordCount = content.trim().split(/\s+/).length;
-              setWordCount(wordCount || 0);
-            }
+          // Convert float32 to int16
+          const int16Data = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            // Convert float32 in range [-1, 1] to int16 in range [-32768, 32767]
+            int16Data[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32768)));
           }
           
-          return updated.trim();
-        });
-      }
+          // Send audio data to Deepgram
+          connection.send(int16Data);
+        };
+        
+        // Store the processor in the ref for cleanup
+        connection.processor = processor;
+        connection.source = source;
+        connection.audioContext = audioContext;
+      });
       
-      // Show interim results
-      if (currentInterimTranscript) {
-        setInterimTranscript(currentInterimTranscript);
-        console.log('Interim transcript:', currentInterimTranscript);
-      }
-    };
-    
-    recognition.onerror = (event: Event) => {
-      console.error('Speech recognition error:', event);
-    };
-    
-    recognition.onend = () => {
-      console.log('Speech recognition ended');
-      // Restart recognition if still recording
-      if (isRecording && speechRecognitionRef.current) {
-        speechRecognitionRef.current.start();
-      }
-    };
-    
-    // Start recognition
-    recognition.start();
+      connection.on(LiveTranscriptionEvents.Close, () => {
+        console.log('Deepgram connection closed');
+        
+        // Clean up audio processing
+        if (connection.processor && connection.source && connection.audioContext) {
+          connection.source.disconnect();
+          connection.processor.disconnect();
+          connection.audioContext.close();
+        }
+      });
+      
+      connection.on(LiveTranscriptionEvents.Error, (error) => {
+        console.error('Deepgram error:', error);
+      });
+      
+      connection.on(LiveTranscriptionEvents.Transcript, (data: DeepgramTranscription) => {
+        // Process transcription results
+        if (data.channel && data.channel.alternatives && data.channel.alternatives.length > 0) {
+          const transcript = data.channel.alternatives[0].transcript;
+          
+          if (transcript) {
+            if (data.is_final) {
+              // Final transcription
+              console.log('Final transcript:', transcript);
+              
+              setLiveTranscription(prev => {
+                const updated = prev ? `${prev} ${transcript}` : transcript;
+                
+                // Update the editor content with the transcription
+                if (editorRef.current) {
+                  const editor = editorRef.current.editor;
+                  if (editor) {
+                    // Instead of replacing all content, append to the end
+                    const currentPos = editor.state.doc.content.size;
+                    editor.commands.insertContentAt(currentPos, ` ${transcript}`);
+                    
+                    // Count words for display
+                    const content = editor.getText();
+                    const wordCount = content.trim().split(/\s+/).length;
+                    setWordCount(wordCount || 0);
+                  }
+                }
+                
+                return updated.trim();
+              });
+              
+              // Clear interim transcript
+              setInterimTranscript('');
+            } else {
+              // Interim transcription
+              setInterimTranscript(transcript);
+              console.log('Interim transcript:', transcript);
+            }
+          }
+        }
+      });
+      
+    } catch (err) {
+      console.error('Failed to start Deepgram transcription:', err);
+      setIsDeepgramSupported(false);
+    }
   };
 
   // Extract topic from topicId parameter in URL

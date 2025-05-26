@@ -4,7 +4,7 @@ import {
   RoomContext,
   RoomAudioRenderer
 } from '@livekit/components-react';
-import { Room, Track, RoomEvent, LocalParticipant, RemoteParticipant } from 'livekit-client'; // Import necessary types
+import { Room, Track, RoomEvent, LocalParticipant, RemoteParticipant, RpcError, RpcInvocationData } from 'livekit-client'; // Import necessary types
 import { useEffect, useState, useCallback, useRef } from 'react';
 import AgentController from '@/components/AgentController';
 import LiveKitSessionUI from '@/components/LiveKitSessionUI';
@@ -24,6 +24,9 @@ import { PageType } from '@/components/LiveKitSessionUI';
 
 import {
   AgentInteractionClientImpl, // This is your generated client class from ts-proto
+  AgentToClientUIActionRequest,
+  ClientUIActionResponse,
+  ClientUIActionType, // Import the enum
 } from '@/generated/protos/interaction'; // Adjust path if your generated file is elsewhere
 import { FrontendButtonClickRequest } from '@/generated/protos/interaction'; // Import request message
 
@@ -122,6 +125,10 @@ export default function LiveKitSession({
   showAvatar = false,
   onRoomCreated
 }: LiveKitSessionProps) {
+  // State for UI elements that might be controlled by React state
+  const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");
+  const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
+
   const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
@@ -285,6 +292,130 @@ export default function LiveKitSession({
     }
   };
 
+  useEffect(() => {
+    const handlePerformUIAction = async (
+      data: RpcInvocationData // Data object from LiveKit, includes payload
+    ): Promise<string> => { // LiveKit RPC handler must return Promise<string>
+      const payloadString = data.payload as string | undefined; // Assume data.payload is string | undefined (base64 encoded)
+      let requestId = "";
+      try {
+        if (!payloadString) {
+          console.error('Agent PerformUIAction: No payload received.');
+          const errResponse = ClientUIActionResponse.create({ success: false, message: "Error: No payload" });
+          return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+        }
+
+        const decodedPayload = base64ToUint8Array(payloadString);
+        const request = AgentToClientUIActionRequest.decode(decodedPayload);
+        requestId = request.requestId; // Store for response
+
+        console.log(`Agent PerformUIAction Request Received: `, request);
+
+        let success = true;
+        let message = "Action performed successfully.";
+
+        // --- Execute the UI Action ---
+        switch (request.actionType) {
+          case ClientUIActionType.SHOW_ALERT:
+            const alertMsg = request.parameters["message"] || "Agent alert!";
+            alert(`Agent Alert: ${alertMsg}`); // Simple alert for now
+            message = `Alert shown: ${alertMsg}`;
+            break;
+
+          case ClientUIActionType.UPDATE_TEXT_CONTENT:
+            const newText = request.parameters["text"];
+            if (request.targetElementId && newText !== undefined) {
+              // React way: Update state
+              if (request.targetElementId === "agentUpdatableText") { // Example mapping
+                  setAgentUpdatableTextState(newText);
+                  message = `Element '${request.targetElementId}' text updated (React state).`;
+              } else {
+              // Direct DOM manipulation (less ideal in React, but for generic elements):
+                const element = document.getElementById(request.targetElementId);
+                if (element) {
+                  element.innerText = newText;
+                  message = `Element '${request.targetElementId}' text updated.`;
+                } else {
+                  success = false;
+                  message = `Error: Element '${request.targetElementId}' not found.`;
+                }
+              }
+            } else {
+              success = false;
+              message = "Error: Missing targetElementId or text parameter for UPDATE_TEXT_CONTENT.";
+            }
+            break;
+
+          case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
+            if (request.targetElementId) {
+              // React way:
+              if (request.targetElementId === "agentToggleVisibilityElement") {
+                  setIsAgentElementVisible(prev => !prev); // Simple toggle
+                  message = `Element '${request.targetElementId}' visibility toggled (React state).`;
+              } else {
+              // Direct DOM manipulation:
+                const element = document.getElementById(request.targetElementId);
+                if (element) {
+                  element.style.display = element.style.display === 'none' ? '' : 'none';
+                  message = `Element '${request.targetElementId}' visibility toggled.`;
+                } else {
+                  success = false;
+                  message = `Error: Element '${request.targetElementId}' not found.`;
+                }
+              }
+            } else {
+              success = false;
+              message = "Error: Missing targetElementId for TOGGLE_ELEMENT_VISIBILITY.";
+            }
+            break;
+
+          default:
+            success = false;
+            message = `Error: Unknown action_type '${request.actionType}'.`;
+            console.warn(`Unknown agent UI action: ${request.actionType}`);
+        }
+
+        const response = ClientUIActionResponse.create({ requestId, success, message });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+
+      } catch (error) {
+        console.error('Error handling Agent PerformUIAction:', error);
+        const errMessage = error instanceof Error ? error.message : String(error);
+        const errResponse = ClientUIActionResponse.create({
+          requestId,
+          success: false,
+          message: `Client error processing UI action: ${errMessage}`
+        });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+      }
+    };
+
+    // Register the handler when connected
+    if (roomInstance && roomInstance.state === 'connected' && roomInstance.localParticipant) {
+      const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction"; // package.Service/Method
+      try {
+        roomInstance.localParticipant.registerRpcMethod(rpcMethodName, handlePerformUIAction);
+        console.log(`Client RPC Handler registered for: ${rpcMethodName}`);
+      } catch (e) {
+        // It might throw if already registered on hot-reload, handle gracefully
+        if (e instanceof RpcError && e.message.includes("already registered")) {
+          console.warn(`RPC method ${rpcMethodName} already registered. This might be due to hot reload.`);
+        } else {
+          console.error("Failed to register client-side RPC handler 'PerformUIAction':", e);
+        }
+      }
+    }
+
+    // Cleanup (optional but good practice, though LiveKit might handle it on disconnect)
+    return () => {
+      // if (roomInstance && roomInstance.localParticipant) {
+      //   try {
+      //     roomInstance.localParticipant.unregisterRpcMethod("rox.interaction.ClientSideUI/PerformUIAction", handlePerformUIAction);
+      //   } catch (e) { /* ignore */ }
+      // }
+    };
+  }, [roomInstance, roomInstance.state, roomInstance.localParticipant]); // Add dependencies
+
   // ... (Your existing conditional rendering for audio initialization and loading states) ...
   // Ensure this logic correctly leads to a state where `token` is set and `roomInstance` is connected.
   if (!audioInitialized && !hideAudio) {
@@ -344,6 +475,16 @@ export default function LiveKitSession({
         )}
         
         <RoomAudioRenderer />
+
+        {/* Elements for Agent to Target */}
+        <div style={{ border: '1px solid blue', padding: '10px', marginTop: '10px' }}>
+          <h4>Agent Controllable UI</h4>
+          <p id="agentUpdatableText">{agentUpdatableTextState}</p>
+          <div id="agentToggleVisibilityElement" style={{ background: 'lightgreen', padding: '5px', display: isAgentElementVisible ? 'block' : 'none' }}>
+            Agent can toggle my visibility.
+          </div>
+          <button id="agentTargetButton">Agent might click me later</button>
+        </div>
 
         <div style={{ padding: '10px', background: '#f0f0f0', marginTop: '10px', textAlign: 'center', border: '1px solid #ccc' }}>
           <h4>Agent RPC Test</h4>

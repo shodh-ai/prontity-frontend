@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { Room, RoomEvent, RemoteParticipant, DataPacket_Kind } from 'livekit-client';
+import {
+  Room,
+  RoomEvent,
+  RemoteParticipant,
+  DataPacket_Kind,
+  LocalParticipant, // For type hints
+  RpcError,         // For error handling in registration
+  RpcInvocationData, // For RPC method signature
+} from 'livekit-client';
 import SimpleTavusDisplay from '@/components/SimpleTavusDisplay';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import AgentTextInput from '@/components/ui/AgentTextInput';
@@ -10,7 +18,34 @@ import AgentTextInput from '@/components/ui/AgentTextInput';
 import StudentStatusDisplay from '@/components/StudentStatusDisplay';
 import { Button } from '@/components/ui/button'; // Assuming you have a Button component
 import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession'; // Import LiveKitRpcAdapter
-import { FrontendButtonClickRequest, AgentResponse } from '@/generated/protos/interaction'; // Import message types
+import {
+  FrontendButtonClickRequest, // Existing F2B
+  AgentResponse,             // Existing F2B
+  // Add these for B2F
+  AgentToClientUIActionRequest,
+  ClientUIActionResponse,
+  ClientUIActionType,
+} from '@/generated/protos/interaction';
+
+// Helper functions for Base64
+function uint8ArrayToBase64(buffer: Uint8Array): string {
+  let binary = '';
+  const len = buffer.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(buffer[i]);
+  }
+  return btoa(binary); // btoa is a standard browser function
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary_string = atob(base64); // atob is a standard browser function
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes;
+}
 
 export default function RoxPage() {
   const [token, setToken] = useState<string>('');
@@ -24,8 +59,109 @@ export default function RoxPage() {
   const docsIconRef = useRef<HTMLImageElement>(null);
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
 
+  // State for agent-controlled UI elements
+  const [agentUpdatableTextState, setAgentUpdatableTextState] = useState(
+    "Initial text in RoxPage. Agent can change me!"
+  );
+  const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
+
   const roomName = 'Roxpage'; // Or dynamically set if needed
   const userName = 'TestUser'; // Or dynamically set if needed
+
+  const handlePerformUIAction = async (rpcInvocationData: RpcInvocationData): Promise<string> => {
+    const payloadString = rpcInvocationData.payload as string | undefined; // Extract payload
+    let requestId = rpcInvocationData.requestId || ""; // Get requestId from RpcInvocationData
+    console.log('[RoxPage] B2F RPC (handlePerformUIAction) invoked by agent. Request ID:', requestId);
+    try {
+      if (!payloadString) {
+        console.error('[RoxPage] B2F Agent PerformUIAction: No payload received.');
+        const errResponse = ClientUIActionResponse.create({ requestId, success: false, message: "Error: No payload" });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+      }
+
+      const decodedPayload = base64ToUint8Array(payloadString);
+      const request = AgentToClientUIActionRequest.decode(decodedPayload);
+      // Ensure requestId from decoded payload is used if available, otherwise stick to invocation data's
+      if (request.requestId) {
+          requestId = request.requestId;
+      }
+      console.log('[RoxPage] B2F Agent PerformUIAction Request Received: ', request);
+
+      let success = true;
+      let message = "Action performed successfully by RoxPage.";
+
+      switch (request.actionType) {
+        case ClientUIActionType.SHOW_ALERT:
+          const alertMsg = request.parameters["message"] || "Agent alert!";
+          alert(`[RoxPage] Agent Alert: ${alertMsg}`); // Browser alert
+          message = `Alert shown: ${alertMsg}`;
+          break;
+        case ClientUIActionType.UPDATE_TEXT_CONTENT:
+          const newText = request.parameters["text"];
+          if (request.targetElementId && newText !== undefined) {
+            if (request.targetElementId === "agentUpdatableTextRoxPage") { // Match the ID you'll use in JSX
+              setAgentUpdatableTextState(newText);
+              message = `Element '${request.targetElementId}' text updated (React state).`;
+            } else {
+              // Fallback for other elements (less ideal in React)
+              const element = document.getElementById(request.targetElementId);
+              if (element) { element.innerText = newText; }
+              else { success = false; message = `Error: Element '${request.targetElementId}' not found.`; }
+            }
+          } else { success = false; message = "Error: Missing targetElementId or text for UPDATE_TEXT_CONTENT."; }
+          break;
+        case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
+          const visibleParam = request.parameters["visible"];
+          if (request.targetElementId) {
+            if (request.targetElementId === "agentToggleVisibilityElementRoxPage") {
+              if (visibleParam === "true") {
+                setIsAgentElementVisible(true);
+                message = `Element '${request.targetElementId}' visibility set to true (React state).`;
+              } else if (visibleParam === "false") {
+                setIsAgentElementVisible(false);
+                message = `Element '${request.targetElementId}' visibility set to false (React state).`;
+              } else {
+                setIsAgentElementVisible(prev => !prev);
+                message = `Element '${request.targetElementId}' visibility toggled (React state).`;
+              }
+            } else {
+              // Fallback for other elements (direct DOM manipulation)
+              const element = document.getElementById(request.targetElementId);
+              if (element) {
+                if (visibleParam === "true") {
+                  element.style.display = '';
+                  message = `Element '${request.targetElementId}' display set to visible.`;
+                } else if (visibleParam === "false") {
+                  element.style.display = 'none';
+                  message = `Element '${request.targetElementId}' display set to none.`;
+                } else {
+                  element.style.display = element.style.display === 'none' ? '' : 'none'; // Toggle
+                  message = `Element '${request.targetElementId}' display toggled.`;
+                }
+              } else {
+                success = false;
+                message = `Error: Element '${request.targetElementId}' not found for direct DOM manipulation.`;
+              }
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for TOGGLE_ELEMENT_VISIBILITY.";
+          }
+          break;
+        default:
+          success = false;
+          message = `Error: Unknown action_type '${request.actionType}'.`;
+          console.warn(`[RoxPage] B2F: Unknown agent UI action: ${request.actionType}`);
+      }
+      const response = ClientUIActionResponse.create({ requestId, success, message });
+      return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+    } catch (error) {
+      console.error('[RoxPage] B2F: Error handling Agent PerformUIAction:', error);
+      const errMessage = error instanceof Error ? error.message : String(error);
+      const errResponse = ClientUIActionResponse.create({ requestId, success: false, message: `Client error processing UI action: ${errMessage}` });
+      return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+    }
+  };
 
   useEffect(() => {
     const fetchToken = async () => {
@@ -101,6 +237,22 @@ export default function RoxPage() {
           const fallbackAgentIdentity = "rox-custom-llm-agent"; // Fallback identity
           liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(newRoomInstance.localParticipant, fallbackAgentIdentity);
           console.log('LiveKitRpcAdapter initialized with fallback identity. Will update when agent is detected.');
+
+          const localP = newRoomInstance.localParticipant; // Define localP
+
+          // ---- B2F RPC Handler Registration ----
+          const b2f_rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction";
+          console.log(`[RoxPage] Attempting to register B2F RPC handler for: ${b2f_rpcMethodName}`);
+          try {
+            localP.registerRpcMethod(b2f_rpcMethodName, handlePerformUIAction);
+            console.log(`[RoxPage] B2F RPC Handler registered successfully for: ${b2f_rpcMethodName}`);
+          } catch (e) {
+            if (e instanceof RpcError && e.message.includes("already registered")) {
+              console.warn(`[RoxPage] B2F RPC method ${b2f_rpcMethodName} already registered (this might be due to hot reload).`);
+            } else {
+              console.error("[RoxPage] Failed to register B2F RPC handler 'PerformUIAction':", e);
+            }
+          }
           
           // Setup a listener for when participants join to identify the agent
           newRoomInstance.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
@@ -285,7 +437,40 @@ export default function RoxPage() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-center p-8 relative">
-        {/* Avatar Display - Centered */} 
+        {/* Agent Controllable UI Elements in RoxPage */}
+        <div style={{
+            border: '2px dashed green',
+            padding: '15px',
+            margin: '20px',
+            backgroundColor: 'rgba(230, 255, 230, 0.8)', // Light green background
+            borderRadius: '8px',
+            position: 'absolute', // Or relative, depending on layout
+            top: '60px',          // Adjust positioning as needed
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,         // Ensure it's visible
+            textAlign: 'center'
+        }}>
+            <h4 style={{ marginBottom: '10px', color: '#333' }}>Agent Controllable UI (RoxPage)</h4>
+            <p id="agentUpdatableTextRoxPage" style={{ margin: '8px 0', fontWeight: 'bold', color: '#555' }}>
+              {agentUpdatableTextState}
+            </p>
+            <div
+              id="agentToggleVisibilityElementRoxPage"
+              style={{
+                background: 'lightyellow',
+                border: '1px solid #ccc',
+                padding: '8px',
+                marginTop: '8px',
+                borderRadius: '4px',
+                display: isAgentElementVisible ? 'block' : 'none',
+              }}
+            >
+              Agent can toggle my visibility (RoxPage).
+            </div>
+        </div>
+
+        {/* Avatar Display - Centered */}  
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" style={{ top: '30%' }}>
             {isConnected && room ? (
                 <SimpleTavusDisplay room={room} />

@@ -24,19 +24,31 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11interaction.proto\x12\x0frox.interaction\"\x07\n\x05\x45mpty\"D\n\x1a\x46rontendButtonClickRequest\x12\x11\n\tbutton_id\x18\x01 \x01(\t\x12\x13\n\x0b\x63ustom_data\x18\x02 \x01(\t\"=\n\rAgentResponse\x12\x16\n\x0estatus_message\x18\x01 \x01(\t\x12\x14\n\x0c\x64\x61ta_payload\x18\x02 \x01(\t2w\n\x10\x41gentInteraction\x12\x63\n\x14HandleFrontendButton\x12+.rox.interaction.FrontendButtonClickRequest\x1a\x1e.rox.interaction.AgentResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11interaction.proto\x12\x0frox.interaction\"\x07\n\x05\x45mpty\"D\n\x1a\x46rontendButtonClickRequest\x12\x11\n\tbutton_id\x18\x01 \x01(\t\x12\x13\n\x0b\x63ustom_data\x18\x02 \x01(\t\"=\n\rAgentResponse\x12\x16\n\x0estatus_message\x18\x01 \x01(\t\x12\x14\n\x0c\x64\x61ta_payload\x18\x02 \x01(\t\"\x8d\x02\n\x1c\x41gentToClientUIActionRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x38\n\x0b\x61\x63tion_type\x18\x02 \x01(\x0e\x32#.rox.interaction.ClientUIActionType\x12\x19\n\x11target_element_id\x18\x03 \x01(\t\x12Q\n\nparameters\x18\x04 \x03(\x0b\x32=.rox.interaction.AgentToClientUIActionRequest.ParametersEntry\x1a\x31\n\x0fParametersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"N\n\x16\x43lientUIActionResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x12\x0f\n\x07message\x18\x03 \x01(\t*k\n\x12\x43lientUIActionType\x12\r\n\tNO_ACTION\x10\x00\x12\x0e\n\nSHOW_ALERT\x10\x01\x12\x17\n\x13UPDATE_TEXT_CONTENT\x10\x02\x12\x1d\n\x19TOGGLE_ELEMENT_VISIBILITY\x10\x03\x32w\n\x10\x41gentInteraction\x12\x63\n\x14HandleFrontendButton\x12+.rox.interaction.FrontendButtonClickRequest\x1a\x1e.rox.interaction.AgentResponse2y\n\x0c\x43lientSideUI\x12i\n\x0fPerformUIAction\x12-.rox.interaction.AgentToClientUIActionRequest\x1a\'.rox.interaction.ClientUIActionResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'interaction_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._loaded_options = None
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_options = b'8\001'
+  _globals['_CLIENTUIACTIONTYPE']._serialized_start=532
+  _globals['_CLIENTUIACTIONTYPE']._serialized_end=639
   _globals['_EMPTY']._serialized_start=38
   _globals['_EMPTY']._serialized_end=45
   _globals['_FRONTENDBUTTONCLICKREQUEST']._serialized_start=47
   _globals['_FRONTENDBUTTONCLICKREQUEST']._serialized_end=115
   _globals['_AGENTRESPONSE']._serialized_start=117
   _globals['_AGENTRESPONSE']._serialized_end=178
-  _globals['_AGENTINTERACTION']._serialized_start=180
-  _globals['_AGENTINTERACTION']._serialized_end=299
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST']._serialized_start=181
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST']._serialized_end=450
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_start=401
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_end=450
+  _globals['_CLIENTUIACTIONRESPONSE']._serialized_start=452
+  _globals['_CLIENTUIACTIONRESPONSE']._serialized_end=530
+  _globals['_AGENTINTERACTION']._serialized_start=641
+  _globals['_AGENTINTERACTION']._serialized_end=760
+  _globals['_CLIENTSIDEUI']._serialized_start=762
+  _globals['_CLIENTSIDEUI']._serialized_end=883
 # @@protoc_insertion_point(module_scope)

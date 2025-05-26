@@ -30,3 +30,35 @@ service AgentInteraction {
 //   string update_type = 1;
 //   string content = 2;
 // }
+
+// Enum to define what kind of UI action the agent wants the client to perform
+enum ClientUIActionType {
+  NO_ACTION = 0;
+  SHOW_ALERT = 1;
+  UPDATE_TEXT_CONTENT = 2;
+  TOGGLE_ELEMENT_VISIBILITY = 3;
+  // Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC
+}
+
+// Request from Agent to Client to perform a UI action
+message AgentToClientUIActionRequest {
+  string request_id = 1; // Optional: for tracking/correlation
+  ClientUIActionType action_type = 2;
+  string target_element_id = 3;   // Optional: ID of the HTML element to target
+  map<string, string> parameters = 4; // Flexible parameters, e.g.,
+                                      // For SHOW_ALERT: {"message": "Hello!", "type": "info/error/warning"}
+                                      // For UPDATE_TEXT_CONTENT: {"text": "New content"}
+                                      // For TOGGLE_ELEMENT_VISIBILITY: {"visible": "true/false"} (or just toggle)
+}
+
+// Response from Client to Agent after attempting the UI action
+message ClientUIActionResponse {
+  string request_id = 1; // Corresponds to AgentToClientUIActionRequest.request_id
+  bool success = 2;
+  string message = 3;    // e.g., "Alert shown", "Element #myText updated", "Error: Element #xyz not found"
+}
+
+// Service the CLIENT will implement, and the AGENT will call
+service ClientSideUI {
+  rpc PerformUIAction(AgentToClientUIActionRequest) returns (ClientUIActionResponse);
+}

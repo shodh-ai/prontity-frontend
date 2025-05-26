@@ -18,9 +18,9 @@ if (fs.existsSync(path.join(__dirname, '.env.local'))) {
 // Hardcoded credentials as a last resort for this specific development case
 if (!process.env.LIVEKIT_URL || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
   console.log('Setting LiveKit credentials from hardcoded values');
-  process.env.LIVEKIT_URL = 'wss://shodhai-pojmjchi.livekit.cloud';
-  process.env.LIVEKIT_API_KEY = 'APIFPSPx95xubAM';
-  process.env.LIVEKIT_API_SECRET = 'VIbj58g0cqmHvPLadQfAinHCBC72FPdtwtDST0UDLdc';
+  process.env.LIVEKIT_URL = 'wss://shodhai-w5ohxl10.livekit.cloud';
+  process.env.LIVEKIT_API_KEY = 'APICDcC9SAnb68D';
+  process.env.LIVEKIT_API_SECRET = 'vY9lvDaJRyUtpPGcU48xrdXEl5tVBQInwQoVVaDsSOL';
 }
 
 const app = express();

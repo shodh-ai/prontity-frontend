@@ -8,6 +8,11 @@ the external agent service defined in custom_llm.py.
 It also exposes an RPC service for frontend interactions.
 """
 
+import base64 # For B2F RPC payload
+import uuid   # For unique request IDs in B2F RPC and existing uses
+from livekit import rtc # For B2F RPC type hints
+from generated.protos import interaction_pb2 # For B2F and F2B RPC messages
+
 import os
 import sys
 import logging
@@ -15,7 +20,6 @@ import argparse
 import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
-import uuid # For random ID suffix if not using avatar
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, # Changed default to INFO, DEBUG can be very verbose
@@ -138,6 +142,145 @@ class RoxAgent(Agent):
     #     return "Action processed by RoxAgent"
 
 
+async def trigger_client_ui_action(
+    room: rtc.Room,
+    client_identity: str,
+    action_type: interaction_pb2.ClientUIActionType, # Use the enum from your protos
+    target_element_id: str = None,
+    parameters: dict = None
+) -> interaction_pb2.ClientUIActionResponse | None:
+    """
+    Sends an RPC to a specific client to perform a UI action.
+    """
+    target_participant = None
+    # Correctly iterate over remote_participants
+    for participant in room.remote_participants.values():
+        if participant.identity == client_identity:
+            target_participant = participant
+            break
+
+    if not target_participant:
+        logger.error(f"B2F RPC: Client '{client_identity}' not found in room '{room.name}'. Cannot trigger UI action.")
+        return None
+
+    request_id = str(uuid.uuid4())
+    proto_params = parameters if parameters is not None else {}
+
+    request_pb = interaction_pb2.AgentToClientUIActionRequest(
+        request_id=request_id,
+        action_type=action_type,
+        target_element_id=target_element_id if target_element_id else "",
+        parameters=proto_params
+    )
+
+    serialized_request = request_pb.SerializeToString()
+    # Serialize the protobuf message to binary
+    serialized_request = request_pb.SerializeToString()
+    # Base64 encode the binary data so the client can decode it with atob()
+    base64_encoded_request = base64.b64encode(serialized_request).decode('utf-8')
+
+    rpc_method_name = "rox.interaction.ClientSideUI/PerformUIAction" # Must match client registration
+
+    try:
+        # Send the RPC using room.send_request (room is passed as an argument)
+        logger.info(f"B2F RPC: Sending '{rpc_method_name}' to '{client_identity}' (SID: {target_participant.sid}). Action: {action_type}, Target: '{target_element_id}', Params: {parameters}")
+        # perform_rpc returns the response as a string already (a base64-encoded string from client)
+        response_payload_str = await room.local_participant.perform_rpc(
+            destination_identity=client_identity,
+            method=rpc_method_name,
+            payload=base64_encoded_request  # Send the base64-encoded payload instead of raw bytes
+            # timeout parameter removed as it's not supported in this SDK version
+        )
+        # No need to decode to utf-8 as it's already a string
+        decoded_response_bytes = base64.b64decode(response_payload_str)
+        response_pb = interaction_pb2.ClientUIActionResponse()
+        response_pb.ParseFromString(decoded_response_bytes)
+
+        # Use request_pb.request_id for the log message, as request_id is part of the request_pb proto
+        logger.info(f"B2F RPC: Response from client '{client_identity}' for UI action '{request_pb.request_id}': Success={response_pb.success}, Msg='{response_pb.message}'")
+        return response_pb
+    except Exception as e:
+        logger.error(f"B2F RPC: Error sending '{rpc_method_name}' to '{client_identity}' or processing response: {e}", exc_info=True)
+        return None
+
+
+async def agent_main_logic(ctx: JobContext):
+    """
+    Contains agent logic to proactively send UI commands to the client.
+    `ctx.room` will be used to find participants and send RPCs.
+    """
+    logger.info("B2F Agent Logic: Started.")
+    await asyncio.sleep(4) # Wait for client to likely connect and register its RPC handler
+    logger.info("B2F Agent Logic: Initial 4-second sleep completed.")
+
+    if not ctx.room:
+        logger.error("B2F Agent Logic: ctx.room is not available. Cannot proceed.")
+        return
+    logger.info("B2F Agent Logic: ctx.room is available.")
+
+    target_client_identity = None
+    # Find a client (assuming client is 'TestUser' based on rox/page.tsx)
+    # A more robust way might involve the client announcing itself or a specific naming convention.
+    logger.info("B2F Agent Logic: Attempting to list participants...")
+    # Iterate directly over remote participants
+    remote_participants_map = ctx.room.remote_participants
+    logger.info(f"B2F Agent Logic: Found remote participants (identities): {[p.identity for p in remote_participants_map.values()]}")
+
+    for participant_info in remote_participants_map.values(): # Iterate over RemoteParticipant objects
+        if participant_info.identity == "TestUser": # Hardcoding for now, match your client's userName
+            target_client_identity = participant_info.identity
+            logger.info(f"B2F Agent Logic: Found target client 'TestUser'.")
+            break
+        elif participant_info.identity != ctx.identity: # Fallback to first non-agent participant
+            target_client_identity = participant_info.identity
+            logger.info(f"B2F Agent Logic: Found potential target client (fallback): '{participant_info.identity}'.")
+            # break # Uncomment if you want to take the first non-agent
+
+    if not target_client_identity:
+        logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found to send UI actions to.")
+        return
+
+    logger.info(f"B2F Agent Logic: Proceeding to send UI actions to client: '{target_client_identity}'")
+
+    try:
+        logger.info(f"B2F Agent Logic: Attempting Action 1: SHOW_ALERT to '{target_client_identity}'.")
+        # Action 1: Show Alert
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
+            parameters={"message": "Agent says hello via B2F RPC!"}
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent Action 1: SHOW_ALERT to '{target_client_identity}'.")
+        await asyncio.sleep(3)
+
+        logger.info(f"B2F Agent Logic: Attempting Action 2: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
+        # Action 2: Update Text
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
+            target_element_id="agentUpdatableTextRoxPage", # Must match ID in rox/page.tsx JSX
+            parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent Action 2: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
+        await asyncio.sleep(3)
+
+        logger.info(f"B2F Agent Logic: Attempting Action 3: TOGGLE_ELEMENT_VISIBILITY to '{target_client_identity}'.")
+        # Action 3: Toggle Visibility (will toggle based on client's current state)
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY,
+            target_element_id="agentToggleVisibilityElementRoxPage" # Must match ID
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent Action 3: TOGGLE_ELEMENT_VISIBILITY to '{target_client_identity}'.")
+        logger.info("B2F Agent Logic: All test UI actions sent.")
+
+    except Exception as e:
+        logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
+
+
 async def entrypoint(ctx: JobContext):
     """Main entrypoint for the agent job."""
     global GLOBAL_PAGE_PATH, GLOBAL_MODEL, GLOBAL_TEMPERATURE, GLOBAL_AVATAR_ENABLED # Allow modification by CLI
@@ -226,35 +369,34 @@ async def entrypoint(ctx: JobContext):
 
         
         logger.info(f"Rox agent is now fully operational in room '{ctx.room.name}' for page '{GLOBAL_PAGE_PATH}'. Waiting for events or RPC calls...")
+
+        # Start the B2F agent logic concurrently
+        asyncio.create_task(agent_main_logic(ctx)) # Pass the JobContext
+        logger.info("B2F Agent Logic Task Created.")
         
         # The agent is now running and will stay connected due to the initial ctx.connect()
         # and the running asyncio loop managed by agents.cli.run_app.
         # We need to keep the entrypoint alive until the job is done.
-        # A common way is to await something that only completes on shutdown, 
-        # or simply let the function run its course if all main tasks are awaited above.
-        # If main_agent_session.start() is blocking or if there's another long-lived task, that's fine.
-        # Otherwise, if all tasks above complete quickly, the agent might exit prematurely.
-        # For now, assuming the agent session or other tasks keep it alive.
-        # If not, a simple `await asyncio.Event().wait()` could be used here to keep it running indefinitely until cancelled.
         await asyncio.Event().wait() # Keep the agent alive until the job is cancelled
-
     except Exception as e:
         logger.error(f"Critical error during agent session setup or execution: {e}", exc_info=True)
     finally:
-        logger.info(f"Agent job for room '{ctx.room.name}' is ending.")
-        if avatar_session:
+        logger.info(f"Agent job for room '{ctx.room.name if ctx.room else 'Unknown'}' is ending.")
+        # Ensure avatar_session and main_agent_session are accessible for cleanup
+        # They are defined within the outer scope of this try-except-finally block
+        if avatar_session: 
             try:
-                await avatar_session.aclose() # Ensure async close if available
+                await avatar_session.aclose() 
                 logger.info("Tavus avatar session closed.")
-            except Exception as e:
-                logger.error(f"Error closing Tavus avatar session: {e}", exc_info=True)
-        # main_agent_session might also have an aclose() or similar cleanup
-        if 'main_agent_session' in locals() and hasattr(main_agent_session, 'aclose'):
+            except Exception as e_avatar_close:
+                logger.error(f"Error closing Tavus avatar session: {e_avatar_close}", exc_info=True)
+        
+        if 'main_agent_session' in locals() and main_agent_session and hasattr(main_agent_session, 'aclose'):
              try:
                 await main_agent_session.aclose()
                 logger.info("Main agent session closed.")
-             except Exception as e:
-                logger.error(f"Error closing main agent session: {e}", exc_info=True)
+             except Exception as e_main_session_close:
+                logger.error(f"Error closing main agent session: {e_main_session_close}", exc_info=True)
 
 
 if __name__ == "__main__":

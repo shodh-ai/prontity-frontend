@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import interaction_pb2 as interaction__pb2
+import interaction_pb2 as interaction__pb2
 
 GRPC_GENERATED_VERSION = '1.71.0'
 GRPC_VERSION = grpc.__version__
@@ -89,6 +89,81 @@ class AgentInteraction(object):
             '/rox.interaction.AgentInteraction/HandleFrontendButton',
             interaction__pb2.FrontendButtonClickRequest.SerializeToString,
             interaction__pb2.AgentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class ClientSideUIStub(object):
+    """Service the CLIENT will implement, and the AGENT will call
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.PerformUIAction = channel.unary_unary(
+                '/rox.interaction.ClientSideUI/PerformUIAction',
+                request_serializer=interaction__pb2.AgentToClientUIActionRequest.SerializeToString,
+                response_deserializer=interaction__pb2.ClientUIActionResponse.FromString,
+                _registered_method=True)
+
+
+class ClientSideUIServicer(object):
+    """Service the CLIENT will implement, and the AGENT will call
+    """
+
+    def PerformUIAction(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ClientSideUIServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'PerformUIAction': grpc.unary_unary_rpc_method_handler(
+                    servicer.PerformUIAction,
+                    request_deserializer=interaction__pb2.AgentToClientUIActionRequest.FromString,
+                    response_serializer=interaction__pb2.ClientUIActionResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'rox.interaction.ClientSideUI', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('rox.interaction.ClientSideUI', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ClientSideUI(object):
+    """Service the CLIENT will implement, and the AGENT will call
+    """
+
+    @staticmethod
+    def PerformUIAction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rox.interaction.ClientSideUI/PerformUIAction',
+            interaction__pb2.AgentToClientUIActionRequest.SerializeToString,
+            interaction__pb2.ClientUIActionResponse.FromString,
             options,
             channel_credentials,
             insecure,

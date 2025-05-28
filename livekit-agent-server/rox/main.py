@@ -10,6 +10,7 @@ It also exposes an RPC service for frontend interactions.
 
 import base64 # For B2F RPC payload
 import uuid   # For unique request IDs in B2F RPC and existing uses
+import time   # For timestamps in session IDs
 from livekit import rtc # For B2F RPC type hints
 from generated.protos import interaction_pb2 # For B2F and F2B RPC messages
 
@@ -120,7 +121,14 @@ class RoxAgent(Agent):
     def __init__(self, page_path="roxpage") -> None:
         super().__init__(instructions="You are Rox, an AI assistant for students using the learning platform. You help students understand their learning status and guide them through their learning journey.")
         self.page_path = page_path
+        
+        # Initialize context and session variables needed by CustomLLMBridge
+        self._latest_student_context = {"user_id": "default_init_user"}
+        self._latest_session_id = f"init_session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
+        
         logger.info(f"RoxAgent instance created for page: {self.page_path}")
+        logger.info(f"RoxAgent initialized with default context: {self._latest_student_context}")
+        logger.info(f"RoxAgent initialized with session ID: {self._latest_session_id}")
         
     async def on_transcript(self, transcript: str, language: str) -> None:
         """Called when a user transcript is received"""
@@ -325,7 +333,7 @@ async def entrypoint(ctx: JobContext):
         logger.info("Creating main agent session with VPA pipeline...")
         main_agent_session = agents.AgentSession( # Renamed for clarity
             stt=deepgram.STT(model="nova-2", language="multi"), # nova-2 or nova-3
-            llm=CustomLLMBridge(), # Pass URL explicitly
+            llm=CustomLLMBridge(rox_agent_ref=rox_agent_instance), # Pass agent instance
             tts=deepgram.TTS(model=GLOBAL_MODEL),
             vad=silero.VAD.load(),
             turn_detection=MultilingualModel(),

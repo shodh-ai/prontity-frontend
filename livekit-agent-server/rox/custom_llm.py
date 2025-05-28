@@ -3,8 +3,12 @@
 import os
 import json
 import logging
+import time
 import aiohttp # Required for async HTTP requests: pip install aiohttp
-from typing import AsyncIterable, Optional
+from typing import AsyncIterable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .main import RoxAgent # Import RoxAgent for type hinting to avoid circular dependency
 from contextlib import asynccontextmanager
 
 from livekit.agents.llm import LLM, ChatContext, ChatMessage, ChatRole, ChatChunk, ChoiceDelta
@@ -20,12 +24,20 @@ class CustomLLMBridge(LLM):
     """
     A custom LLM component that bridges to an external backend script/service.
     """
-    def __init__(self, url: str = MY_CUSTOM_AGENT_URL):
+    def __init__(self, 
+                 agent_url: str = MY_CUSTOM_AGENT_URL, 
+                 page_name: Optional[str] = None, 
+                 rox_agent_ref: Optional['RoxAgent'] = None): # Add rox_agent_ref
         super().__init__()
-        if not url:
+        if not agent_url:
             raise ValueError("External agent URL cannot be empty. Set MY_CUSTOM_AGENT_URL environment variable.")
-        self._url = url
-        logger.info(f"CustomLLMBridge initialized. Will send requests to: {self._url}")
+        self._agent_url = agent_url
+        self._page_name = page_name # Store page_name, though not currently used by the bridge logic
+        self._rox_agent_ref = rox_agent_ref # Store the RoxAgent reference
+        if self._rox_agent_ref:
+            logger.info(f"CustomLLMBridge initialized with RoxAgent reference. Will send requests to: {self._agent_url} for page: {self._page_name}")
+        else:
+            logger.warning(f"CustomLLMBridge initialized WITHOUT RoxAgent reference. Context data will not be available. Will send requests to: {self._agent_url} for page: {self._page_name}")
 
     def chat(self, *, chat_ctx: ChatContext = None, tools = None, tool_choice = None):
         """
@@ -129,38 +141,57 @@ class CustomLLMBridge(LLM):
                     except Exception as e:
                         logger.error(f"Error checking message type: {e}")
                 
+                # Get the user message from the history
                 user_message = user_messages[0] if user_messages else None
 
-                if not user_message or not user_message.content:
-                    logger.warning("No user message found in history to send to external agent.")
-                    # You might want to yield an empty response or a default message
-                    yield ChatChunk(id=str(uuid.uuid4()), delta=ChoiceDelta(role='assistant', content=""))
-                    return
-
-                # Get the transcript content, handling different object structures
+                # Initialize empty transcript 
                 transcript = ""
+                
+                # Main try block for all transcript extraction
                 try:
-                    if hasattr(user_message, 'content'):
-                        content = getattr(user_message, 'content')
-                        # Handle both string and list content formats
-                        if isinstance(content, list):
-                            transcript = ' '.join(content)
-                        else:
-                            transcript = str(content)
-                    elif isinstance(user_message, dict) and 'content' in user_message:
-                        content = user_message['content']
-                        if isinstance(content, list):
-                            transcript = ' '.join(content)
-                        else:
-                            transcript = str(content)
+                    # Extract transcript from user message if available
+                    if user_message and hasattr(user_message, 'content') and user_message.content:
+                        try:
+                            content = user_message.content
+                            # Handle both string and list content formats
+                            if isinstance(content, list):
+                                transcript = ' '.join(str(item) for item in content)
+                            else:
+                                transcript = str(content)
+                            logger.info(f"CustomLLMBridge: Extracted transcript from speech: '{transcript}'")
+                        except Exception as e:
+                            logger.error(f"CustomLLMBridge: Error extracting transcript from user_message.content: {e}")
+                    elif user_message and isinstance(user_message, dict) and 'content' in user_message:
+                        try:
+                            content = user_message['content']
+                            # Handle both string and list content formats
+                            if isinstance(content, list):
+                                transcript = ' '.join(str(item) for item in content)
+                            else:
+                                transcript = str(content)
+                            logger.info(f"CustomLLMBridge: Extracted transcript from dictionary: '{transcript}'")
+                        except Exception as e:
+                            logger.error(f"CustomLLMBridge: Error extracting transcript from dictionary: {e}")
+                    elif user_message:
+                        try:
+                            # Last resort - try to convert the whole message to a string
+                            transcript = str(user_message)
+                            logger.info(f"CustomLLMBridge: Used message string as transcript: '{transcript}'")
+                        except Exception as e:
+                            logger.error(f"CustomLLMBridge: Error converting message to string: {e}")
                     else:
-                        # Last resort - try to convert the whole message to a string
-                        transcript = str(user_message)
+                        logger.warning("CustomLLMBridge: No user message found, using empty transcript but continuing to send context")
+                    
+                    # Log what we're doing with the transcript
+                    if transcript:
+                        logger.info(f"CustomLLMBridge: Will send transcript to backend: '{transcript}'")
+                    else:
+                        logger.info("CustomLLMBridge: Will send empty transcript to backend with context only")
                 except Exception as e:
                     logger.error(f"Error extracting content from user message: {e}")
                     transcript = "[Error: Could not extract transcript]"
                 
-                logger.info(f"Sending transcript to external agent at {self._url}: '{transcript}'")
+                logger.info(f"Sending transcript to external agent at {self._agent_url}: '{transcript}' for page: {self._page_name}")
                 # Add more verbosity to help debug
                 logger.debug(f"User message object: {user_message}")
                 logger.debug(f"User message type: {type(user_message)}")
@@ -169,35 +200,110 @@ class CustomLLMBridge(LLM):
                 dom_actions = None
                 
                 try:
+                    # Prepare payload
+                    # Always include a transcript field, even if empty
+                    payload = {"transcript": transcript}
+                    logger.info(f"CustomLLMBridge: Initialized payload with transcript: '{transcript}'")
+
+                    # Retrieve and add context
+                    if self._rox_agent_ref:
+                        # Attempt to get context data from the agent reference
+                        logger.info(f"CustomLLMBridge: Attempting to retrieve context. _latest_student_context: {self._rox_agent_ref._latest_student_context}")
+                        logger.info(f"CustomLLMBridge: Attempting to retrieve session_id. _latest_session_id: {self._rox_agent_ref._latest_session_id}")
+                        
+                        student_context = self._rox_agent_ref._latest_student_context
+                        session_id_from_context = self._rox_agent_ref._latest_session_id
+                        
+                        # Validate and add context to payload if available
+                        if student_context:
+                            # Ensure student_context is a dictionary
+                            if not isinstance(student_context, dict):
+                                logger.warning(f"CustomLLMBridge: _latest_student_context is not a dictionary. Type: {type(student_context)}")
+                                try:
+                                    # Try to convert to dict if it's a string that might be JSON
+                                    if isinstance(student_context, str):
+                                        student_context = json.loads(student_context)
+                                        logger.info(f"CustomLLMBridge: Converted string _latest_student_context to dictionary")
+                                    else:
+                                        # If it's not a string or dict, create a basic dict with it
+                                        student_context = {"user_id": "default_user", "data": str(student_context)}
+                                        logger.warning(f"CustomLLMBridge: Created basic context dictionary from non-dict data")
+                                except Exception as e:
+                                    logger.error(f"CustomLLMBridge: Failed to process non-dictionary context: {e}")
+                                    # Create a fallback context
+                                    student_context = {"user_id": "default_user", "error": str(e)}
+                            
+                            # Ensure required fields are present
+                            if "user_id" not in student_context:
+                                logger.warning("CustomLLMBridge: context missing required 'user_id' field. Adding default.")
+                                student_context["user_id"] = "default_bridge_user"
+                            
+                            # Add the validated context to payload
+                            payload['current_context'] = student_context
+                            logger.info(f"CustomLLMBridge: Added validated current_context to payload: {student_context}")
+                        else:
+                            # Create a minimal valid context if none exists
+                            minimal_context = {"user_id": "default_bridge_user"}
+                            payload['current_context'] = minimal_context
+                            logger.warning(f"CustomLLMBridge: Created minimal context as _latest_student_context was empty: {minimal_context}")
+                        
+                        # Add session_id to payload if available
+                        if session_id_from_context:
+                            payload['session_id'] = session_id_from_context
+                            logger.info(f"CustomLLMBridge: Added session_id to payload: {session_id_from_context}")
+                        else:
+                            # Generate a session ID if none exists
+                            session_id = f"bridge_session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
+                            payload['session_id'] = session_id
+                            logger.warning(f"CustomLLMBridge: Generated and added new session_id as none existed: {session_id}")
+                    else:
+                        # Create minimal context for backend validation even without RoxAgent reference
+                        minimal_context = {"user_id": "no_agent_ref_user"}
+                        payload['current_context'] = minimal_context
+                        payload['session_id'] = f"no_ref_session_{uuid.uuid4().hex[:8]}"
+                        logger.warning(f"CustomLLMBridge: No RoxAgent reference, created minimal context: {minimal_context}")
+
+                    # Add diagnostic field to track the flow
+                    payload['_debug_source'] = 'custom_llm_bridge'
+                    
+                    # Force logging of the full payload to ensure we can see what's being sent
+                    logger.info(f"CustomLLMBridge: CRITICAL - Sending payload to {self._agent_url}: {json.dumps(payload, indent=2)}")
+
                     # Use aiohttp for async HTTP requests
                     async with aiohttp.ClientSession() as session:
-                        payload = {"transcript": transcript} # Send transcript as JSON
-                        async with session.post(self._url, json=payload) as response:
-                            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-                            result = await response.json() # Expecting JSON back, e.g., {"response": "..."}
-                            response_text = result.get("response", "") # Extract the response text
-                            
-                            # Check for special actions from the agent
-                            if "action" in result and "payload" in result:
-                                action = result["action"]
-                                payload = result["payload"]
-                                logger.info(f"Received special action from agent: {action} with payload: {payload}")
+                        try:
+                            logger.info(f"CustomLLMBridge: Starting HTTP POST to {self._agent_url}")
+                            async with session.post(self._agent_url, json=payload) as response:
+                                logger.info(f"CustomLLMBridge: Received HTTP response status: {response.status}")
+                                response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+                                result = await response.json() # Expecting JSON back, e.g., {"response": "..."}
+                                logger.info(f"CustomLLMBridge: Parsed JSON response: {json.dumps(result, indent=2)}")
+                                response_text = result.get("response", "") # Extract the response text
                                 
-                                # Convert the action and payload to a format that can be sent as metadata
-                                dom_actions = [{
-                                    "action": action,
-                                    "payload": payload
-                                }]
-                                logger.info(f"Converted to dom_actions format: {dom_actions}")
-                            # Check if the response contains DOM actions (for backward compatibility)
-                            elif "dom_actions" in result:
-                                dom_actions = result["dom_actions"]
-                                logger.info(f"Received DOM actions from external agent: {dom_actions}")
-                            
-                            logger.info(f"Received response from external agent: '{response_text}'")
+                                # Check for special actions from the agent
+                                if "action" in result and "payload" in result:
+                                    action = result["action"]
+                                    payload_from_response = result["payload"] # Renamed to avoid conflict
+                                    logger.info(f"Received special action from agent: {action} with payload: {payload_from_response}")
+                                    
+                                    # Convert the action and payload to a format that can be sent as metadata
+                                    dom_actions = [{
+                                        "action": action,
+                                        "payload": payload_from_response
+                                    }]
+                                    logger.info(f"Converted to dom_actions format: {dom_actions}")
+                                # Check if the response contains DOM actions (for backward compatibility)
+                                elif "dom_actions" in result:
+                                    dom_actions = result["dom_actions"]
+                                    logger.info(f"Received DOM actions from external agent: {dom_actions}")
+                                
+                                logger.info(f"Received response from external agent: '{response_text}'")
+                        except Exception as e:
+                            logger.error(f"CustomLLMBridge: HTTP request error details: {str(e)}")
+                            raise # Re-raise the exception for the outer catch block
 
                 except aiohttp.ClientError as e:
-                    logger.error(f"Error communicating with external agent at {self._url}: {e}")
+                    logger.error(f"Error communicating with external agent at {self._agent_url}: {e}")
                     response_text = "Sorry, I encountered an error trying to process your request." # Error message
                 except Exception as e:
                     logger.error(f"An unexpected error occurred in CustomLLMBridge: {e}")

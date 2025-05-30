@@ -66,6 +66,9 @@ except ImportError:
     logger.error("Failed to import CustomLLMBridge. Make sure custom_llm.py exists in the 'rox' directory and aiohttp is installed.")
     sys.exit(1)
 
+# Define the RPC method name for client UI actions globally
+CLIENT_RPC_FUNC_PERFORM_UI_ACTION = "rox.interaction.AgentInteraction/PerformUIAction"
+
 # Import your new RPC service implementation
 try:
     from rpc_services import AgentInteractionService
@@ -248,8 +251,13 @@ async def trigger_client_ui_action(
     action_type: interaction_pb2.ClientUIActionType, # Use the enum from your protos
     target_element_id: str = None,
     parameters: dict = None,
-    highlight_ranges_payload_data: list = None  # New parameter for highlight data
-) -> interaction_pb2.ClientUIActionResponse | None:
+    highlight_ranges_payload_data: list = None,  # New parameter for highlight data
+    suggest_text_edit_payload_data: Optional[Dict[str, Any]] = None, # New parameter for text edit suggestion
+    show_inline_suggestion_payload_data: Optional[Dict[str, Any]] = None, # For SHOW_INLINE_SUGGESTION
+    show_tooltip_or_comment_payload_data: Optional[Dict[str, Any]] = None, # For SHOW_TOOLTIP_OR_COMMENT
+    set_editor_content_payload_data: Optional[Dict[str, Any]] = None,      # For SET_EDITOR_CONTENT
+    append_text_to_editor_realtime_payload_data: Optional[Dict[str, Any]] = None # For APPEND_TEXT_TO_EDITOR_REALTIME
+) -> Optional[interaction_pb2.ClientUIActionResponse]: # Return the response from the client
     """
     Sends an RPC to a specific client to perform a UI action.
     Can now handle highlight_ranges_payload.
@@ -289,6 +297,59 @@ async def trigger_client_ui_action(
             highlight_proto.wrong_version = hl_data.get("wrongVersion", "")
             highlight_proto.correct_version = hl_data.get("correctVersion", "")
 
+    # Populate suggest_text_edit_payload if data is provided
+    if action_type == interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT and suggest_text_edit_payload_data:
+        # Create an instance of SuggestTextEditPayloadProto
+        suggestion_proto = request_pb.suggest_text_edit_payload # This directly gives a mutable reference
+        suggestion_proto.suggestion_id = suggest_text_edit_payload_data.get("suggestion_id", str(uuid.uuid4())) # Default to new UUID if not provided
+        suggestion_proto.start_pos = suggest_text_edit_payload_data.get("start_pos", 0)
+        suggestion_proto.end_pos = suggest_text_edit_payload_data.get("end_pos", 0)
+        suggestion_proto.original_text = suggest_text_edit_payload_data.get("original_text", "")
+        suggestion_proto.new_text = suggest_text_edit_payload_data.get("new_text", "")
+
+    if action_type == interaction_pb2.ClientUIActionType.SHOW_INLINE_SUGGESTION and show_inline_suggestion_payload_data:
+        # Create an instance of ShowInlineSuggestionPayloadProto
+        suggestion_proto = request_pb.show_inline_suggestion_payload # This directly gives a mutable reference
+        suggestion_proto.suggestion_id = show_inline_suggestion_payload_data.get("suggestion_id", str(uuid.uuid4())) # Default to new UUID if not provided
+        suggestion_proto.start_pos = show_inline_suggestion_payload_data.get("start_pos", 0)
+        suggestion_proto.end_pos = show_inline_suggestion_payload_data.get("end_pos", 0)
+        suggestion_proto.suggestion_text = show_inline_suggestion_payload_data.get("suggestion_text", "")
+        suggestion_proto.suggestion_type = show_inline_suggestion_payload_data.get("suggestion_type", "")
+
+    elif action_type == interaction_pb2.ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT and show_tooltip_or_comment_payload_data:
+        logger.debug(f"B2F RPC: Populating SHOW_TOOLTIP_OR_COMMENT payload with: {show_tooltip_or_comment_payload_data}")
+        tooltip_proto = request_pb.show_tooltip_or_comment_payload
+        tooltip_proto.id = show_tooltip_or_comment_payload_data.get("tooltip_id", str(uuid.uuid4())) # Keep using 'tooltip_id' from the dict for now, or change dict key
+        tooltip_proto.start_pos = show_tooltip_or_comment_payload_data.get("start_pos", 0)
+        tooltip_proto.end_pos = show_tooltip_or_comment_payload_data.get("end_pos", 0)
+        tooltip_proto.text = show_tooltip_or_comment_payload_data.get("tooltip_text", "")
+        tooltip_proto.tooltip_type = show_tooltip_or_comment_payload_data.get("tooltip_type", "comment_generic") # Default to generic comment
+
+    elif action_type == interaction_pb2.ClientUIActionType.SET_EDITOR_CONTENT and set_editor_content_payload_data:
+        logger.debug(f"B2F RPC: Populating SET_EDITOR_CONTENT payload with: {set_editor_content_payload_data}")
+        editor_content_proto = request_pb.set_editor_content_payload
+        if "html_content" in set_editor_content_payload_data:
+            editor_content_proto.html_content = set_editor_content_payload_data["html_content"]
+        elif "json_content" in set_editor_content_payload_data:
+            editor_content_proto.json_content = set_editor_content_payload_data["json_content"]
+        else:
+            logger.warning("SET_EDITOR_CONTENT: Neither html_content nor json_content provided in payload data. Defaulting to empty HTML.")
+            editor_content_proto.html_content = "" # Default or handle error appropriately
+
+    elif action_type == interaction_pb2.ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME and append_text_to_editor_realtime_payload_data:
+        logger.debug(f"B2F RPC: Populating APPEND_TEXT_TO_EDITOR_REALTIME payload with: {append_text_to_editor_realtime_payload_data}")
+        append_text_proto = request_pb.append_text_to_editor_realtime_payload
+        append_text_proto.text_chunk = append_text_to_editor_realtime_payload_data.get("text_chunk", "")
+        append_text_proto.is_final_chunk = append_text_to_editor_realtime_payload_data.get("is_final_chunk", False)
+        append_text_proto.stream_id = append_text_to_editor_realtime_payload_data.get("stream_id", str(uuid.uuid4()))
+
+    # Add more elif blocks here for other action types and their specific payloads
+    else:
+        # This case handles actions that are defined in the enum but don't have specific payload logic here yet,
+        # or if specific payload data was expected but not provided.
+        logger.warning(f"B2F RPC: Action type '{action_type}' ({interaction_pb2.ClientUIActionType.Name(action_type)}) is recognized but no specific payload data was provided or handled explicitly in this function. Sending generic request if base parameters (target_element_id, parameters) were set.")
+
+    # The rest of the RPC sending logic should be at the same indentation level as the if/elif/else block for populating payloads.
     service_name = "rox.interaction.ClientSideUI" 
     method_name = "PerformUIAction"
     rpc_method_name = f"{service_name}/{method_name}" # For logging and potentially for the call
@@ -369,6 +430,136 @@ async def agent_main_logic(ctx: JobContext):
             highlight_ranges_payload_data=sample_highlights
         )
         logger.info(f"B2F Agent Logic: Test HIGHLIGHT_TEXT_RANGES action sent to {target_client_identity}")
+
+        # TEST: Send a SUGGEST_TEXT_EDIT request
+        await asyncio.sleep(2) # Small delay before next test action
+        logger.info(f"B2F Agent Logic: Attempting to send a test SUGGEST_TEXT_EDIT action to {target_client_identity}")
+        sample_text_edit = {
+            "suggestion_id": "edit-suggestion-1",
+            "start_pos": 7, # Example: If text is "Hello brave world!", suggest "brave" -> "new". "b" is at 7 (1-indexed).
+            "end_pos": 12,  # End of "brave" (exclusive for typical ranges, or inclusive for ProseMirror like end)
+            "original_text": "brave",
+            "new_text": "new"
+        }
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT,
+            suggest_text_edit_payload_data=sample_text_edit
+        )
+        logger.info(f"B2F Agent Logic: Test SUGGEST_TEXT_EDIT action sent to {target_client_identity}")
+
+        # TEST: Send a SHOW_INLINE_SUGGESTION action
+        await asyncio.sleep(2) # Stagger actions slightly
+        logger.info(f"B2F Agent Logic: Attempting to send a test SHOW_INLINE_SUGGESTION action to {target_client_identity}")
+        inline_suggestion_payload = {
+            "suggestion_id": "inline-suggest-001",
+            "start_pos": 50, # Approximate, client will use actual editor positions
+            "end_pos": 63,   # Approximate for "send commands"
+            "suggestion_text": "Consider rephrasing to 'dispatch instructions' for a more formal tone.",
+            "suggestion_type": "style"
+        }
+        response_inline = await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_INLINE_SUGGESTION,
+            target_element_id="liveWritingEditor", # Assuming this is the target editor
+            show_inline_suggestion_payload_data=inline_suggestion_payload
+        )
+        if response_inline and response_inline.success:
+            logger.info(f"B2F RPC: Response from client '{target_client_identity}' for UI action '{response_inline.request_id}': Success={response_inline.success}, Msg='{response_inline.message}'")
+        else:
+            logger.warning(f"B2F RPC: Failed or no response for SHOW_INLINE_SUGGESTION to '{target_client_identity}'. Response: {response_inline}")
+        logger.info(f"B2F Agent Logic: Test SHOW_INLINE_SUGGESTION action sent to {target_client_identity}")
+
+        # TEST: Send a SHOW_TOOLTIP_OR_COMMENT action
+        await asyncio.sleep(2) # Stagger actions slightly
+        logger.info(f"B2F Agent Logic: Attempting to send a test SHOW_TOOLTIP_OR_COMMENT action to {target_client_identity}")
+        tooltip_payload = {
+            "tooltip_id": "tooltip-001",
+            "start_pos": 18, # Approximate for "Tiptap editor"
+            "end_pos": 32,   # Approximate
+            "tooltip_text": "This is the main editor component used for writing.",
+            "tooltip_type": "info" # Can be 'info', 'warning', 'comment'
+        }
+        response_tooltip = await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT,
+            target_element_id="liveWritingEditor",
+            show_tooltip_or_comment_payload_data=tooltip_payload
+        )
+        if response_tooltip and response_tooltip.success:
+            logger.info(f"B2F RPC: Response from client '{target_client_identity}' for UI action '{response_tooltip.request_id}': Success={response_tooltip.success}, Msg='{response_tooltip.message}'")
+        else:
+            logger.warning(f"B2F RPC: Failed or no response for SHOW_TOOLTIP_OR_COMMENT to '{target_client_identity}'. Response: {response_tooltip}")
+        logger.info(f"B2F Agent Logic: Test SHOW_TOOLTIP_OR_COMMENT action sent to {target_client_identity}")
+
+        # Test SHOW_INLINE_SUGGESTION
+        logger.info(f"B2F Agent Logic: Attempting to send a test SHOW_INLINE_SUGGESTION action to {target_client_identity}")
+        inline_suggestion_payload_data = {
+            "suggestion_id": "suggestion-001",
+            "text_to_suggest": " suggested inline text",
+            "insertion_pos": 10, # Example position
+            "suggestion_type": "correction" # or "completion"
+        }
+        await trigger_client_ui_action(
+            ctx.room,
+            target_client_identity,
+            interaction_pb2.ClientUIActionType.SHOW_INLINE_SUGGESTION,
+            show_inline_suggestion_payload_data=inline_suggestion_payload_data
+        )
+        await asyncio.sleep(2) # Wait a bit before the next action
+
+        # Test SHOW_TOOLTIP_OR_COMMENT
+        logger.info(f"B2F Agent Logic: Attempting to send a test SHOW_TOOLTIP_OR_COMMENT action to {target_client_identity}")
+        tooltip_payload_data = {
+            "tooltip_id": "comment-001",
+            "start_pos": 5,
+            "end_pos": 15,
+            "tooltip_text": "This is a test comment of type 'info'.",
+            "tooltip_type": "comment_info" # Example: 'comment_info', 'comment_warning', 'comment_error', 'comment_question', 'comment_suggestion', 'comment_generic'
+        }
+        await trigger_client_ui_action(
+            ctx.room,
+            target_client_identity,
+            interaction_pb2.ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT,
+            show_tooltip_or_comment_payload_data=tooltip_payload_data
+        )
+        await asyncio.sleep(2) # Wait a bit before the next action
+
+        # Test SET_EDITOR_CONTENT
+        logger.info(f"B2F Agent Logic: Attempting to send a test SET_EDITOR_CONTENT action to {target_client_identity}")
+        set_content_payload = {
+            "html_content": "<h1>Agent Content Update</h1><p>This is the <strong>new editor content</strong> set by the agent!</p><p>It can span <em>multiple lines</em> and include  разных стилей.</p>"
+        }
+        await trigger_client_ui_action(
+            ctx.room,
+            target_client_identity,
+            interaction_pb2.ClientUIActionType.SET_EDITOR_CONTENT,
+            set_editor_content_payload_data=set_content_payload
+        )
+        await asyncio.sleep(3) # Wait a bit
+
+        # Test APPEND_TEXT_TO_EDITOR_REALTIME (simulating streaming)
+        logger.info(f"B2F Agent Logic: Attempting to send a test APPEND_TEXT_TO_EDITOR_REALTIME action to {target_client_identity}")
+        append_chunks = [
+            {"text_chunk": "This text is ", "is_final_chunk": False, "stream_id": "stream1-chunk1"},
+            {"text_chunk": "being appended ", "is_final_chunk": False, "stream_id": "stream1-chunk2"},
+            {"text_chunk": "in real-time!", "is_final_chunk": True, "stream_id": "stream1-chunk3"},
+        ]
+        for i, chunk_data in enumerate(append_chunks):
+            logger.info(f"B2F Agent Logic: Sending append chunk {i+1}/{len(append_chunks)}: {chunk_data['text_chunk']}")
+            await trigger_client_ui_action(
+                ctx.room,
+                target_client_identity,
+                interaction_pb2.ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME,
+                append_text_to_editor_realtime_payload_data=chunk_data
+            )
+            await asyncio.sleep(0.5) # Small delay between chunks
+        await asyncio.sleep(2) # Wait a bit after appending
+
+        logger.info(f"B2F Agent Logic: All test UI actions sent to {target_client_identity}.")
 
     # Disable automatic UI actions - all UI actions will come from FastAPI
     logger.info("B2F Agent Logic: Automatic UI actions are disabled. UI actions will be controlled by FastAPI.")

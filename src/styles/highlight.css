@@ -31,6 +31,53 @@
   border-bottom: 1.5px dashed green;
 }
 
+/* Style for text edit suggestions */
+.highlight.highlight-text_suggestion {
+  background-color: rgba(128, 0, 128, 0.1); /* Light purple background */
+  border-bottom: 1.5px dotted purple; /* Purple dotted underline */
+  cursor: pointer; /* Indicate it's clickable */
+}
+
+/* Style for inline suggestions (non-intrusive) */
+.highlight.inline_suggestion {
+  /* No background color for less intrusion, or a very very light one */
+  /* background-color: rgba(0, 100, 255, 0.05); */ 
+  border-bottom: 1.5px dotted #007bff; /* Blue dotted underline */
+  /* cursor: help; */ /* Optional: 'help' cursor to indicate more info on hover */
+}
+
+/* Styles for Comment Types */
+.highlight.comment_generic {
+  background-color: rgba(108, 117, 125, 0.1); /* Light gray background */
+  border-bottom: 1.5px dashed #6c757d; /* Gray dashed underline */
+}
+
+.highlight.comment_info {
+  background-color: rgba(23, 162, 184, 0.1); /* Light cyan background */
+  border-bottom: 1.5px dashed #17a2b8; /* Cyan dashed underline */
+}
+
+.highlight.comment_warning {
+  background-color: rgba(255, 193, 7, 0.15); /* Light yellow background */
+  border-bottom: 1.5px dashed #ffc107; /* Yellow dashed underline */
+}
+
+.highlight.comment_error {
+  background-color: rgba(220, 53, 69, 0.15); /* Light red background */
+  border-bottom: 1.5px dashed #dc3545; /* Red dashed underline */
+}
+
+.highlight.comment_question {
+  background-color: rgba(102, 16, 242, 0.1); /* Light purple background */
+  border-bottom: 1.5px dashed #6610f2; /* Purple dashed underline */
+}
+
+.highlight.comment_suggestion {
+  background-color: rgba(40, 167, 69, 0.1); /* Light green background */
+  border-bottom: 1.5px dashed #28a745; /* Green dashed underline */
+}
+
+
 /* Style for the default 'agent_highlight' type */
 .highlight.highlight-agent_highlight {
   background-color: rgba(255, 100, 0, 0.3); /* Bright orange, hard to miss */

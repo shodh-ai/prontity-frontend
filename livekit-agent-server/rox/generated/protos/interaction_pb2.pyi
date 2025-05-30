@@ -13,11 +13,21 @@ class ClientUIActionType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     UPDATE_TEXT_CONTENT: _ClassVar[ClientUIActionType]
     TOGGLE_ELEMENT_VISIBILITY: _ClassVar[ClientUIActionType]
     HIGHLIGHT_TEXT_RANGES: _ClassVar[ClientUIActionType]
+    SUGGEST_TEXT_EDIT: _ClassVar[ClientUIActionType]
+    SHOW_INLINE_SUGGESTION: _ClassVar[ClientUIActionType]
+    SHOW_TOOLTIP_OR_COMMENT: _ClassVar[ClientUIActionType]
+    SET_EDITOR_CONTENT: _ClassVar[ClientUIActionType]
+    APPEND_TEXT_TO_EDITOR_REALTIME: _ClassVar[ClientUIActionType]
 NO_ACTION: ClientUIActionType
 SHOW_ALERT: ClientUIActionType
 UPDATE_TEXT_CONTENT: ClientUIActionType
 TOGGLE_ELEMENT_VISIBILITY: ClientUIActionType
 HIGHLIGHT_TEXT_RANGES: ClientUIActionType
+SUGGEST_TEXT_EDIT: ClientUIActionType
+SHOW_INLINE_SUGGESTION: ClientUIActionType
+SHOW_TOOLTIP_OR_COMMENT: ClientUIActionType
+SET_EDITOR_CONTENT: ClientUIActionType
+APPEND_TEXT_TO_EDITOR_REALTIME: ClientUIActionType
 
 class Empty(_message.Message):
     __slots__ = ()
@@ -91,8 +101,68 @@ class HighlightRangeProto(_message.Message):
     correct_version: str
     def __init__(self, id: _Optional[str] = ..., start: _Optional[int] = ..., end: _Optional[int] = ..., type: _Optional[str] = ..., message: _Optional[str] = ..., wrong_version: _Optional[str] = ..., correct_version: _Optional[str] = ...) -> None: ...
 
+class SuggestTextEditPayloadProto(_message.Message):
+    __slots__ = ("suggestion_id", "start_pos", "end_pos", "original_text", "new_text")
+    SUGGESTION_ID_FIELD_NUMBER: _ClassVar[int]
+    START_POS_FIELD_NUMBER: _ClassVar[int]
+    END_POS_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_TEXT_FIELD_NUMBER: _ClassVar[int]
+    NEW_TEXT_FIELD_NUMBER: _ClassVar[int]
+    suggestion_id: str
+    start_pos: int
+    end_pos: int
+    original_text: str
+    new_text: str
+    def __init__(self, suggestion_id: _Optional[str] = ..., start_pos: _Optional[int] = ..., end_pos: _Optional[int] = ..., original_text: _Optional[str] = ..., new_text: _Optional[str] = ...) -> None: ...
+
+class ShowInlineSuggestionPayloadProto(_message.Message):
+    __slots__ = ("suggestion_id", "start_pos", "end_pos", "suggestion_text", "suggestion_type")
+    SUGGESTION_ID_FIELD_NUMBER: _ClassVar[int]
+    START_POS_FIELD_NUMBER: _ClassVar[int]
+    END_POS_FIELD_NUMBER: _ClassVar[int]
+    SUGGESTION_TEXT_FIELD_NUMBER: _ClassVar[int]
+    SUGGESTION_TYPE_FIELD_NUMBER: _ClassVar[int]
+    suggestion_id: str
+    start_pos: int
+    end_pos: int
+    suggestion_text: str
+    suggestion_type: str
+    def __init__(self, suggestion_id: _Optional[str] = ..., start_pos: _Optional[int] = ..., end_pos: _Optional[int] = ..., suggestion_text: _Optional[str] = ..., suggestion_type: _Optional[str] = ...) -> None: ...
+
+class ShowTooltipOrCommentPayloadProto(_message.Message):
+    __slots__ = ("id", "start_pos", "end_pos", "text", "tooltip_type")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    START_POS_FIELD_NUMBER: _ClassVar[int]
+    END_POS_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    TOOLTIP_TYPE_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    start_pos: int
+    end_pos: int
+    text: str
+    tooltip_type: str
+    def __init__(self, id: _Optional[str] = ..., start_pos: _Optional[int] = ..., end_pos: _Optional[int] = ..., text: _Optional[str] = ..., tooltip_type: _Optional[str] = ...) -> None: ...
+
+class SetEditorContentPayloadProto(_message.Message):
+    __slots__ = ("html_content", "json_content")
+    HTML_CONTENT_FIELD_NUMBER: _ClassVar[int]
+    JSON_CONTENT_FIELD_NUMBER: _ClassVar[int]
+    html_content: str
+    json_content: str
+    def __init__(self, html_content: _Optional[str] = ..., json_content: _Optional[str] = ...) -> None: ...
+
+class AppendTextToEditorRealtimePayloadProto(_message.Message):
+    __slots__ = ("text_chunk", "stream_id", "is_final_chunk")
+    TEXT_CHUNK_FIELD_NUMBER: _ClassVar[int]
+    STREAM_ID_FIELD_NUMBER: _ClassVar[int]
+    IS_FINAL_CHUNK_FIELD_NUMBER: _ClassVar[int]
+    text_chunk: str
+    stream_id: str
+    is_final_chunk: bool
+    def __init__(self, text_chunk: _Optional[str] = ..., stream_id: _Optional[str] = ..., is_final_chunk: bool = ...) -> None: ...
+
 class AgentToClientUIActionRequest(_message.Message):
-    __slots__ = ("request_id", "action_type", "target_element_id", "parameters", "highlight_ranges_payload")
+    __slots__ = ("request_id", "action_type", "target_element_id", "parameters", "highlight_ranges_payload", "suggest_text_edit_payload", "show_inline_suggestion_payload", "show_tooltip_or_comment_payload", "set_editor_content_payload", "append_text_to_editor_realtime_payload")
     class ParametersEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -105,12 +175,22 @@ class AgentToClientUIActionRequest(_message.Message):
     TARGET_ELEMENT_ID_FIELD_NUMBER: _ClassVar[int]
     PARAMETERS_FIELD_NUMBER: _ClassVar[int]
     HIGHLIGHT_RANGES_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    SUGGEST_TEXT_EDIT_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    SHOW_INLINE_SUGGESTION_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    SHOW_TOOLTIP_OR_COMMENT_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    SET_EDITOR_CONTENT_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
+    APPEND_TEXT_TO_EDITOR_REALTIME_PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     action_type: ClientUIActionType
     target_element_id: str
     parameters: _containers.ScalarMap[str, str]
     highlight_ranges_payload: _containers.RepeatedCompositeFieldContainer[HighlightRangeProto]
-    def __init__(self, request_id: _Optional[str] = ..., action_type: _Optional[_Union[ClientUIActionType, str]] = ..., target_element_id: _Optional[str] = ..., parameters: _Optional[_Mapping[str, str]] = ..., highlight_ranges_payload: _Optional[_Iterable[_Union[HighlightRangeProto, _Mapping]]] = ...) -> None: ...
+    suggest_text_edit_payload: SuggestTextEditPayloadProto
+    show_inline_suggestion_payload: ShowInlineSuggestionPayloadProto
+    show_tooltip_or_comment_payload: ShowTooltipOrCommentPayloadProto
+    set_editor_content_payload: SetEditorContentPayloadProto
+    append_text_to_editor_realtime_payload: AppendTextToEditorRealtimePayloadProto
+    def __init__(self, request_id: _Optional[str] = ..., action_type: _Optional[_Union[ClientUIActionType, str]] = ..., target_element_id: _Optional[str] = ..., parameters: _Optional[_Mapping[str, str]] = ..., highlight_ranges_payload: _Optional[_Iterable[_Union[HighlightRangeProto, _Mapping]]] = ..., suggest_text_edit_payload: _Optional[_Union[SuggestTextEditPayloadProto, _Mapping]] = ..., show_inline_suggestion_payload: _Optional[_Union[ShowInlineSuggestionPayloadProto, _Mapping]] = ..., show_tooltip_or_comment_payload: _Optional[_Union[ShowTooltipOrCommentPayloadProto, _Mapping]] = ..., set_editor_content_payload: _Optional[_Union[SetEditorContentPayloadProto, _Mapping]] = ..., append_text_to_editor_realtime_payload: _Optional[_Union[AppendTextToEditorRealtimePayloadProto, _Mapping]] = ...) -> None: ...
 
 class ClientUIActionResponse(_message.Message):
     __slots__ = ("request_id", "success", "message")

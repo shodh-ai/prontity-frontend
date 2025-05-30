@@ -7,4 +7,10 @@ export interface Highlight {
   message?: string;    // Optional message/comment associated with the highlight
   wrongVersion?: string; // The original text that needs correction
   correctVersion?: string; // The suggested correction to replace the original text
+  data?: {
+    originalText?: string;
+    newText?: string;
+    suggestionId?: string;
+    [key: string]: any; // Allow other arbitrary data
+  };
 }

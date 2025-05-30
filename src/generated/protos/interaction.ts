@@ -17,6 +17,16 @@ export enum ClientUIActionType {
   TOGGLE_ELEMENT_VISIBILITY = 3,
   /** HIGHLIGHT_TEXT_RANGES - Action to highlight text ranges */
   HIGHLIGHT_TEXT_RANGES = 4,
+  /** SUGGEST_TEXT_EDIT - Action to suggest a text edit */
+  SUGGEST_TEXT_EDIT = 5,
+  /** SHOW_INLINE_SUGGESTION - Action to show a non-intrusive inline suggestion */
+  SHOW_INLINE_SUGGESTION = 6,
+  /** SHOW_TOOLTIP_OR_COMMENT - Action to display a tooltip or comment */
+  SHOW_TOOLTIP_OR_COMMENT = 7,
+  /** SET_EDITOR_CONTENT - Action to set the entire content of an editor */
+  SET_EDITOR_CONTENT = 8,
+  /** APPEND_TEXT_TO_EDITOR_REALTIME - Action to append text chunks to an editor */
+  APPEND_TEXT_TO_EDITOR_REALTIME = 9,
   UNRECOGNIZED = -1,
 }
 
@@ -37,6 +47,21 @@ export function clientUIActionTypeFromJSON(object: any): ClientUIActionType {
     case 4:
     case "HIGHLIGHT_TEXT_RANGES":
       return ClientUIActionType.HIGHLIGHT_TEXT_RANGES;
+    case 5:
+    case "SUGGEST_TEXT_EDIT":
+      return ClientUIActionType.SUGGEST_TEXT_EDIT;
+    case 6:
+    case "SHOW_INLINE_SUGGESTION":
+      return ClientUIActionType.SHOW_INLINE_SUGGESTION;
+    case 7:
+    case "SHOW_TOOLTIP_OR_COMMENT":
+      return ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT;
+    case 8:
+    case "SET_EDITOR_CONTENT":
+      return ClientUIActionType.SET_EDITOR_CONTENT;
+    case 9:
+    case "APPEND_TEXT_TO_EDITOR_REALTIME":
+      return ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -56,6 +81,16 @@ export function clientUIActionTypeToJSON(object: ClientUIActionType): string {
       return "TOGGLE_ELEMENT_VISIBILITY";
     case ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
       return "HIGHLIGHT_TEXT_RANGES";
+    case ClientUIActionType.SUGGEST_TEXT_EDIT:
+      return "SUGGEST_TEXT_EDIT";
+    case ClientUIActionType.SHOW_INLINE_SUGGESTION:
+      return "SHOW_INLINE_SUGGESTION";
+    case ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT:
+      return "SHOW_TOOLTIP_OR_COMMENT";
+    case ClientUIActionType.SET_EDITOR_CONTENT:
+      return "SET_EDITOR_CONTENT";
+    case ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME:
+      return "APPEND_TEXT_TO_EDITOR_REALTIME";
     case ClientUIActionType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -166,6 +201,72 @@ export interface HighlightRangeProto {
   correctVersion?: string | undefined;
 }
 
+/** Message to represent a single text edit suggestion */
+export interface SuggestTextEditPayloadProto {
+  /** Unique identifier for the suggestion */
+  suggestionId: string;
+  /** Start position (ProseMirror index) */
+  startPos: number;
+  /** End position (ProseMirror index) */
+  endPos: number;
+  /** The text to be replaced */
+  originalText: string;
+  /** The suggested new text */
+  newText: string;
+}
+
+/** Message for showing an inline, non-intrusive suggestion */
+export interface ShowInlineSuggestionPayloadProto {
+  /** Unique ID for this suggestion */
+  suggestionId: string;
+  /** Start position in the editor (ProseMirror index) */
+  startPos: number;
+  /** End position in the editor (ProseMirror index) */
+  endPos: number;
+  /** Text to show on hover/click (e.g., "Consider rephrasing for clarity.") */
+  suggestionText: string;
+  /** Type of suggestion (e.g., "grammar", "style", "clarity") - for potential styling/iconography */
+  suggestionType: string;
+}
+
+/** Message for showing a tooltip or comment */
+export interface ShowTooltipOrCommentPayloadProto {
+  /** Unique ID for this tooltip/comment */
+  id: string;
+  /** Start position in the editor (ProseMirror index) */
+  startPos: number;
+  /** End position in the editor (ProseMirror index) */
+  endPos: number;
+  /** The content of the tooltip/comment */
+  text: string;
+  /** E.g., "info", "suggestion", "error", "question" - for styling/iconography */
+  tooltipType: string;
+}
+
+/** Message for setting the entire content of a rich text editor */
+export interface SetEditorContentPayloadProto {
+  contentFormat?:
+    | //
+    /** Full HTML content */
+    { $case: "htmlContent"; htmlContent: string }
+    | //
+    /** Tiptap JSON content as a string */
+    { $case: "jsonContent"; jsonContent: string }
+    | undefined;
+}
+
+/** Message for appending text to an editor in real-time */
+export interface AppendTextToEditorRealtimePayloadProto {
+  /** The chunk of text to append */
+  textChunk: string;
+  /** Optional: ID to group related chunks if part of a continuous stream */
+  streamId?:
+    | string
+    | undefined;
+  /** Indicates if this is the last chunk in a stream */
+  isFinalChunk?: boolean | undefined;
+}
+
 /** Request from Agent to Client to perform a UI action */
 export interface AgentToClientUIActionRequest {
   /** Optional: for tracking/correlation */
@@ -177,6 +278,24 @@ export interface AgentToClientUIActionRequest {
   parameters: { [key: string]: string };
   /** Payload for HIGHLIGHT_TEXT_RANGES */
   highlightRangesPayload: HighlightRangeProto[];
+  /** Payload for SUGGEST_TEXT_EDIT */
+  suggestTextEditPayload?:
+    | SuggestTextEditPayloadProto
+    | undefined;
+  /** Payload for SHOW_INLINE_SUGGESTION */
+  showInlineSuggestionPayload?:
+    | ShowInlineSuggestionPayloadProto
+    | undefined;
+  /** Payload for SHOW_TOOLTIP_OR_COMMENT */
+  showTooltipOrCommentPayload?:
+    | ShowTooltipOrCommentPayloadProto
+    | undefined;
+  /** Payload for SET_EDITOR_CONTENT */
+  setEditorContentPayload?:
+    | SetEditorContentPayloadProto
+    | undefined;
+  /** Payload for APPEND_TEXT_TO_EDITOR_REALTIME */
+  appendTextToEditorRealtimePayload?: AppendTextToEditorRealtimePayloadProto | undefined;
 }
 
 export interface AgentToClientUIActionRequest_ParametersEntry {
@@ -790,8 +909,575 @@ export const HighlightRangeProto: MessageFns<HighlightRangeProto> = {
   },
 };
 
+function createBaseSuggestTextEditPayloadProto(): SuggestTextEditPayloadProto {
+  return { suggestionId: "", startPos: 0, endPos: 0, originalText: "", newText: "" };
+}
+
+export const SuggestTextEditPayloadProto: MessageFns<SuggestTextEditPayloadProto> = {
+  encode(message: SuggestTextEditPayloadProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.suggestionId !== "") {
+      writer.uint32(10).string(message.suggestionId);
+    }
+    if (message.startPos !== 0) {
+      writer.uint32(16).int32(message.startPos);
+    }
+    if (message.endPos !== 0) {
+      writer.uint32(24).int32(message.endPos);
+    }
+    if (message.originalText !== "") {
+      writer.uint32(34).string(message.originalText);
+    }
+    if (message.newText !== "") {
+      writer.uint32(42).string(message.newText);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SuggestTextEditPayloadProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSuggestTextEditPayloadProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.suggestionId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.startPos = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.endPos = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.originalText = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.newText = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SuggestTextEditPayloadProto {
+    return {
+      suggestionId: isSet(object.suggestionId) ? globalThis.String(object.suggestionId) : "",
+      startPos: isSet(object.startPos) ? globalThis.Number(object.startPos) : 0,
+      endPos: isSet(object.endPos) ? globalThis.Number(object.endPos) : 0,
+      originalText: isSet(object.originalText) ? globalThis.String(object.originalText) : "",
+      newText: isSet(object.newText) ? globalThis.String(object.newText) : "",
+    };
+  },
+
+  toJSON(message: SuggestTextEditPayloadProto): unknown {
+    const obj: any = {};
+    if (message.suggestionId !== "") {
+      obj.suggestionId = message.suggestionId;
+    }
+    if (message.startPos !== 0) {
+      obj.startPos = Math.round(message.startPos);
+    }
+    if (message.endPos !== 0) {
+      obj.endPos = Math.round(message.endPos);
+    }
+    if (message.originalText !== "") {
+      obj.originalText = message.originalText;
+    }
+    if (message.newText !== "") {
+      obj.newText = message.newText;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SuggestTextEditPayloadProto>): SuggestTextEditPayloadProto {
+    return SuggestTextEditPayloadProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SuggestTextEditPayloadProto>): SuggestTextEditPayloadProto {
+    const message = createBaseSuggestTextEditPayloadProto();
+    message.suggestionId = object.suggestionId ?? "";
+    message.startPos = object.startPos ?? 0;
+    message.endPos = object.endPos ?? 0;
+    message.originalText = object.originalText ?? "";
+    message.newText = object.newText ?? "";
+    return message;
+  },
+};
+
+function createBaseShowInlineSuggestionPayloadProto(): ShowInlineSuggestionPayloadProto {
+  return { suggestionId: "", startPos: 0, endPos: 0, suggestionText: "", suggestionType: "" };
+}
+
+export const ShowInlineSuggestionPayloadProto: MessageFns<ShowInlineSuggestionPayloadProto> = {
+  encode(message: ShowInlineSuggestionPayloadProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.suggestionId !== "") {
+      writer.uint32(10).string(message.suggestionId);
+    }
+    if (message.startPos !== 0) {
+      writer.uint32(16).int32(message.startPos);
+    }
+    if (message.endPos !== 0) {
+      writer.uint32(24).int32(message.endPos);
+    }
+    if (message.suggestionText !== "") {
+      writer.uint32(34).string(message.suggestionText);
+    }
+    if (message.suggestionType !== "") {
+      writer.uint32(42).string(message.suggestionType);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ShowInlineSuggestionPayloadProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseShowInlineSuggestionPayloadProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.suggestionId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.startPos = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.endPos = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.suggestionText = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.suggestionType = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ShowInlineSuggestionPayloadProto {
+    return {
+      suggestionId: isSet(object.suggestionId) ? globalThis.String(object.suggestionId) : "",
+      startPos: isSet(object.startPos) ? globalThis.Number(object.startPos) : 0,
+      endPos: isSet(object.endPos) ? globalThis.Number(object.endPos) : 0,
+      suggestionText: isSet(object.suggestionText) ? globalThis.String(object.suggestionText) : "",
+      suggestionType: isSet(object.suggestionType) ? globalThis.String(object.suggestionType) : "",
+    };
+  },
+
+  toJSON(message: ShowInlineSuggestionPayloadProto): unknown {
+    const obj: any = {};
+    if (message.suggestionId !== "") {
+      obj.suggestionId = message.suggestionId;
+    }
+    if (message.startPos !== 0) {
+      obj.startPos = Math.round(message.startPos);
+    }
+    if (message.endPos !== 0) {
+      obj.endPos = Math.round(message.endPos);
+    }
+    if (message.suggestionText !== "") {
+      obj.suggestionText = message.suggestionText;
+    }
+    if (message.suggestionType !== "") {
+      obj.suggestionType = message.suggestionType;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ShowInlineSuggestionPayloadProto>): ShowInlineSuggestionPayloadProto {
+    return ShowInlineSuggestionPayloadProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ShowInlineSuggestionPayloadProto>): ShowInlineSuggestionPayloadProto {
+    const message = createBaseShowInlineSuggestionPayloadProto();
+    message.suggestionId = object.suggestionId ?? "";
+    message.startPos = object.startPos ?? 0;
+    message.endPos = object.endPos ?? 0;
+    message.suggestionText = object.suggestionText ?? "";
+    message.suggestionType = object.suggestionType ?? "";
+    return message;
+  },
+};
+
+function createBaseShowTooltipOrCommentPayloadProto(): ShowTooltipOrCommentPayloadProto {
+  return { id: "", startPos: 0, endPos: 0, text: "", tooltipType: "" };
+}
+
+export const ShowTooltipOrCommentPayloadProto: MessageFns<ShowTooltipOrCommentPayloadProto> = {
+  encode(message: ShowTooltipOrCommentPayloadProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.startPos !== 0) {
+      writer.uint32(16).int32(message.startPos);
+    }
+    if (message.endPos !== 0) {
+      writer.uint32(24).int32(message.endPos);
+    }
+    if (message.text !== "") {
+      writer.uint32(34).string(message.text);
+    }
+    if (message.tooltipType !== "") {
+      writer.uint32(42).string(message.tooltipType);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ShowTooltipOrCommentPayloadProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseShowTooltipOrCommentPayloadProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.id = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.startPos = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.endPos = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.tooltipType = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ShowTooltipOrCommentPayloadProto {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      startPos: isSet(object.startPos) ? globalThis.Number(object.startPos) : 0,
+      endPos: isSet(object.endPos) ? globalThis.Number(object.endPos) : 0,
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+      tooltipType: isSet(object.tooltipType) ? globalThis.String(object.tooltipType) : "",
+    };
+  },
+
+  toJSON(message: ShowTooltipOrCommentPayloadProto): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.startPos !== 0) {
+      obj.startPos = Math.round(message.startPos);
+    }
+    if (message.endPos !== 0) {
+      obj.endPos = Math.round(message.endPos);
+    }
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    if (message.tooltipType !== "") {
+      obj.tooltipType = message.tooltipType;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<ShowTooltipOrCommentPayloadProto>): ShowTooltipOrCommentPayloadProto {
+    return ShowTooltipOrCommentPayloadProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<ShowTooltipOrCommentPayloadProto>): ShowTooltipOrCommentPayloadProto {
+    const message = createBaseShowTooltipOrCommentPayloadProto();
+    message.id = object.id ?? "";
+    message.startPos = object.startPos ?? 0;
+    message.endPos = object.endPos ?? 0;
+    message.text = object.text ?? "";
+    message.tooltipType = object.tooltipType ?? "";
+    return message;
+  },
+};
+
+function createBaseSetEditorContentPayloadProto(): SetEditorContentPayloadProto {
+  return { contentFormat: undefined };
+}
+
+export const SetEditorContentPayloadProto: MessageFns<SetEditorContentPayloadProto> = {
+  encode(message: SetEditorContentPayloadProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.contentFormat?.$case) {
+      case "htmlContent":
+        writer.uint32(10).string(message.contentFormat.htmlContent);
+        break;
+      case "jsonContent":
+        writer.uint32(18).string(message.contentFormat.jsonContent);
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetEditorContentPayloadProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSetEditorContentPayloadProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.contentFormat = { $case: "htmlContent", htmlContent: reader.string() };
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.contentFormat = { $case: "jsonContent", jsonContent: reader.string() };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SetEditorContentPayloadProto {
+    return {
+      contentFormat: isSet(object.htmlContent)
+        ? { $case: "htmlContent", htmlContent: globalThis.String(object.htmlContent) }
+        : isSet(object.jsonContent)
+        ? { $case: "jsonContent", jsonContent: globalThis.String(object.jsonContent) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: SetEditorContentPayloadProto): unknown {
+    const obj: any = {};
+    if (message.contentFormat?.$case === "htmlContent") {
+      obj.htmlContent = message.contentFormat.htmlContent;
+    } else if (message.contentFormat?.$case === "jsonContent") {
+      obj.jsonContent = message.contentFormat.jsonContent;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<SetEditorContentPayloadProto>): SetEditorContentPayloadProto {
+    return SetEditorContentPayloadProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<SetEditorContentPayloadProto>): SetEditorContentPayloadProto {
+    const message = createBaseSetEditorContentPayloadProto();
+    switch (object.contentFormat?.$case) {
+      case "htmlContent": {
+        if (object.contentFormat?.htmlContent !== undefined && object.contentFormat?.htmlContent !== null) {
+          message.contentFormat = { $case: "htmlContent", htmlContent: object.contentFormat.htmlContent };
+        }
+        break;
+      }
+      case "jsonContent": {
+        if (object.contentFormat?.jsonContent !== undefined && object.contentFormat?.jsonContent !== null) {
+          message.contentFormat = { $case: "jsonContent", jsonContent: object.contentFormat.jsonContent };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
+function createBaseAppendTextToEditorRealtimePayloadProto(): AppendTextToEditorRealtimePayloadProto {
+  return { textChunk: "", streamId: undefined, isFinalChunk: undefined };
+}
+
+export const AppendTextToEditorRealtimePayloadProto: MessageFns<AppendTextToEditorRealtimePayloadProto> = {
+  encode(message: AppendTextToEditorRealtimePayloadProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.textChunk !== "") {
+      writer.uint32(10).string(message.textChunk);
+    }
+    if (message.streamId !== undefined) {
+      writer.uint32(18).string(message.streamId);
+    }
+    if (message.isFinalChunk !== undefined) {
+      writer.uint32(24).bool(message.isFinalChunk);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AppendTextToEditorRealtimePayloadProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAppendTextToEditorRealtimePayloadProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.textChunk = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.streamId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.isFinalChunk = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AppendTextToEditorRealtimePayloadProto {
+    return {
+      textChunk: isSet(object.textChunk) ? globalThis.String(object.textChunk) : "",
+      streamId: isSet(object.streamId) ? globalThis.String(object.streamId) : undefined,
+      isFinalChunk: isSet(object.isFinalChunk) ? globalThis.Boolean(object.isFinalChunk) : undefined,
+    };
+  },
+
+  toJSON(message: AppendTextToEditorRealtimePayloadProto): unknown {
+    const obj: any = {};
+    if (message.textChunk !== "") {
+      obj.textChunk = message.textChunk;
+    }
+    if (message.streamId !== undefined) {
+      obj.streamId = message.streamId;
+    }
+    if (message.isFinalChunk !== undefined) {
+      obj.isFinalChunk = message.isFinalChunk;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AppendTextToEditorRealtimePayloadProto>): AppendTextToEditorRealtimePayloadProto {
+    return AppendTextToEditorRealtimePayloadProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AppendTextToEditorRealtimePayloadProto>): AppendTextToEditorRealtimePayloadProto {
+    const message = createBaseAppendTextToEditorRealtimePayloadProto();
+    message.textChunk = object.textChunk ?? "";
+    message.streamId = object.streamId ?? undefined;
+    message.isFinalChunk = object.isFinalChunk ?? undefined;
+    return message;
+  },
+};
+
 function createBaseAgentToClientUIActionRequest(): AgentToClientUIActionRequest {
-  return { requestId: "", actionType: 0, targetElementId: "", parameters: {}, highlightRangesPayload: [] };
+  return {
+    requestId: "",
+    actionType: 0,
+    targetElementId: "",
+    parameters: {},
+    highlightRangesPayload: [],
+    suggestTextEditPayload: undefined,
+    showInlineSuggestionPayload: undefined,
+    showTooltipOrCommentPayload: undefined,
+    setEditorContentPayload: undefined,
+    appendTextToEditorRealtimePayload: undefined,
+  };
 }
 
 export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionRequest> = {
@@ -810,6 +1496,22 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
     });
     for (const v of message.highlightRangesPayload) {
       HighlightRangeProto.encode(v!, writer.uint32(42).fork()).join();
+    }
+    if (message.suggestTextEditPayload !== undefined) {
+      SuggestTextEditPayloadProto.encode(message.suggestTextEditPayload, writer.uint32(50).fork()).join();
+    }
+    if (message.showInlineSuggestionPayload !== undefined) {
+      ShowInlineSuggestionPayloadProto.encode(message.showInlineSuggestionPayload, writer.uint32(58).fork()).join();
+    }
+    if (message.showTooltipOrCommentPayload !== undefined) {
+      ShowTooltipOrCommentPayloadProto.encode(message.showTooltipOrCommentPayload, writer.uint32(66).fork()).join();
+    }
+    if (message.setEditorContentPayload !== undefined) {
+      SetEditorContentPayloadProto.encode(message.setEditorContentPayload, writer.uint32(74).fork()).join();
+    }
+    if (message.appendTextToEditorRealtimePayload !== undefined) {
+      AppendTextToEditorRealtimePayloadProto.encode(message.appendTextToEditorRealtimePayload, writer.uint32(82).fork())
+        .join();
     }
     return writer;
   },
@@ -864,6 +1566,49 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
           message.highlightRangesPayload.push(HighlightRangeProto.decode(reader, reader.uint32()));
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.suggestTextEditPayload = SuggestTextEditPayloadProto.decode(reader, reader.uint32());
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.showInlineSuggestionPayload = ShowInlineSuggestionPayloadProto.decode(reader, reader.uint32());
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.showTooltipOrCommentPayload = ShowTooltipOrCommentPayloadProto.decode(reader, reader.uint32());
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.setEditorContentPayload = SetEditorContentPayloadProto.decode(reader, reader.uint32());
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.appendTextToEditorRealtimePayload = AppendTextToEditorRealtimePayloadProto.decode(
+            reader,
+            reader.uint32(),
+          );
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -887,6 +1632,21 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
       highlightRangesPayload: globalThis.Array.isArray(object?.highlightRangesPayload)
         ? object.highlightRangesPayload.map((e: any) => HighlightRangeProto.fromJSON(e))
         : [],
+      suggestTextEditPayload: isSet(object.suggestTextEditPayload)
+        ? SuggestTextEditPayloadProto.fromJSON(object.suggestTextEditPayload)
+        : undefined,
+      showInlineSuggestionPayload: isSet(object.showInlineSuggestionPayload)
+        ? ShowInlineSuggestionPayloadProto.fromJSON(object.showInlineSuggestionPayload)
+        : undefined,
+      showTooltipOrCommentPayload: isSet(object.showTooltipOrCommentPayload)
+        ? ShowTooltipOrCommentPayloadProto.fromJSON(object.showTooltipOrCommentPayload)
+        : undefined,
+      setEditorContentPayload: isSet(object.setEditorContentPayload)
+        ? SetEditorContentPayloadProto.fromJSON(object.setEditorContentPayload)
+        : undefined,
+      appendTextToEditorRealtimePayload: isSet(object.appendTextToEditorRealtimePayload)
+        ? AppendTextToEditorRealtimePayloadProto.fromJSON(object.appendTextToEditorRealtimePayload)
+        : undefined,
     };
   },
 
@@ -913,6 +1673,23 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
     if (message.highlightRangesPayload?.length) {
       obj.highlightRangesPayload = message.highlightRangesPayload.map((e) => HighlightRangeProto.toJSON(e));
     }
+    if (message.suggestTextEditPayload !== undefined) {
+      obj.suggestTextEditPayload = SuggestTextEditPayloadProto.toJSON(message.suggestTextEditPayload);
+    }
+    if (message.showInlineSuggestionPayload !== undefined) {
+      obj.showInlineSuggestionPayload = ShowInlineSuggestionPayloadProto.toJSON(message.showInlineSuggestionPayload);
+    }
+    if (message.showTooltipOrCommentPayload !== undefined) {
+      obj.showTooltipOrCommentPayload = ShowTooltipOrCommentPayloadProto.toJSON(message.showTooltipOrCommentPayload);
+    }
+    if (message.setEditorContentPayload !== undefined) {
+      obj.setEditorContentPayload = SetEditorContentPayloadProto.toJSON(message.setEditorContentPayload);
+    }
+    if (message.appendTextToEditorRealtimePayload !== undefined) {
+      obj.appendTextToEditorRealtimePayload = AppendTextToEditorRealtimePayloadProto.toJSON(
+        message.appendTextToEditorRealtimePayload,
+      );
+    }
     return obj;
   },
 
@@ -935,6 +1712,26 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
     );
     message.highlightRangesPayload = object.highlightRangesPayload?.map((e) => HighlightRangeProto.fromPartial(e)) ||
       [];
+    message.suggestTextEditPayload =
+      (object.suggestTextEditPayload !== undefined && object.suggestTextEditPayload !== null)
+        ? SuggestTextEditPayloadProto.fromPartial(object.suggestTextEditPayload)
+        : undefined;
+    message.showInlineSuggestionPayload =
+      (object.showInlineSuggestionPayload !== undefined && object.showInlineSuggestionPayload !== null)
+        ? ShowInlineSuggestionPayloadProto.fromPartial(object.showInlineSuggestionPayload)
+        : undefined;
+    message.showTooltipOrCommentPayload =
+      (object.showTooltipOrCommentPayload !== undefined && object.showTooltipOrCommentPayload !== null)
+        ? ShowTooltipOrCommentPayloadProto.fromPartial(object.showTooltipOrCommentPayload)
+        : undefined;
+    message.setEditorContentPayload =
+      (object.setEditorContentPayload !== undefined && object.setEditorContentPayload !== null)
+        ? SetEditorContentPayloadProto.fromPartial(object.setEditorContentPayload)
+        : undefined;
+    message.appendTextToEditorRealtimePayload =
+      (object.appendTextToEditorRealtimePayload !== undefined && object.appendTextToEditorRealtimePayload !== null)
+        ? AppendTextToEditorRealtimePayloadProto.fromPartial(object.appendTextToEditorRealtimePayload)
+        : undefined;
     return message;
   },
 };

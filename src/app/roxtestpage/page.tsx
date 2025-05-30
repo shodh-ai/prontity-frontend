@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import TiptapEditor from '@/components/TiptapEditor'; // Adjusted path
+import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor'; // Adjusted path, import handle
 import { StarterKit } from '@tiptap/starter-kit';
 import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension'; // Import the extension instead of the raw plugin
 import { Highlight } from '@/components/TiptapEditor/highlightInterface'; // Adjusted path
@@ -63,6 +63,7 @@ export default function RoxPage() {
   const [isStudentStatusDisplayOpen, setIsStudentStatusDisplayOpen] = useState(false);
   const docsIconRef = useRef<HTMLImageElement>(null);
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
+  const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
 
   // State for agent-controlled UI elements
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState(
@@ -72,19 +73,59 @@ export default function RoxPage() {
 
   // State for Tiptap Editor
   const [editorContent, setEditorContent] = useState<string>(
-    '<p>Hello from Tiptap! The agent will highlight text in this editor.</p><p>This is a second paragraph to test highlighting across multiple blocks of text. The agent can send commands to highlight specific ranges here.</p>'
+    '<p>Hello from Tiptap! The agent will highlight text in this editor.</p><p>This is a second paragraph to test highlighting across multiple blocks of text. The agent can receive commands to highlight specific ranges here.</p>'
   );
   const [highlightData, setHighlightData] = useState<Highlight[]>([]);
+
+  // Callback to handle text suggestion clicks
+  const handleTextSuggestionClick = (highlight: Highlight) => {
+    const editor = tiptapEditorRef.current?.editor;
+    if (!editor) {
+      console.error("[RoxPage] Tiptap editor instance not available via ref for handleTextSuggestionClick.");
+      return;
+    }
+
+    const originalText = highlight.data?.originalText || editor.state.doc.textBetween(highlight.start, highlight.end, " ");
+    const newText = highlight.data?.newText;
+
+    if (newText === undefined) {
+      console.warn("[RoxPage] Text suggestion clicked, but newText is undefined in highlight data.", highlight);
+      setHighlightData(prev => prev.filter(h => h.id !== highlight.id));
+      return;
+    }
+
+    const userAccepted = window.confirm(
+      `Accept suggestion?\n\nOriginal: "${originalText}"\nSuggested: "${newText}"`
+    );
+
+    if (userAccepted) {
+      console.log(`[RoxPage] User accepted suggestion: ${highlight.id}. Replacing '${originalText}' with '${newText}'`);
+      editor.chain().focus()
+        .deleteRange({ from: highlight.start, to: highlight.end })
+        .insertContent(newText)
+        .run();
+    } else {
+      console.log(`[RoxPage] User rejected suggestion: ${highlight.id}`);
+    }
+    // Remove the highlight regardless of accept/reject
+    setHighlightData(prev => prev.filter(h => h.id !== highlight.id));
+  };
 
   // Tiptap extensions
   const tiptapExtensions = [
     StarterKit.configure(),
     HighlightExtension.configure({
       onHighlightClick: (highlightId) => {
-        console.log('Highlight clicked:', highlightId);
-        // Handle highlight click if needed
-      }
+        console.log('[RoxPage] Highlight clicked in Tiptap, ID:', highlightId);
+        const clickedHighlight = highlightData.find(h => h.id === highlightId);
+        if (clickedHighlight) {
+          console.log('[RoxPage] Clicked highlight data:', clickedHighlight);
+        }
+      },
+      onTextSuggestionClick: handleTextSuggestionClick, // Wire up the new callback
     }),
+    // Placeholder.configure({ placeholder: 'Start typing...' }),
+    // CharacterCount.configure({ limit: 10000 }),
   ];
 
   const roomName = 'Roxpage'; // Or dynamically set if needed
@@ -93,7 +134,14 @@ export default function RoxPage() {
   const handlePerformUIAction = async (rpcInvocationData: RpcInvocationData): Promise<string> => {
     const payloadString = rpcInvocationData.payload as string | undefined; // Extract payload
     let requestId = rpcInvocationData.requestId || ""; // Get requestId from RpcInvocationData
-    console.log('[RoxPage] B2F RPC (handlePerformUIAction) invoked by agent. Request ID:', requestId);
+    console.log(`[RoxPage] B2F RPC (handlePerformUIAction) invoked by agent. Request ID: ${requestId}`);
+    console.log(`[RoxPage] handlePerformUIAction: ENTRY: editor object is:`, tiptapEditorRef.current?.editor);
+    if (tiptapEditorRef.current?.editor) {
+      console.log(`[RoxPage] handlePerformUIAction: ENTRY: editor.isEditable is:`, tiptapEditorRef.current.editor.isEditable);
+      console.log(`[RoxPage] handlePerformUIAction: ENTRY: editor.isDestroyed is:`, tiptapEditorRef.current.editor.isDestroyed);
+    } else {
+      console.error(`[RoxPage] handlePerformUIAction: ENTRY: editor is null or undefined BEFORE switch!`);
+    }
     try {
       if (!payloadString) {
         console.error('[RoxPage] B2F Agent PerformUIAction: No payload received.');
@@ -109,8 +157,22 @@ export default function RoxPage() {
       }
       console.log('[RoxPage] B2F Agent PerformUIAction Request Received: ', request);
 
+      // Pre-switch check specifically for SET_EDITOR_CONTENT
+      if (request.actionType === ClientUIActionType.SET_EDITOR_CONTENT) {
+        console.error(`[RoxPage] PRE-SWITCH CHECK for SET_EDITOR_CONTENT: editor object is:`, tiptapEditorRef.current?.editor, `isEditable: ${tiptapEditorRef.current?.editor?.isEditable}, isDestroyed: ${tiptapEditorRef.current?.editor?.isDestroyed}`);
+      }
+
       let success = true;
       let message = "Action performed successfully by RoxPage.";
+
+      // Add a fallback div to display editor content if the editor fails
+      if (!document.getElementById('editorFallbackDisplay')) {
+        const fallbackDiv = document.createElement('div');
+        fallbackDiv.id = 'editorFallbackDisplay';
+        fallbackDiv.className = 'border-2 border-gray-300 p-4 rounded mt-4';
+        fallbackDiv.style.display = 'none';
+        document.querySelector('.tiptap-container')?.after(fallbackDiv);
+      }
 
       switch (request.actionType) {
         case ClientUIActionType.SHOW_ALERT:
@@ -215,15 +277,169 @@ export default function RoxPage() {
               } else {
                 // Neither payload nor fallback parameters found
                 success = false;
-                message = "Error: No highlight data found in payload or parameters.";
+                message = "Error: No highlight data found in payload or parameters for HIGHLIGHT_TEXT_RANGES.";
               }
             }
-          } catch (e) { // Catch for the outer try block
+          } catch (e) { // Catch for the outer try block for HIGHLIGHT_TEXT_RANGES
             console.error('[RoxPage] HIGHLIGHT_TEXT_RANGES: Error processing highlight action:', e);
             success = false;
             message = 'Error: Could not process highlight data.';
           }
           break;
+
+        case ClientUIActionType.SUGGEST_TEXT_EDIT:
+          console.log('[RoxPage] B2F Action: SUGGEST_TEXT_EDIT');
+          if (request.suggestTextEditPayload) {
+            const suggestionPayload = request.suggestTextEditPayload;
+            console.log("[RoxPage] Received SUGGEST_TEXT_EDIT payload:", suggestionPayload);
+            const newSuggestionHighlight: Highlight = {
+              id: suggestionPayload.suggestionId || `suggestion-${Date.now()}-${Math.random()}`,
+              start: suggestionPayload.startPos,
+              end: suggestionPayload.endPos,
+              type: 'text_suggestion', // A new highlight type for suggestions
+              message: `Suggest: '${suggestionPayload.originalText || ''}' -> '${suggestionPayload.newText || ''}'`,
+              data: {
+                originalText: suggestionPayload.originalText,
+                newText: suggestionPayload.newText,
+                suggestionId: suggestionPayload.suggestionId,
+              }
+            };
+            setHighlightData(prevHighlights => [...prevHighlights, newSuggestionHighlight]);
+            success = true;
+            message = "Text edit suggestion received and displayed as highlight.";
+          } else {
+            success = false;
+            message = "Error: Missing payload for SUGGEST_TEXT_EDIT.";
+            console.error('[RoxPage] SUGGEST_TEXT_EDIT: Payload is missing.');
+          }
+          break;
+        case ClientUIActionType.SHOW_INLINE_SUGGESTION:
+          console.log('[RoxPage] B2F Action: SHOW_INLINE_SUGGESTION');
+          try {
+            if (request.showInlineSuggestionPayload) {
+              const payload = request.showInlineSuggestionPayload;
+              const newHighlight: Highlight = {
+                id: payload.suggestionId || `inline-suggest-${Date.now()}`,
+                start: payload.startPos,
+                end: payload.endPos,
+                type: 'inline_suggestion', // Specific type for styling
+                message: payload.suggestionText, // To be shown as tooltip/title
+                data: {
+                  suggestionId: payload.suggestionId,
+                  suggestionType: payload.suggestionType, // For potential varied styling/icons
+                },
+              };
+              setHighlightData(prevHighlights => [...prevHighlights, newHighlight]);
+              message = `Inline suggestion '${payload.suggestionId}' received and displayed.`;
+              console.log('[RoxPage] Added inline suggestion highlight:', newHighlight);
+            } else {
+              success = false;
+              message = "Error: Missing payload for SHOW_INLINE_SUGGESTION.";
+              console.error('[RoxPage] B2F SHOW_INLINE_SUGGESTION: Missing payload.');
+            }
+          } catch (e: any) {
+            console.error('[RoxPage] B2F Error processing SHOW_INLINE_SUGGESTION:', e);
+            success = false;
+            message = `Error processing SHOW_INLINE_SUGGESTION: ${e.message}`;
+          }
+          break;
+        case ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT:
+          console.log('[RoxPage] B2F Action: SHOW_TOOLTIP_OR_COMMENT');
+          try {
+            if (request.showTooltipOrCommentPayload) {
+              const payload = request.showTooltipOrCommentPayload;
+              const highlightType = `comment_${payload.tooltipType || 'generic'}`.toLowerCase(); // e.g., comment_info, comment_warning
+              const newHighlight: Highlight = {
+                id: payload.id || `tooltip-${Date.now()}`,
+                start: payload.startPos,
+                end: payload.endPos,
+                type: highlightType,
+                message: payload.text, // For tooltip display
+                data: {
+                  tooltipId: payload.id, // Store the actual ID used
+                  tooltipType: payload.tooltipType,
+                },
+              };
+              setHighlightData(prevHighlights => [...prevHighlights, newHighlight]);
+              message = `Tooltip/comment '${payload.id}' (${payload.tooltipType}) received and displayed.`;
+              console.log('[RoxPage] Added tooltip/comment highlight:', newHighlight);
+            } else {
+              success = false;
+              message = "Error: Missing payload for SHOW_TOOLTIP_OR_COMMENT.";
+              console.error('[RoxPage] B2F SHOW_TOOLTIP_OR_COMMENT: Missing payload.');
+            }
+          } catch (e: any) {
+            console.error('[RoxPage] B2F Error processing SHOW_TOOLTIP_OR_COMMENT:', e);
+            success = false;
+            message = `Error processing SHOW_TOOLTIP_OR_COMMENT: ${e.message}`;
+          }
+          break;
+        case ClientUIActionType.SET_EDITOR_CONTENT:
+          console.log(`[RoxPage] B2F Action: SET_EDITOR_CONTENT`);
+          
+          // No editor ref? Use state update instead
+          if (!request.setEditorContentPayload) {
+            console.error(`[RoxPage] SET_EDITOR_CONTENT: No payload provided`);
+            success = false;
+            message = "SET_EDITOR_CONTENT: No payload provided";
+            break;
+          }
+          
+          if (request.setEditorContentPayload?.contentFormat?.$case === 'htmlContent') {
+            const htmlContent = request.setEditorContentPayload.contentFormat.htmlContent;
+            console.log(`[RoxPage] SET_EDITOR_CONTENT: Got HTML content, length: ${htmlContent.length}`);
+            
+            // Just update the state which will re-render the editor with new content
+            console.log(`[RoxPage] SET_EDITOR_CONTENT: Updating editorContent state with 'testing the editor content' + original content`);
+            setEditorContent("<p>testing the editor content</p>" + editorContent);
+            success = true;
+            message = "Editor content updated via React state";
+          } 
+          else if (request.setEditorContentPayload?.contentFormat?.$case === 'jsonContent') {
+            const jsonContent = request.setEditorContentPayload.contentFormat.jsonContent;
+            console.log(`[RoxPage] SET_EDITOR_CONTENT: Got JSON content, length: ${jsonContent.length}`);
+            
+            try {
+              // Just update state with a simple message
+              console.log(`[RoxPage] SET_EDITOR_CONTENT: Updating editorContent state for JSON content`);
+              setEditorContent("<p>testing the editor content (JSON)</p>" + editorContent);
+              success = true;
+              message = "Editor content updated via React state (JSON)";
+            } catch (e: any) {
+              console.error(`[RoxPage] SET_EDITOR_CONTENT: Error processing JSON: ${e.message}`);
+              success = false;
+              message = `SET_EDITOR_CONTENT: JSON processing error: ${e.message}`;
+            }
+          } 
+          else {
+            console.error(`[RoxPage] SET_EDITOR_CONTENT: Invalid content format`);
+            success = false;
+            message = "SET_EDITOR_CONTENT: No valid content format provided";
+          }
+          break;
+
+        case ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME:
+          if (request.appendTextToEditorRealtimePayload && tiptapEditorRef.current?.editor) {
+            const { textChunk, streamId } = request.appendTextToEditorRealtimePayload; // Corrected fields
+            console.log(`[RoxPage] Action: APPEND_TEXT_TO_EDITOR_REALTIME. Stream ID: ${streamId || 'N/A'}, Text: "${textChunk}"`);
+            
+            const editor = tiptapEditorRef.current.editor;
+            const currentDocSize = editor.state.doc.content.size;
+            editor.chain().focus().insertContentAt(currentDocSize, textChunk).run();
+            
+            // Optional: update local editorContent state if needed, perhaps only on isFinalChunk
+            // if (isFinalChunk) {
+            //   setEditorContent(editor.getHTML());
+            // }
+            success = true;
+            message = `Text chunk (Stream ID: ${streamId || 'N/A'}) appended.`;
+          } else {
+            console.error("[RoxPage] APPEND_TEXT_TO_EDITOR_REALTIME: Payload missing or editor not available.", request.appendTextToEditorRealtimePayload, tiptapEditorRef.current?.editor);
+            success = false;
+            message = "APPEND_TEXT_TO_EDITOR_REALTIME: Payload missing or editor not available.";
+          }
+          break;
+
         default:
           success = false;
           message = `Error: Unknown action_type '${request.actionType}'.`;

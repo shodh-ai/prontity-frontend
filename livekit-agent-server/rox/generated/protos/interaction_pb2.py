@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11interaction.proto\x12\x0frox.interaction\"\x07\n\x05\x45mpty\"D\n\x1a\x46rontendButtonClickRequest\x12\x11\n\tbutton_id\x18\x01 \x01(\t\x12\x13\n\x0b\x63ustom_data\x18\x02 \x01(\t\"=\n\rAgentResponse\x12\x16\n\x0estatus_message\x18\x01 \x01(\t\x12\x14\n\x0c\x64\x61ta_payload\x18\x02 \x01(\t\"\xb8\x01\n\x08UIAction\x12\x39\n\x0b\x61\x63tion_type\x18\x01 \x01(\x0e\x32$.rox.interaction.UIAction.ActionType\x12*\n\x05\x61lert\x18\x02 \x01(\x0b\x32\x16.rox.interaction.AlertH\x00\x88\x01\x01\";\n\nActionType\x12\x0f\n\x0bUNSPECIFIED\x10\x00\x12\t\n\x05\x41LERT\x10\x01\x12\x11\n\rDISMISS_ALERT\x10\x02\x42\x08\n\x06_alert\"V\n\x05\x41lert\x12\r\n\x05title\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12-\n\x07\x62uttons\x18\x03 \x03(\x0b\x32\x1c.rox.interaction.AlertButton\"G\n\x0b\x41lertButton\x12\r\n\x05label\x18\x01 \x01(\t\x12)\n\x06\x61\x63tion\x18\x02 \x01(\x0b\x32\x19.rox.interaction.UIAction\"\xcd\x01\n\x13HighlightRangeProto\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05start\x18\x02 \x01(\x05\x12\x0b\n\x03\x65nd\x18\x03 \x01(\x05\x12\x0c\n\x04type\x18\x04 \x01(\t\x12\x14\n\x07message\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\x1a\n\rwrong_version\x18\x06 \x01(\tH\x01\x88\x01\x01\x12\x1c\n\x0f\x63orrect_version\x18\x07 \x01(\tH\x02\x88\x01\x01\x42\n\n\x08_messageB\x10\n\x0e_wrong_versionB\x12\n\x10_correct_version\"\xd5\x02\n\x1c\x41gentToClientUIActionRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x38\n\x0b\x61\x63tion_type\x18\x02 \x01(\x0e\x32#.rox.interaction.ClientUIActionType\x12\x19\n\x11target_element_id\x18\x03 \x01(\t\x12Q\n\nparameters\x18\x04 \x03(\x0b\x32=.rox.interaction.AgentToClientUIActionRequest.ParametersEntry\x12\x46\n\x18highlight_ranges_payload\x18\x05 \x03(\x0b\x32$.rox.interaction.HighlightRangeProto\x1a\x31\n\x0fParametersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"N\n\x16\x43lientUIActionResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x12\x0f\n\x07message\x18\x03 \x01(\t*\x86\x01\n\x12\x43lientUIActionType\x12\r\n\tNO_ACTION\x10\x00\x12\x0e\n\nSHOW_ALERT\x10\x01\x12\x17\n\x13UPDATE_TEXT_CONTENT\x10\x02\x12\x1d\n\x19TOGGLE_ELEMENT_VISIBILITY\x10\x03\x12\x19\n\x15HIGHLIGHT_TEXT_RANGES\x10\x04\x32w\n\x10\x41gentInteraction\x12\x63\n\x14HandleFrontendButton\x12+.rox.interaction.FrontendButtonClickRequest\x1a\x1e.rox.interaction.AgentResponse2y\n\x0c\x43lientSideUI\x12i\n\x0fPerformUIAction\x12-.rox.interaction.AgentToClientUIActionRequest\x1a\'.rox.interaction.ClientUIActionResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x11interaction.proto\x12\x0frox.interaction\"\x07\n\x05\x45mpty\"D\n\x1a\x46rontendButtonClickRequest\x12\x11\n\tbutton_id\x18\x01 \x01(\t\x12\x13\n\x0b\x63ustom_data\x18\x02 \x01(\t\"=\n\rAgentResponse\x12\x16\n\x0estatus_message\x18\x01 \x01(\t\x12\x14\n\x0c\x64\x61ta_payload\x18\x02 \x01(\t\"\xb8\x01\n\x08UIAction\x12\x39\n\x0b\x61\x63tion_type\x18\x01 \x01(\x0e\x32$.rox.interaction.UIAction.ActionType\x12*\n\x05\x61lert\x18\x02 \x01(\x0b\x32\x16.rox.interaction.AlertH\x00\x88\x01\x01\";\n\nActionType\x12\x0f\n\x0bUNSPECIFIED\x10\x00\x12\t\n\x05\x41LERT\x10\x01\x12\x11\n\rDISMISS_ALERT\x10\x02\x42\x08\n\x06_alert\"V\n\x05\x41lert\x12\r\n\x05title\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12-\n\x07\x62uttons\x18\x03 \x03(\x0b\x32\x1c.rox.interaction.AlertButton\"G\n\x0b\x41lertButton\x12\r\n\x05label\x18\x01 \x01(\t\x12)\n\x06\x61\x63tion\x18\x02 \x01(\x0b\x32\x19.rox.interaction.UIAction\"\xcd\x01\n\x13HighlightRangeProto\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05start\x18\x02 \x01(\x05\x12\x0b\n\x03\x65nd\x18\x03 \x01(\x05\x12\x0c\n\x04type\x18\x04 \x01(\t\x12\x14\n\x07message\x18\x05 \x01(\tH\x00\x88\x01\x01\x12\x1a\n\rwrong_version\x18\x06 \x01(\tH\x01\x88\x01\x01\x12\x1c\n\x0f\x63orrect_version\x18\x07 \x01(\tH\x02\x88\x01\x01\x42\n\n\x08_messageB\x10\n\x0e_wrong_versionB\x12\n\x10_correct_version\"\x81\x01\n\x1bSuggestTextEditPayloadProto\x12\x15\n\rsuggestion_id\x18\x01 \x01(\t\x12\x11\n\tstart_pos\x18\x02 \x01(\x05\x12\x0f\n\x07\x65nd_pos\x18\x03 \x01(\x05\x12\x15\n\roriginal_text\x18\x04 \x01(\t\x12\x10\n\x08new_text\x18\x05 \x01(\t\"\x8f\x01\n ShowInlineSuggestionPayloadProto\x12\x15\n\rsuggestion_id\x18\x01 \x01(\t\x12\x11\n\tstart_pos\x18\x02 \x01(\x05\x12\x0f\n\x07\x65nd_pos\x18\x03 \x01(\x05\x12\x17\n\x0fsuggestion_text\x18\x04 \x01(\t\x12\x17\n\x0fsuggestion_type\x18\x05 \x01(\t\"v\n ShowTooltipOrCommentPayloadProto\x12\n\n\x02id\x18\x01 \x01(\t\x12\x11\n\tstart_pos\x18\x02 \x01(\x05\x12\x0f\n\x07\x65nd_pos\x18\x03 \x01(\x05\x12\x0c\n\x04text\x18\x04 \x01(\t\x12\x14\n\x0ctooltip_type\x18\x05 \x01(\t\"`\n\x1cSetEditorContentPayloadProto\x12\x16\n\x0chtml_content\x18\x01 \x01(\tH\x00\x12\x16\n\x0cjson_content\x18\x02 \x01(\tH\x00\x42\x10\n\x0e\x63ontent_format\"\x92\x01\n&AppendTextToEditorRealtimePayloadProto\x12\x12\n\ntext_chunk\x18\x01 \x01(\t\x12\x16\n\tstream_id\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x1b\n\x0eis_final_chunk\x18\x03 \x01(\x08H\x01\x88\x01\x01\x42\x0c\n\n_stream_idB\x11\n\x0f_is_final_chunk\"\xe1\x07\n\x1c\x41gentToClientUIActionRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x38\n\x0b\x61\x63tion_type\x18\x02 \x01(\x0e\x32#.rox.interaction.ClientUIActionType\x12\x19\n\x11target_element_id\x18\x03 \x01(\t\x12Q\n\nparameters\x18\x04 \x03(\x0b\x32=.rox.interaction.AgentToClientUIActionRequest.ParametersEntry\x12\x46\n\x18highlight_ranges_payload\x18\x05 \x03(\x0b\x32$.rox.interaction.HighlightRangeProto\x12T\n\x19suggest_text_edit_payload\x18\x06 \x01(\x0b\x32,.rox.interaction.SuggestTextEditPayloadProtoH\x00\x88\x01\x01\x12^\n\x1eshow_inline_suggestion_payload\x18\x07 \x01(\x0b\x32\x31.rox.interaction.ShowInlineSuggestionPayloadProtoH\x01\x88\x01\x01\x12_\n\x1fshow_tooltip_or_comment_payload\x18\x08 \x01(\x0b\x32\x31.rox.interaction.ShowTooltipOrCommentPayloadProtoH\x02\x88\x01\x01\x12V\n\x1aset_editor_content_payload\x18\t \x01(\x0b\x32-.rox.interaction.SetEditorContentPayloadProtoH\x03\x88\x01\x01\x12l\n&append_text_to_editor_realtime_payload\x18\n \x01(\x0b\x32\x37.rox.interaction.AppendTextToEditorRealtimePayloadProtoH\x04\x88\x01\x01\x1a\x31\n\x0fParametersEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x42\x1c\n\x1a_suggest_text_edit_payloadB!\n\x1f_show_inline_suggestion_payloadB\"\n _show_tooltip_or_comment_payloadB\x1d\n\x1b_set_editor_content_payloadB)\n\'_append_text_to_editor_realtime_payload\"N\n\x16\x43lientUIActionResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x12\x0f\n\x07message\x18\x03 \x01(\t*\x92\x02\n\x12\x43lientUIActionType\x12\r\n\tNO_ACTION\x10\x00\x12\x0e\n\nSHOW_ALERT\x10\x01\x12\x17\n\x13UPDATE_TEXT_CONTENT\x10\x02\x12\x1d\n\x19TOGGLE_ELEMENT_VISIBILITY\x10\x03\x12\x19\n\x15HIGHLIGHT_TEXT_RANGES\x10\x04\x12\x15\n\x11SUGGEST_TEXT_EDIT\x10\x05\x12\x1a\n\x16SHOW_INLINE_SUGGESTION\x10\x06\x12\x1b\n\x17SHOW_TOOLTIP_OR_COMMENT\x10\x07\x12\x16\n\x12SET_EDITOR_CONTENT\x10\x08\x12\"\n\x1e\x41PPEND_TEXT_TO_EDITOR_REALTIME\x10\t2w\n\x10\x41gentInteraction\x12\x63\n\x14HandleFrontendButton\x12+.rox.interaction.FrontendButtonClickRequest\x1a\x1e.rox.interaction.AgentResponse2y\n\x0c\x43lientSideUI\x12i\n\x0fPerformUIAction\x12-.rox.interaction.AgentToClientUIActionRequest\x1a\'.rox.interaction.ClientUIActionResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,8 +33,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._loaded_options = None
   _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_options = b'8\001'
-  _globals['_CLIENTUIACTIONTYPE']._serialized_start=1161
-  _globals['_CLIENTUIACTIONTYPE']._serialized_end=1295
+  _globals['_CLIENTUIACTIONTYPE']._serialized_start=2458
+  _globals['_CLIENTUIACTIONTYPE']._serialized_end=2732
   _globals['_EMPTY']._serialized_start=38
   _globals['_EMPTY']._serialized_end=45
   _globals['_FRONTENDBUTTONCLICKREQUEST']._serialized_start=47
@@ -51,14 +51,24 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_ALERTBUTTON']._serialized_end=526
   _globals['_HIGHLIGHTRANGEPROTO']._serialized_start=529
   _globals['_HIGHLIGHTRANGEPROTO']._serialized_end=734
-  _globals['_AGENTTOCLIENTUIACTIONREQUEST']._serialized_start=737
-  _globals['_AGENTTOCLIENTUIACTIONREQUEST']._serialized_end=1078
-  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_start=1029
-  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_end=1078
-  _globals['_CLIENTUIACTIONRESPONSE']._serialized_start=1080
-  _globals['_CLIENTUIACTIONRESPONSE']._serialized_end=1158
-  _globals['_AGENTINTERACTION']._serialized_start=1297
-  _globals['_AGENTINTERACTION']._serialized_end=1416
-  _globals['_CLIENTSIDEUI']._serialized_start=1418
-  _globals['_CLIENTSIDEUI']._serialized_end=1539
+  _globals['_SUGGESTTEXTEDITPAYLOADPROTO']._serialized_start=737
+  _globals['_SUGGESTTEXTEDITPAYLOADPROTO']._serialized_end=866
+  _globals['_SHOWINLINESUGGESTIONPAYLOADPROTO']._serialized_start=869
+  _globals['_SHOWINLINESUGGESTIONPAYLOADPROTO']._serialized_end=1012
+  _globals['_SHOWTOOLTIPORCOMMENTPAYLOADPROTO']._serialized_start=1014
+  _globals['_SHOWTOOLTIPORCOMMENTPAYLOADPROTO']._serialized_end=1132
+  _globals['_SETEDITORCONTENTPAYLOADPROTO']._serialized_start=1134
+  _globals['_SETEDITORCONTENTPAYLOADPROTO']._serialized_end=1230
+  _globals['_APPENDTEXTTOEDITORREALTIMEPAYLOADPROTO']._serialized_start=1233
+  _globals['_APPENDTEXTTOEDITORREALTIMEPAYLOADPROTO']._serialized_end=1379
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST']._serialized_start=1382
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST']._serialized_end=2375
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_start=2151
+  _globals['_AGENTTOCLIENTUIACTIONREQUEST_PARAMETERSENTRY']._serialized_end=2200
+  _globals['_CLIENTUIACTIONRESPONSE']._serialized_start=2377
+  _globals['_CLIENTUIACTIONRESPONSE']._serialized_end=2455
+  _globals['_AGENTINTERACTION']._serialized_start=2734
+  _globals['_AGENTINTERACTION']._serialized_end=2853
+  _globals['_CLIENTSIDEUI']._serialized_start=2855
+  _globals['_CLIENTSIDEUI']._serialized_end=2976
 # @@protoc_insertion_point(module_scope)

@@ -60,6 +60,51 @@ message HighlightRangeProto {
   optional string correct_version = 7;// Optional suggested correction
 }
 
+// Message to represent a single text edit suggestion
+message SuggestTextEditPayloadProto {
+  string suggestion_id = 1;     // Unique identifier for the suggestion
+  int32 start_pos = 2;          // Start position (ProseMirror index)
+  int32 end_pos = 3;            // End position (ProseMirror index)
+  string original_text = 4;     // The text to be replaced
+  string new_text = 5;          // The suggested new text
+}
+
+// Message for showing an inline, non-intrusive suggestion
+message ShowInlineSuggestionPayloadProto {
+  string suggestion_id = 1;     // Unique ID for this suggestion
+  int32 start_pos = 2;          // Start position in the editor (ProseMirror index)
+  int32 end_pos = 3;            // End position in the editor (ProseMirror index)
+  string suggestion_text = 4;   // Text to show on hover/click (e.g., "Consider rephrasing for clarity.")
+  string suggestion_type = 5;   // Type of suggestion (e.g., "grammar", "style", "clarity") - for potential styling/iconography
+}
+
+// Message for showing a tooltip or comment
+message ShowTooltipOrCommentPayloadProto {
+  string id = 1;                  // Unique ID for this tooltip/comment
+  int32 start_pos = 2;            // Start position in the editor (ProseMirror index)
+  int32 end_pos = 3;              // End position in the editor (ProseMirror index)
+  string text = 4;                // The content of the tooltip/comment
+  string tooltip_type = 5;        // E.g., "info", "suggestion", "error", "question" - for styling/iconography
+  // string anchor_element_id = 6; // Optional: If targeting a non-text element by ID, could be added back.
+}
+
+// Message for setting the entire content of a rich text editor
+message SetEditorContentPayloadProto {
+  oneof content_format {
+    string html_content = 1;  // Full HTML content
+    string json_content = 2;  // Tiptap JSON content as a string
+  }
+  // string target_editor_id = 3; // Optional: if multiple editors, specify which one. Consider if needed or if target_element_id is sufficient.
+}
+
+// Message for appending text to an editor in real-time
+message AppendTextToEditorRealtimePayloadProto {
+  string text_chunk = 1;        // The chunk of text to append
+  optional string stream_id = 2; // Optional: ID to group related chunks if part of a continuous stream
+  optional bool is_final_chunk = 3; // Indicates if this is the last chunk in a stream
+  // string target_editor_id = 4; // Optional: if multiple editors, specify which one. Consider if needed or if target_element_id is sufficient.
+}
+
 // Optional: Service the frontend could implement (called by agent for updates)
 // service ClientNotification {
 //   rpc NotifyClient(AgentUpdate) returns (Empty);
@@ -76,6 +121,11 @@ enum ClientUIActionType {
   UPDATE_TEXT_CONTENT = 2;
   TOGGLE_ELEMENT_VISIBILITY = 3;
   HIGHLIGHT_TEXT_RANGES = 4; // Action to highlight text ranges
+  SUGGEST_TEXT_EDIT = 5;     // Action to suggest a text edit
+  SHOW_INLINE_SUGGESTION = 6; // Action to show a non-intrusive inline suggestion
+  SHOW_TOOLTIP_OR_COMMENT = 7;  // Action to display a tooltip or comment
+  SET_EDITOR_CONTENT = 8;       // Action to set the entire content of an editor
+  APPEND_TEXT_TO_EDITOR_REALTIME = 9; // Action to append text chunks to an editor
   // Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC
 }
 
@@ -86,6 +136,11 @@ message AgentToClientUIActionRequest {
   string target_element_id = 3;   // Optional: ID of the HTML element to target
   map<string, string> parameters = 4; // Flexible parameters, e.g.,
   repeated HighlightRangeProto highlight_ranges_payload = 5; // Payload for HIGHLIGHT_TEXT_RANGES
+  optional SuggestTextEditPayloadProto suggest_text_edit_payload = 6; // Payload for SUGGEST_TEXT_EDIT
+  optional ShowInlineSuggestionPayloadProto show_inline_suggestion_payload = 7; // Payload for SHOW_INLINE_SUGGESTION
+  optional ShowTooltipOrCommentPayloadProto show_tooltip_or_comment_payload = 8; // Payload for SHOW_TOOLTIP_OR_COMMENT
+  optional SetEditorContentPayloadProto set_editor_content_payload = 9;       // Payload for SET_EDITOR_CONTENT
+  optional AppendTextToEditorRealtimePayloadProto append_text_to_editor_realtime_payload = 10; // Payload for APPEND_TEXT_TO_EDITOR_REALTIME
                                       // For SHOW_ALERT: {"message": "Hello!", "type": "info/error/warning"}
                                       // For UPDATE_TEXT_CONTENT: {"text": "New content"}
                                       // For TOGGLE_ELEMENT_VISIBILITY: {"visible": "true/false"} (or just toggle)

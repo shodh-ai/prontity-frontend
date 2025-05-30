@@ -60,59 +60,112 @@ class AgentInteractionService: # Simple class without inheritance
 
         # Process custom_data if present and agent_instance exists
         if self.agent_instance and request.custom_data:
-            try:
+            try: # Line 65
                 # Log the raw custom_data for debugging
                 logger.info(f"RPC: Raw custom_data received: {request.custom_data}")
                 
-                # Parse JSON with better error handling
-                parsed_custom_data = json.loads(request.custom_data)
+                raw_custom_str = request.custom_data
+                default_user_id = f"default_{invocation_data.caller_identity or 'user'}"
+                parsed_custom_data = {} # Initialize
+
+                try:
+                    # Attempt to parse as JSON
+                    data = json.loads(raw_custom_str)
+                    if isinstance(data, dict):
+                        parsed_custom_data = data
+                        if "user_id" not in parsed_custom_data:
+                            logger.info(f"RPC: Parsed JSON dict is missing 'user_id'. Adding default: {default_user_id}")
+                            parsed_custom_data["user_id"] = default_user_id
+                    else:
+                        # JSON, but not a dict (e.g., a list, string, number)
+                        logger.info(f"RPC: custom_data parsed as JSON but is not a dict (type: {type(data)}). Wrapping it.")
+                        parsed_custom_data = {
+                            "user_id": default_user_id,
+                            "value": data  # Store the non-dict JSON data under 'value'
+                        }
+                except json.JSONDecodeError:
+                    # Not valid JSON, treat as a plain string message
+                    logger.info(f"RPC: json.loads failed for custom_data. Treating as plain string. Data: '{raw_custom_str}'")
+                    parsed_custom_data = {
+                        "user_id": default_user_id,
+                        "message": raw_custom_str # Store plain string under 'message'
+                    }
+                except Exception as e:
+                    # Catch-all for other unexpected errors during the above processing
+                    logger.error(f"RPC: Unexpected error processing custom_data '{raw_custom_str}': {e}", exc_info=True)
+                    parsed_custom_data = {
+                        "user_id": default_user_id,
+                        "error": "custom_data_processing_error",
+                        "original_custom_data": raw_custom_str,
+                        "exception": str(e)
+                    }
                 
-                # Validate parsed data is a dictionary
+                # Ensure parsed_custom_data is always a dict and has a user_id if not an error structure
                 if not isinstance(parsed_custom_data, dict):
-                    logger.warning(f"RPC: custom_data parsed successfully but is not a dictionary. Type: {type(parsed_custom_data)}")
-                    parsed_custom_data = {"user_id": "default_user", "parsed_data": parsed_custom_data}
-                
-                # Ensure user_id exists (required by InteractionRequestContext)
-                if "user_id" not in parsed_custom_data:
-                    logger.warning("RPC: custom_data missing required 'user_id' field. Adding default.")
-                    parsed_custom_data["user_id"] = f"default_{invocation_data.caller_identity or 'user'}"
-                
+                     logger.error("RPC: parsed_custom_data is not a dict after processing. This is unexpected. Forcing error structure.")
+                     parsed_custom_data = {
+                        "user_id": default_user_id,
+                        "error": "internal_custom_data_handling_failed",
+                        "original_custom_data": raw_custom_str
+                     }
+                elif "user_id" not in parsed_custom_data and "error" not in parsed_custom_data : # Check if it's a dict but missing user_id and not an error dict
+                    logger.warning(f"RPC: Processed custom_data is a dict but missing 'user_id'. Adding default: {default_user_id}")
+                    parsed_custom_data["user_id"] = default_user_id
+
                 # Store the validated context
-                self.agent_instance._latest_student_context = parsed_custom_data
-                logger.info(f"RPC: Updated agent_instance._latest_student_context with: {parsed_custom_data}")
+                if self.agent_instance:
+                    self.agent_instance._latest_student_context = parsed_custom_data
+                    logger.info(f"RPC: Updated agent_instance._latest_student_context with: {parsed_custom_data}")
 
-                # Handle session ID (prioritize session_id over sessionId)
-                if 'session_id' in parsed_custom_data:
-                    self.agent_instance._latest_session_id = parsed_custom_data['session_id']
-                    logger.info(f"RPC: Updated agent_instance._latest_session_id with: {parsed_custom_data['session_id']}")
-                elif 'sessionId' in parsed_custom_data: # Fallback for camelCase
-                    self.agent_instance._latest_session_id = parsed_custom_data['sessionId']
-                    logger.info(f"RPC: Updated agent_instance._latest_session_id with (from sessionId): {parsed_custom_data['sessionId']}")
+                    # Handle session ID (prioritize session_id over sessionId)
+                    if isinstance(parsed_custom_data, dict) and 'session_id' in parsed_custom_data:
+                        self.agent_instance._latest_session_id = parsed_custom_data['session_id']
+                        logger.info(f"RPC: Updated agent_instance._latest_session_id with: {parsed_custom_data['session_id']}")
+                    elif isinstance(parsed_custom_data, dict) and 'sessionId' in parsed_custom_data: # Fallback for camelCase
+                        self.agent_instance._latest_session_id = parsed_custom_data['sessionId']
+                        logger.info(f"RPC: Updated agent_instance._latest_session_id with (from sessionId): {parsed_custom_data['sessionId']}")
+                    else:
+                        # Generate a session ID if none exists or not found in custom_data
+                        if not hasattr(self.agent_instance, '_latest_session_id') or not self.agent_instance._latest_session_id:
+                            new_session_id = f"session_{uuid.uuid4().hex}" # Use .hex for a clean string
+                            self.agent_instance._latest_session_id = new_session_id
+                            if isinstance(parsed_custom_data, dict) and "error" not in parsed_custom_data:
+                                parsed_custom_data['session_id'] = new_session_id
+                                logger.info(f"RPC: Generated new session_id: {new_session_id}. Agent session ID updated and added to parsed_custom_data.")
+                            else: 
+                                logger.info(f"RPC: Generated new session_id: {new_session_id}. Agent session ID updated. Not adding to parsed_custom_data as it's not a valid dict or is an error structure.")
                 else:
-                    # Generate a session ID if none exists
-                    session_id = f"session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
-                    self.agent_instance._latest_session_id = session_id
-                    parsed_custom_data['session_id'] = session_id
-                    logger.info(f"RPC: Generated and added new session_id: {session_id}")
+                    logger.warning("RPC: agent_instance is None, cannot update context or session ID.")
+                
+                # ***** MOVED ALERT LOGIC STARTS HERE *****
+                if self.agent_instance and hasattr(self.agent_instance, 'send_ui_action_to_frontend') and request.button_id == "test_rpc_button": 
+                    action_data_for_client_rpc = {
+                        "action_type_str": "SHOW_ALERT", 
+                        "parameters": { 
+                            "title": "Button Clicked",
+                            "message": f"Button '{request.button_id}' was clicked by {invocation_data.caller_identity}. Context updated.",
+                            "buttons": [
+                                {
+                                    "label": "OK",
+                                    "action": {"action_type": "DISMISS_ALERT"} 
+                                }
+                            ]
+                        }
+                    }
+                    logger.info(f"RPC: Preparing UI action (alert) data for client-side RPC: {action_data_for_client_rpc['parameters']}")
+                    logger.info(f"RPC DEBUG: Type of self.agent_instance: {type(self.agent_instance)}")
+                    
+                    if callable(getattr(self.agent_instance, 'send_ui_action_to_frontend')):
+                        await self.agent_instance.send_ui_action_to_frontend(action_data_for_client_rpc)
+                        logger.info(f"RPC: Successfully dispatched SHOW_ALERT to frontend for button '{request.button_id}'.")
+                    else: 
+                        logger.error("RPC Error: agent_instance.send_ui_action_to_frontend is not callable (inner check).")
+                elif not (self.agent_instance and hasattr(self.agent_instance, 'send_ui_action_to_frontend')):
+                     logger.warning(f"RPC: Cannot send alert for '{request.button_id}'. Agent instance or send_ui_action_to_frontend not available. Agent: {bool(self.agent_instance)}")
+                # ***** MOVED ALERT LOGIC ENDS HERE *****
 
-            except json.JSONDecodeError as e:
-                logger.error(f"RPC: Failed to parse custom_data JSON: {request.custom_data}. Error: {e}")
-                # Create a minimal valid context when JSON parsing fails
-                minimal_context = {
-                    "user_id": f"error_recovery_{invocation_data.caller_identity or 'user'}",
-                    "error_info": f"JSON parse error: {str(e)}",
-                    "original_data": request.custom_data
-                }
-                self.agent_instance._latest_student_context = minimal_context
-                
-                # Generate a session ID for error recovery
-                session_id = f"error_session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
-                self.agent_instance._latest_session_id = session_id
-                minimal_context['session_id'] = session_id
-                
-                logger.info(f"RPC: Created minimal context for error recovery: {minimal_context}")
-            except Exception as e:
-                logger.error(f"RPC: Error processing custom_data: {e}", exc_info=True)
+            except Exception as main_e: 
+                logger.error(f"RPC: Error processing custom_data or sending alert: {main_e}", exc_info=True)
         elif not self.agent_instance:
             logger.warning("RPC: agent_instance is not available. Cannot update context.")
         elif not request.custom_data:
@@ -122,7 +175,6 @@ class AgentInteractionService: # Simple class without inheritance
         if self.agent_instance:
             try:
                 import aiohttp
-                import asyncio
                 
                 # Create a task to send the request asynchronously
                 loop = asyncio.get_event_loop()

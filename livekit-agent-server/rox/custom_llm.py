@@ -278,30 +278,44 @@ class CustomLLMBridge(LLM):
                                 response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
                                 result = await response.json() # Expecting JSON back, e.g., {"response": "..."}
                                 logger.info(f"CustomLLMBridge: Parsed JSON response: {json.dumps(result, indent=2)}")
-                                response_text = result.get("response", "") # Extract the response text
+                                response_text = result.get("response_for_tts", result.get("response", "")) # Prefer response_for_tts
+
+                                # Initialize dom_actions and frontend_rpc_calls
+                                dom_actions = []
+                                frontend_rpc_calls = result.get("frontend_rpc_calls", [])
+
+                                # Handle frontend_rpc_calls first if available
+                                if frontend_rpc_calls and self._rox_agent_ref and hasattr(self._rox_agent_ref, 'dispatch_frontend_rpc'):
+                                    logger.info(f"CustomLLMBridge: Received frontend_rpc_calls: {frontend_rpc_calls}")
+                                    for rpc_call in frontend_rpc_calls:
+                                        if isinstance(rpc_call, dict) and 'function_name' in rpc_call:
+                                            try:
+                                                logger.info(f"CustomLLMBridge: Attempting to dispatch RPC call to RoxAgent: {rpc_call['function_name']}")
+                                                await self._rox_agent_ref.dispatch_frontend_rpc(rpc_call)
+                                                logger.info(f"CustomLLMBridge: Successfully dispatched RPC call: {rpc_call['function_name']}")
+                                            except Exception as e_dispatch:
+                                                logger.error(f"CustomLLMBridge: Error dispatching RPC call '{rpc_call.get('function_name')}' via RoxAgent: {e_dispatch}", exc_info=True)
+                                        else:
+                                            logger.warning(f"CustomLLMBridge: Invalid RPC call format, skipping: {rpc_call}")
                                 
-                                # Check for special actions from the agent
-                                if "action" in result and "payload" in result:
+                                # Legacy handling for dom_actions if frontend_rpc_calls is not the primary mechanism
+                                # This part might need to be adjusted based on how dom_actions are intended to be used alongside frontend_rpc_calls
+                                if "action" in result and "payload" in result: # This seems like a single dom_action
                                     action = result["action"]
-                                    payload_from_response = result["payload"] # Renamed to avoid conflict
-                                    logger.info(f"Received special action from agent: {action} with payload: {payload_from_response}")
-                                    
-                                    # Convert the action and payload to a format that can be sent as metadata
-                                    dom_actions = [{
+                                    payload_from_response = result["payload"]
+                                    logger.info(f"Received single action from agent: {action} with payload: {payload_from_response}")
+                                    dom_actions.append({
                                         "action": action,
                                         "payload": payload_from_response
-                                    }]
-                                    logger.info(f"Converted to dom_actions format: {dom_actions}")
-                                # Check if the response contains DOM actions (for backward compatibility)
-                                elif "dom_actions" in result:
-                                    dom_actions = result["dom_actions"]
-                                    logger.info(f"Received DOM actions from external agent: {dom_actions}")
-                                
-                                logger.info(f"Received response from external agent: '{response_text}'")
-                        except Exception as e:
-                            logger.error(f"CustomLLMBridge: HTTP request error details: {str(e)}")
-                            raise # Re-raise the exception for the outer catch block
+                                    })
+                                elif "dom_actions" in result: # This is a list of dom_actions
+                                    dom_actions.extend(result["dom_actions"])
+                                    logger.info(f"Received dom_actions list from external agent: {result['dom_actions']}")
 
+                                logger.info(f"Received response text from external agent: '{response_text}'")
+                        except Exception as e:
+                            logger.error(f"Error communicating with external agent at {self._agent_url}: {e}")
+                            response_text = "Sorry, I encountered an error trying to process your request." # Error message
                 except aiohttp.ClientError as e:
                     logger.error(f"Error communicating with external agent at {self._agent_url}: {e}")
                     response_text = "Sorry, I encountered an error trying to process your request." # Error message
@@ -311,8 +325,11 @@ class CustomLLMBridge(LLM):
 
                 # Prepare metadata if dom_actions are present
                 current_metadata = None
-                if dom_actions:
+                if dom_actions: # Only include dom_actions in metadata if they exist
+                    logger.info(f"CustomLLMBridge: Preparing metadata with dom_actions: {dom_actions}")
                     current_metadata = {"dom_actions": json.dumps(dom_actions)}
+                else:
+                    logger.info("CustomLLMBridge: No dom_actions to include in metadata.")
                 
                 # Yield the response back to the LiveKit pipeline as a single chunk,
                 # including dom_actions in metadata if they exist.

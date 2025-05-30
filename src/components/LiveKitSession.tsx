@@ -27,6 +27,7 @@ import {
   AgentToClientUIActionRequest,
   ClientUIActionResponse,
   ClientUIActionType, // Import the enum
+   // Import for the new payload type
 } from '@/generated/protos/interaction'; // Adjust path if your generated file is elsewhere
 import { FrontendButtonClickRequest } from '@/generated/protos/interaction'; // Import request message
 
@@ -123,7 +124,8 @@ export default function LiveKitSession({
   hideAudio = false,
   aiAssistantEnabled = true,
   showAvatar = false,
-  onRoomCreated
+  onRoomCreated,
+   // Destructure the new prop
 }: LiveKitSessionProps) {
   // State for UI elements that might be controlled by React state
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");

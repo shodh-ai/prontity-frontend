@@ -11,6 +11,7 @@ It also exposes an RPC service for frontend interactions.
 import base64 # For B2F RPC payload
 import uuid   # For unique request IDs in B2F RPC and existing uses
 import time   # For timestamps in session IDs
+import json   # For handling JSON data in UI actions
 from livekit import rtc # For B2F RPC type hints
 from generated.protos import interaction_pb2 # For B2F and F2B RPC messages
 
@@ -159,6 +160,25 @@ async def trigger_client_ui_action(
 ) -> interaction_pb2.ClientUIActionResponse | None:
     """
     Sends an RPC to a specific client to perform a UI action.
+    
+    Parameters:
+        room: The LiveKit room
+        client_identity: The identity of the client to send the action to
+        action_type: The type of UI action to perform (from ClientUIActionType enum)
+        target_element_id: The ID of the target element on the client
+        parameters: Additional parameters specific to the action type:
+            - For SHOW_ALERT: {"message": "message text"}
+            - For UPDATE_TEXT_CONTENT: {"text": "new text"}
+            - For TOGGLE_ELEMENT_VISIBILITY: {"visible": "true"/"false"}
+            - For START_TIMER: {"duration_seconds": "60", "timer_type": "prep"}
+            - For STOP_TIMER: {} (no parameters needed)
+            - For PAUSE_TIMER: {"pause": "true"/"false"}
+            - For RESET_TIMER: {} (no parameters needed)
+            - For UPDATE_PROGRESS_INDICATOR: {"current_step": "1", "total_steps": "10", "message": "Step 1 of 10"}
+            - For UPDATE_SCORE_OR_PROGRESS: {"score_text": "Score: 7/10", "progress_percentage": "70"}
+    
+    Returns:
+        The response from the client, or None if there was an error
     """
     target_participant = None
     # Correctly iterate over remote_participants
@@ -169,20 +189,33 @@ async def trigger_client_ui_action(
 
     if not target_participant:
         logger.error(f"B2F RPC: Client '{client_identity}' not found in room '{room.name}'. Cannot trigger UI action.")
-        return None
-
-    request_id = str(uuid.uuid4())
-    proto_params = parameters if parameters is not None else {}
+        # Create a copy of parameters to avoid modifying the original dict
+    proto_params = parameters.copy() if parameters else {}
+    
+    # Convert all parameter values to strings
+    for key in list(proto_params.keys()):
+        if proto_params[key] is not None and not isinstance(proto_params[key], str):
+            # Convert booleans, numbers, and other types to strings
+            proto_params[key] = str(proto_params[key]).lower() if isinstance(proto_params[key], bool) else str(proto_params[key])
+    
+    # Special handling for certain action types that have specific parameter formats
+    if action_type == interaction_pb2.ClientUIActionType.START_TIMER:
+        # Ensure timer_type is set
+        if "timer_type" not in proto_params:
+            proto_params["timer_type"] = "task"
+    # The numeric conversions below are redundant now but kept for clarity
+    elif action_type == interaction_pb2.ClientUIActionType.UPDATE_PROGRESS_INDICATOR:
+        pass  # All conversions handled above
+    elif action_type == interaction_pb2.ClientUIActionType.UPDATE_SCORE_OR_PROGRESS:
+        pass  # All conversions handled above
 
     request_pb = interaction_pb2.AgentToClientUIActionRequest(
-        request_id=request_id,
+        request_id=str(uuid.uuid4()),
         action_type=action_type,
         target_element_id=target_element_id if target_element_id else "",
         parameters=proto_params
     )
 
-    serialized_request = request_pb.SerializeToString()
-    # Serialize the protobuf message to binary
     serialized_request = request_pb.SerializeToString()
     # Base64 encode the binary data so the client can decode it with atob()
     base64_encoded_request = base64.b64encode(serialized_request).decode('utf-8')
@@ -230,27 +263,33 @@ async def agent_main_logic(ctx: JobContext):
     # Find a client (assuming client is 'TestUser' based on rox/page.tsx)
     # A more robust way might involve the client announcing itself or a specific naming convention.
     logger.info("B2F Agent Logic: Attempting to list participants...")
-    # Iterate directly over remote participants
-    remote_participants_map = ctx.room.remote_participants
-    logger.info(f"B2F Agent Logic: Found remote participants (identities): {[p.identity for p in remote_participants_map.values()]}")
-
-    for participant_info in remote_participants_map.values(): # Iterate over RemoteParticipant objects
-        if participant_info.identity == "TestUser": # Hardcoding for now, match your client's userName
-            target_client_identity = participant_info.identity
+    
+    # Get all remote participants in the room
+    remote_participants = ctx.room.remote_participants.values()
+    logger.info(f"B2F Agent Logic: Found participants: {[p.identity for p in remote_participants]}")
+    
+    for participant in remote_participants:
+        if participant.identity == "TestUser":
+            target_client_identity = participant.identity
             logger.info(f"B2F Agent Logic: Found target client 'TestUser'.")
             break
-        elif participant_info.identity != ctx.identity: # Fallback to first non-agent participant
-            target_client_identity = participant_info.identity
-            logger.info(f"B2F Agent Logic: Found potential target client (fallback): '{participant_info.identity}'.")
-            # break # Uncomment if you want to take the first non-agent
-
+        elif participant.identity != ctx.identity: # Fallback to first non-agent participant
+            target_client_identity = participant.identity
+            logger.info(f"B2F Agent Logic: Found potential target client (fallback): '{participant.identity}'.")
+            break
+    
     if not target_client_identity:
         logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found to send UI actions to.")
         return
-
+    
     logger.info(f"B2F Agent Logic: Proceeding to send UI actions to client: '{target_client_identity}'")
 
     try:
+        # ==========================================
+        # ROX_COPY PAGE ACTIONS
+        # ==========================================
+        
+        # Try a very simple action first to see if it works
         logger.info(f"B2F Agent Logic: Attempting Action 1: SHOW_ALERT to '{target_client_identity}'.")
         # Action 1: Show Alert
         await trigger_client_ui_action(
@@ -260,7 +299,7 @@ async def agent_main_logic(ctx: JobContext):
             parameters={"message": "Agent says hello via B2F RPC!"}
         )
         logger.info(f"B2F Agent Logic: Successfully sent Action 1: SHOW_ALERT to '{target_client_identity}'.")
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
 
         logger.info(f"B2F Agent Logic: Attempting Action 2: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
         # Action 2: Update Text
@@ -272,22 +311,443 @@ async def agent_main_logic(ctx: JobContext):
             parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
         )
         logger.info(f"B2F Agent Logic: Successfully sent Action 2: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
 
-        logger.info(f"B2F Agent Logic: Attempting Action 3: TOGGLE_ELEMENT_VISIBILITY to '{target_client_identity}'.")
-        # Action 3: Toggle Visibility (will toggle based on client's current state)
+        # Timer Control Demo
+        # Start a timer
+        logger.info(f"B2F Agent Logic: Attempting START_TIMER to '{target_client_identity}'.")
         await trigger_client_ui_action(
             room=ctx.room,
             client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY,
-            target_element_id="agentToggleVisibilityElementRoxPage" # Must match ID
+            action_type=interaction_pb2.ClientUIActionType.START_TIMER,
+            target_element_id="speakingTaskTimer",
+            parameters={
+                "duration_seconds": 30,  # 30 second timer
+                "timer_type": "prep"   # Type of timer (prep, response, task)
+            }
         )
-        logger.info(f"B2F Agent Logic: Successfully sent Action 3: TOGGLE_ELEMENT_VISIBILITY to '{target_client_identity}'.")
+        logger.info(f"B2F Agent Logic: Successfully sent START_TIMER to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Pause the timer
+        logger.info(f"B2F Agent Logic: Attempting PAUSE_TIMER to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
+            target_element_id="speakingTaskTimer",
+            parameters={"pause": "true"}
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent PAUSE_TIMER to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Resume the timer
+        logger.info(f"B2F Agent Logic: Attempting PAUSE_TIMER with false to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
+            target_element_id="speakingTaskTimer",
+            parameters={"pause": "false"}
+        )
+        logger.info(f"B2F Agent Logic: Successfully resumed timer for '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Progress Indicator Demo
+        logger.info(f"B2F Agent Logic: Attempting UPDATE_PROGRESS_INDICATOR to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_PROGRESS_INDICATOR,
+            target_element_id="drillProgressIndicator",
+            parameters={
+                "current_step": 3,
+                "total_steps": 10,
+                "message": "Processing speaking task..."
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent UPDATE_PROGRESS_INDICATOR to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Show Element Demo - rox_copy page
+        logger.info(f"B2F Agent Logic: Attempting SHOW_ELEMENT to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_ELEMENT,
+            target_element_id="roxLoadingIndicator",
+            parameters={"show": "true"}
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent SHOW_ELEMENT to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Hide Element Demo - rox_copy page
+        logger.info(f"B2F Agent Logic: Attempting HIDE_ELEMENT to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.HIDE_ELEMENT,
+            target_element_id="roxLoadingIndicator",
+            parameters={"show": "false"}
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent HIDE_ELEMENT to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Additional rox_copy specific action - UPDATE_TEXT_CONTENT
+        logger.info(f"B2F Agent Logic: Sending information text to rox_copy page.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
+            target_element_id="agentResponseDisplay",
+            parameters={
+                "text": "Now I'll navigate to the writing practice page to show you feedback on your essay.",
+                "append": "false"
+            }
+        )
+        await asyncio.sleep(2)
+        
+        # ==========================================
+        # NAVIGATE TO WRITINGPRACTICE PAGE
+        # ==========================================
+        
+        # Inform the user we're about to navigate to writingpractice
+        logger.info(f"B2F Agent Logic: Preparing to perform writingpractice page actions.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
+            target_element_id="agentResponseDisplay",
+            parameters={
+                "text": "Now I'll navigate to the writing practice page to show you feedback on your essay.",
+                "append": "false"
+            }
+        )
+        await asyncio.sleep(2)
+        
+        # Navigate To WritingPractice Page
+        logger.info(f"B2F Agent Logic: Attempting NAVIGATE_TO_PAGE to '{target_client_identity}'.") 
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.NAVIGATE_TO_PAGE,
+            parameters={
+                "page_name": "writingpractice",
+                "data_for_page": json.dumps({
+                    "user_id": "test123", 
+                    "essay_id": "writing_sample_01",
+                    "mode": "feedback",
+                    "show_tutorial": False
+                })
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent NAVIGATE_TO_PAGE to '{target_client_identity}'.") 
+        
+        # Wait briefly to ensure the page has loaded
+        await asyncio.sleep(3)
+        
+        # ==========================================
+        # WRITINGPRACTICE PAGE ACTIONS
+        # ==========================================
+        
+        # First, test a simple SET_BUTTON_PROPERTIES action to see if it works
+        logger.info(f"B2F Agent Logic: Testing basic SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
+        try:
+            await trigger_client_ui_action(
+                room=ctx.room,
+                client_identity=target_client_identity,
+                action_type=interaction_pb2.ClientUIActionType.SET_BUTTON_PROPERTIES,
+                target_element_id="submitAnswerButton",
+                parameters={
+                    "label": "Testing New Button Label",
+                    "disabled": "false"
+                }
+            )
+            logger.info(f"B2F Agent Logic: Successfully sent test SET_BUTTON_PROPERTIES action.")
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.error(f"Error sending SET_BUTTON_PROPERTIES action: {str(e)}", exc_info=True)
+        
+        # UPDATE_LIVE_TRANSCRIPT Demo - First chunk (not final)
+        logger.info(f"B2F Agent Logic: Attempting UPDATE_LIVE_TRANSCRIPT to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
+            target_element_id="liveTranscriptArea",
+            parameters={
+                "new_chunk": "This is the first part of a",
+                "is_final_for_sentence": "false"
+            }
+        )
+        await asyncio.sleep(1)
+        
+        # Second chunk (not final)
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
+            target_element_id="liveTranscriptArea",
+            parameters={
+                "new_chunk": " live transcript being updated in chunks",
+                "is_final_for_sentence": "false"
+            }
+        )
+        await asyncio.sleep(1)
+        
+        # Final chunk (final for this sentence)
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
+            target_element_id="liveTranscriptArea",
+            parameters={
+                "new_chunk": ".",
+                "is_final_for_sentence": "true"
+            }
+        )
+        
+        # Complete sentence transcript
+        await asyncio.sleep(1)
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
+            target_element_id="liveTranscriptArea",
+            parameters={
+                "full_sentence_transcript": "This is a complete sentence transcript that replaces the previous chunks."
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent UPDATE_LIVE_TRANSCRIPT to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # DISPLAY_TRANSCRIPT_OR_TEXT Demo
+        logger.info(f"B2F Agent Logic: Attempting DISPLAY_TRANSCRIPT_OR_TEXT to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.DISPLAY_TRANSCRIPT_OR_TEXT,
+            target_element_id="feedbackContent",
+            parameters={
+                "text_content": "In this essay, the student has demonstrated a good understanding of the topic but needs to improve in several areas including grammar and vocabulary usage."
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent DISPLAY_TRANSCRIPT_OR_TEXT to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # DISPLAY_REMARKS_LIST Demo
+        logger.info(f"B2F Agent Logic: Attempting DISPLAY_REMARKS_LIST to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.DISPLAY_REMARKS_LIST,
+            target_element_id="feedbackRemarks",
+            parameters={
+                "remarks": json.dumps([
+                    {
+                        "id": "R1",
+                        "title": "Grammar Issue",
+                        "details": "Subject-verb agreement errors in paragraphs 1 and 3.",
+                        "correction_suggestion": "Ensure verbs match their subjects in number (singular/plural)."
+                    },
+                    {
+                        "id": "R2",
+                        "title": "Vocabulary Use",
+                        "details": "Limited range of academic vocabulary.",
+                        "correction_suggestion": "Incorporate more precise academic terms related to the topic."
+                    },
+                    {
+                        "id": "R3",
+                        "title": "Organization",
+                        "details": "Strong introduction but weak conclusion.",
+                        "correction_suggestion": "Make your conclusion more impactful by restating your main points and providing a final thought."
+                    }
+                ])
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent DISPLAY_REMARKS_LIST to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Score Display Demo
+        logger.info(f"B2F Agent Logic: Attempting UPDATE_SCORE_OR_PROGRESS to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_SCORE_OR_PROGRESS,
+            target_element_id="drillScoreDisplay",
+            parameters={
+                "score_text": "Score: 7/10",
+                "progress_percentage": 70
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent UPDATE_SCORE_OR_PROGRESS to '{target_client_identity}'.")
+        await asyncio.sleep(2)
+        
+        # Wait a bit to give the user time to view the writingpractice content
+        logger.info(f"B2F Agent Logic: Waiting 4 seconds before navigating back to rox_copy.")
+        await asyncio.sleep(4)
+        
+        # SET_BUTTON_PROPERTIES Demo
+        logger.info(f"B2F Agent Logic: Attempting SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SET_BUTTON_PROPERTIES,
+            target_element_id="submitAnswerButton",
+            parameters={
+                "label": "Submit Essay",
+                "disabled": "false",
+                "style_class": "primary-button highlighted",
+                "task_data": json.dumps({
+                    "task_id": "writing_task_123",
+                    "completion_action": "submit_and_proceed"
+                })
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # ENABLE_BUTTON Demo
+        logger.info(f"B2F Agent Logic: Attempting ENABLE_BUTTON to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.ENABLE_BUTTON,
+            target_element_id="startRecordingButton"
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent ENABLE_BUTTON to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # DISABLE_BUTTON Demo
+        logger.info(f"B2F Agent Logic: Attempting DISABLE_BUTTON to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.DISABLE_BUTTON,
+            target_element_id="submitSpeakingTaskButton"
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent DISABLE_BUTTON to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # SHOW_BUTTON_OPTIONS Demo
+        logger.info(f"B2F Agent Logic: Attempting SHOW_BUTTON_OPTIONS to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_BUTTON_OPTIONS,
+            target_element_id="feedbackOptionsPanel",
+            parameters={
+                "buttons": json.dumps([
+                    {
+                        "label": "Next Point",
+                        "action_context_update": {"ui_event": "next_feedback_item"}
+                    },
+                    {
+                        "label": "Previous Point",
+                        "action_context_update": {"ui_event": "prev_feedback_item"}
+                    },
+                    {
+                        "label": "Skip to Summary",
+                        "action_context_update": {"ui_event": "show_summary"}
+                    }
+                ])
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent SHOW_BUTTON_OPTIONS to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # CLEAR_INPUT_FIELD Demo
+        logger.info(f"B2F Agent Logic: Attempting CLEAR_INPUT_FIELD to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.CLEAR_INPUT_FIELD,
+            target_element_id="drillAnswerInputText"
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent CLEAR_INPUT_FIELD to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # SET_EDITOR_READONLY_SECTIONS Demo
+        logger.info(f"B2F Agent Logic: Attempting SET_EDITOR_READONLY_SECTIONS to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SET_EDITOR_READONLY_SECTIONS,
+            target_element_id="scaffoldingFullEssayEditor",
+            parameters={
+                "ranges": json.dumps([
+                    {"start": {"index": 0}, "end": {"index": 120}, "readOnly": True},
+                    {"start": {"index": 250}, "end": {"index": 300}, "readOnly": True},
+                ])
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent SET_EDITOR_READONLY_SECTIONS to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # PLAY_AUDIO_CUE has been removed
+        
+        # SHOW_LOADING_INDICATOR Demo
+        logger.info(f"B2F Agent Logic: Attempting SHOW_LOADING_INDICATOR to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
+            target_element_id="globalLoadingIndicator",
+            parameters={
+                "is_loading": "true",  # Use string for consistency
+                "message": "Processing your essay feedback..."
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent SHOW_LOADING_INDICATOR to '{target_client_identity}'.")
+        await asyncio.sleep(3)  # Give more time to see the loading indicator
+        
+        # Hide loading indicator
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
+            target_element_id="globalLoadingIndicator",
+            parameters={
+                "is_loading": "false"  # Use string for consistency
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent HIDE_LOADING_INDICATOR to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # All UI actions completed - end of demo
+        logger.info(f"B2F Agent Logic: All UI actions completed. Staying on writingpractice page for testing.")
+        
+        # Final rox_copy page actions after returning
+        
+        # Reset the timer - rox_copy page
+        logger.info(f"B2F Agent Logic: Attempting RESET_TIMER to '{target_client_identity}'.")
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.RESET_TIMER,
+            target_element_id="speakingTaskTimer"
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent RESET_TIMER to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
+        # Final confirmation message
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
+            target_element_id="agentResponseDisplay",
+            parameters={
+                "text": "We've now returned to the main page. All test UI actions have been demonstrated.",
+                "append": "false"
+            }
+        )
+        logger.info(f"B2F Agent Logic: Successfully sent final UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
+        await asyncio.sleep(1)
+        
         logger.info("B2F Agent Logic: All test UI actions sent.")
 
     except Exception as e:
         logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
-
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint for the agent job."""

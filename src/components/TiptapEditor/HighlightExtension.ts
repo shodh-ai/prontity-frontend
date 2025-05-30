@@ -16,8 +16,10 @@ declare module '@tiptap/core' {
 
 // Define options for the Tiptap extension (if any are needed later)
 export interface HighlightExtensionOptions {
-  // Callback for when a highlight is clicked in the editor
+  // Callback for when a general highlight is clicked in the editor
   onHighlightClick?: (highlightId: string | number) => void;
+  // Callback for when a 'text_suggestion' highlight is clicked
+  onTextSuggestionClick?: (highlight: Highlight) => void;
 }
 
 // Create the Tiptap Extension
@@ -27,7 +29,11 @@ export const HighlightExtension = Extension.create<HighlightExtensionOptions>({
   // --- Add the ProseMirror Plugin ---
   addProseMirrorPlugins() {
     return [
-      createHighlightPlugin({ onHighlightClick: this.options.onHighlightClick }), // Add our custom plugin and pass callback
+      createHighlightPlugin({
+        onHighlightClick: this.options.onHighlightClick,
+        onTextSuggestionClick: this.options.onTextSuggestionClick, // Pass the new callback
+        // onSuggestionAccept is part of HighlightPluginLogic's internal wiring for now, not directly set from here unless a specific need arises
+      }),
     ];
   },
 

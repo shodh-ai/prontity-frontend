@@ -10,8 +10,9 @@ interface HighlightPluginState {
   decorations: DecorationSet;
   highlightData: Highlight[];
   activeHighlightId: string | number | null;
-  onHighlightClick?: (highlightId: string | number) => void; // Callback for highlight clicks
-  onSuggestionAccept?: (highlight: Highlight) => void; // Callback for accepting suggestions
+  onHighlightClick?: (highlightId: string | number) => void; // Callback for general highlight clicks
+  onTextSuggestionClick?: (highlight: Highlight) => void; // Callback specifically for text_suggestion clicks
+  onSuggestionAccept?: (highlight: Highlight) => void; // Callback for accepting suggestions (seems related, might consolidate or clarify later)
   acceptedSuggestions: Set<string | number>; // Track which suggestions have been accepted
   lastClickTime?: number; // Track last click time for double-click detection
   lastClickId?: string | number; // Track last clicked highlight ID
@@ -20,7 +21,8 @@ interface HighlightPluginState {
 // Function to create the ProseMirror plugin
 export function createHighlightPlugin(options: { 
   onHighlightClick?: (highlightId: string | number) => void;
-  onSuggestionAccept?: (highlight: Highlight) => void;
+  onSuggestionAccept?: (highlight: Highlight) => void; // Review if this is still needed or can be merged with onTextSuggestionClick logic
+  onTextSuggestionClick?: (highlight: Highlight) => void;
 } = {}) {
   return new Plugin<HighlightPluginState>({
     key: highlightPluginKey,
@@ -34,6 +36,7 @@ export function createHighlightPlugin(options: {
           highlightData: [] as Highlight[],
           activeHighlightId: null,
           onHighlightClick: options.onHighlightClick,
+          onTextSuggestionClick: options.onTextSuggestionClick, // Initialize new callback
           onSuggestionAccept: options.onSuggestionAccept,
           acceptedSuggestions: new Set<string | number>(),
           lastClickTime: 0,
@@ -57,6 +60,7 @@ export function createHighlightPlugin(options: {
           const newActiveHighlightId = meta.activeHighlightId !== undefined ? meta.activeHighlightId : pluginState.activeHighlightId;
           // Check for callbacks either from meta or preserve from previous state
           const newOnHighlightClick = meta.onHighlightClick !== undefined ? meta.onHighlightClick : pluginState.onHighlightClick;
+          const newOnTextSuggestionClick = meta.onTextSuggestionClick !== undefined ? meta.onTextSuggestionClick : pluginState.onTextSuggestionClick; // Propagate new callback
           const newOnSuggestionAccept = meta.onSuggestionAccept !== undefined ? meta.onSuggestionAccept : pluginState.onSuggestionAccept;
           // Update click tracking for double-click detection
           const newLastClickTime = meta.lastClickTime !== undefined ? meta.lastClickTime : pluginState.lastClickTime;
@@ -68,6 +72,7 @@ export function createHighlightPlugin(options: {
           if (newHighlightData !== pluginState.highlightData || 
               newActiveHighlightId !== pluginState.activeHighlightId || 
               newOnHighlightClick !== pluginState.onHighlightClick ||
+              newOnTextSuggestionClick !== pluginState.onTextSuggestionClick || // Check new callback in condition
               newOnSuggestionAccept !== pluginState.onSuggestionAccept ||
               newLastClickTime !== pluginState.lastClickTime ||
               newLastClickId !== pluginState.lastClickId) {
@@ -78,8 +83,9 @@ export function createHighlightPlugin(options: {
               highlightData: newHighlightData,
               activeHighlightId: newActiveHighlightId,
               onHighlightClick: newOnHighlightClick,
+              onTextSuggestionClick: newOnTextSuggestionClick, // Store new callback in state
               onSuggestionAccept: newOnSuggestionAccept,
-              acceptedSuggestions: pluginState.acceptedSuggestions,
+              acceptedSuggestions: pluginState.acceptedSuggestions, // Preserve accepted suggestions
               lastClickTime: newLastClickTime,
               lastClickId: newLastClickId,
             };
@@ -135,85 +141,74 @@ export function createHighlightPlugin(options: {
           const highlightId = highlightDecoration.spec.highlightId;
           const currentTime = Date.now();
           
-          // Dispatch a transaction to set the active highlight
-          view.dispatch(view.state.tr.setMeta(highlightPluginKey, { 
-            activeHighlightId: highlightId,
+          const clickedHighlightObject = state.highlightData.find(h => h.id === highlightId);
+
+          if (!clickedHighlightObject) {
+            console.warn(`HighlightPluginLogic: Clicked on decoration but couldn't find highlight data for ID: ${highlightId}`);
+            return false;
+          }
+
+          // Update last click info for double-click detection FIRST, before any specific handlers.
+          // This ensures double-click logic has the most recent click data.
+          view.dispatch(view.state.tr.setMeta(highlightPluginKey, {
+            activeHighlightId: highlightId, // Keep track of the active highlight
             lastClickTime: currentTime,
             lastClickId: highlightId
           }));
           
-          // Call the highlight click callback if it exists
-          if (state?.onHighlightClick && highlightId) {
-            console.log('HighlightPluginLogic: Calling onHighlightClick with ID:', highlightId);
-            state.onHighlightClick(highlightId);
-          } else {
-            console.log('HighlightPluginLogic: Missing callback or highlightId', {
-              hasCallback: !!state?.onHighlightClick,
-              highlightId
-            });
+          // 1. Handle 'text_suggestion' clicks with onTextSuggestionClick (our primary goal)
+          if (clickedHighlightObject.type === 'text_suggestion' && state.onTextSuggestionClick) {
+            console.log(`HighlightPluginLogic: Click on 'text_suggestion' ID: ${highlightId}. Calling onTextSuggestionClick.`);
+            state.onTextSuggestionClick(clickedHighlightObject);
+            return true; // Handled
           }
-          
-          // Handle suggestion acceptance (Edge Case #6)
-          if (state?.onSuggestionAccept) {
-            // Find the highlight data for this ID
-            const highlight = state.highlightData.find(h => h.id === highlightId);
-            
-            // Only process suggestions (not grammar or coherence highlights)
-            if (highlight && highlight.type === 'suggestion' && highlight.correctVersion) {
-              // Log for debugging
-              console.log('HighlightPluginLogic: Suggestion highlight clicked:', highlight);
-              
-              // Custom double-click detection using time between clicks
-              const isDoubleClick = (
-                state.lastClickId === highlightId &&
-                currentTime - (state.lastClickTime || 0) < 500 // 500ms threshold for double-click
-              );
-              
-              console.log('HighlightPluginLogic: Double-click detection', {
-                isDoubleClick,
-                timeDifference: currentTime - (state.lastClickTime || 0),
-                currentHighlightId: highlightId,
-                lastClickId: state.lastClickId
-              });
-              
-              if (isDoubleClick) {
-                console.log('HighlightPluginLogic: Accepting suggestion:', highlight.correctVersion);
-                
-                // Apply the suggestion by replacing text
-                const from = highlight.start;
-                const to = highlight.end;
-                
-                // Replace with corrected version
-                if (from !== undefined && to !== undefined) {
-                  try {
-                    // Create a transaction to replace the text
-                    view.dispatch(view.state.tr.replaceWith(
-                      from, 
-                      to, 
-                      view.state.schema.text(highlight.correctVersion)
-                    ));
-                    
-                    // Mark this suggestion as accepted
-                    state.acceptedSuggestions.add(highlight.id);
-                    
-                    // Call the suggestion accept callback
-                    state.onSuggestionAccept(highlight);
-                    
-                    console.log('HighlightPluginLogic: Successfully applied suggestion');
-                    
-                    // Return true to indicate we handled the event
-                    return true;
-                  } catch (e) {
-                    console.error('HighlightPluginLogic: Error applying suggestion:', e);
-                  }
+
+          // 2. Handle double-click for 'suggestion' type (existing feature, ensure safe call)
+          const isDoubleClick = state.lastClickId === highlightId && 
+                                state.lastClickTime && 
+                                (currentTime - state.lastClickTime < 500); // 500ms threshold
+
+          if (isDoubleClick && clickedHighlightObject.type === 'suggestion' && clickedHighlightObject.correctVersion && state.onSuggestionAccept) {
+            if (!state.acceptedSuggestions.has(highlightId)) {
+              console.log(`HighlightPluginLogic: Double-click on 'suggestion' ID: ${highlightId}. Accepting.`);
+              // Apply the suggestion by replacing text
+              const { start, end, correctVersion } = clickedHighlightObject;
+              if (start !== undefined && end !== undefined && correctVersion !== undefined) {
+                try {
+                  view.dispatch(view.state.tr.replaceWith(start, end, view.state.schema.text(correctVersion)));
+                  const updatedAcceptedSuggestions = new Set(state.acceptedSuggestions).add(highlightId);
+                  // Call the callback *after* successful text replacement
+                  state.onSuggestionAccept(clickedHighlightObject); 
+                  // Update plugin state with accepted suggestion and reset click tracking for this item
+                  view.dispatch(view.state.tr.setMeta(highlightPluginKey, {
+                    ...state, // spread current state
+                    acceptedSuggestions: updatedAcceptedSuggestions,
+                    activeHighlightId: state.activeHighlightId, // preserve active id or clear if needed
+                    lastClickTime: 0, // Reset to prevent immediate re-acceptance
+                    lastClickId: undefined
+                  }));
+                  return true; // Handled
+                } catch (e) {
+                  console.error('HighlightPluginLogic: Error applying suggestion on double-click:', e);
                 }
               }
+            } else {
+              console.log(`HighlightPluginLogic: Suggestion ID: ${highlightId} already accepted (double-click).`);
+              return true; // Still handled, just noting it was already accepted
             }
           }
           
-          return true; // Indicate we handled the click
+          // 3. Fallback to general onHighlightClick for other single-click interactions
+          if (state.onHighlightClick) {
+            console.log(`HighlightPluginLogic: General click on highlight ID: ${highlightId}, type: ${clickedHighlightObject.type}. Calling onHighlightClick.`);
+            state.onHighlightClick(highlightId);
+            return true; // Handled
+          }
+
+          console.log(`HighlightPluginLogic: Click on highlight ID: ${highlightId} did not trigger a specific handler.`);
+          return false; // No specific handler was triggered, but click was on a highlight
         }
-        return false;
+        return false; // Click was not on a highlight decoration
       },
     },
   });

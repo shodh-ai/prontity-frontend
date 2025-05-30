@@ -27,6 +27,7 @@ import {
   AgentToClientUIActionRequest,
   ClientUIActionResponse,
   ClientUIActionType, // Import the enum
+   // Import for the new payload type
 } from '@/generated/protos/interaction'; // Adjust path if your generated file is elsewhere
 import { FrontendButtonClickRequest } from '@/generated/protos/interaction'; // Import request message
 
@@ -123,7 +124,8 @@ export default function LiveKitSession({
   hideAudio = false,
   aiAssistantEnabled = true,
   showAvatar = false,
-  onRoomCreated
+  onRoomCreated,
+   // Destructure the new prop
 }: LiveKitSessionProps) {
   // State for UI elements that might be controlled by React state
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");
@@ -292,101 +294,331 @@ export default function LiveKitSession({
     }
   };
 
+  // Define state for timer and progress indicators
+  const [timerState, setTimerState] = useState<{
+    isRunning: boolean;
+    isPaused: boolean;
+    timeLeft: number;
+    totalDuration: number;
+    timerType: string;
+  }>({
+    isRunning: false,
+    isPaused: false,
+    timeLeft: 0,
+    totalDuration: 0,
+    timerType: 'prep'
+  });
+  
+  const [progressState, setProgressState] = useState<{
+    currentStep: number;
+    totalSteps: number;
+    message?: string;
+  }>({
+    currentStep: 0,
+    totalSteps: 10,
+    message: ''
+  });
+  
+  const [scoreState, setScoreState] = useState<{
+    scoreText: string;
+    progressPercentage?: number;
+  }>({
+    scoreText: '',
+    progressPercentage: 0
+  });
+  
+  // New UI action states
+  const [buttonProperties, setButtonProperties] = useState<{[buttonId: string]: {
+    label?: string;
+    disabled?: boolean;
+    taskData?: any;
+    styleClass?: string;
+  }}>({});
+  const [buttonOptions, setButtonOptions] = useState<{[panelId: string]: Array<{label: string, actionContextUpdate: any}>}>({});
+  const [isLoading, setIsLoading] = useState<{[indicatorId: string]: {isLoading: boolean, message?: string}}>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Handler functions for timers and progress indicators
+  const handleTimerControl = (action: 'start' | 'stop' | 'pause' | 'reset', options?: any) => {
+    console.log(`[LiveKitSession] Timer action: ${action}`, options);
+    
+    switch (action) {
+      case 'start':
+        const duration = options?.durationSeconds || 60;
+        const timerType = options?.timerType || 'task';
+        setTimerState({
+          isRunning: true,
+          isPaused: false,
+          timeLeft: duration,
+          totalDuration: duration,
+          timerType: timerType
+        });
+        // In a real implementation, you would start a timer interval here
+        break;
+      case 'stop':
+        setTimerState(prev => ({
+          ...prev,
+          isRunning: false,
+          isPaused: false
+        }));
+        break;
+      case 'pause':
+        const pauseState = options?.pause !== undefined ? options.pause : !timerState.isPaused;
+        setTimerState(prev => ({
+          ...prev,
+          isPaused: pauseState
+        }));
+        break;
+      case 'reset':
+        setTimerState(prev => ({
+          ...prev,
+          timeLeft: prev.totalDuration,
+          isRunning: false,
+          isPaused: false
+        }));
+        break;
+    }
+  };
+  
+  const handleProgressUpdate = (currentStep: number, totalSteps: number, message?: string) => {
+    setProgressState({
+      currentStep,
+      totalSteps,
+      message
+    });
+  };
+  
+  const handleScoreUpdate = (scoreText: string, progressPercentage?: number) => {
+    setScoreState({
+      scoreText,
+      progressPercentage
+    });
+  };
+  
+  // New UI action handlers
+  const handleButtonPropertiesUpdate = (buttonId: string, properties: {
+    label?: string;
+    disabled?: boolean;
+    taskData?: any;
+    styleClass?: string;
+  }) => {
+    console.log(`[LiveKitSession] Button properties update:`, { buttonId, properties });
+    setButtonProperties(prev => ({
+      ...prev,
+      [buttonId]: {
+        ...prev[buttonId],
+        ...properties
+      }
+    }));
+  };
+  
+  const handleButtonOptionsUpdate = (panelId: string, buttons: Array<{label: string, actionContextUpdate: any}>) => {
+    console.log(`[LiveKitSession] Button options update:`, { panelId, buttons });
+    setButtonOptions(prev => ({
+      ...prev,
+      [panelId]: buttons
+    }));
+  };
+  
+  const handleInputFieldClear = (inputId: string) => {
+    console.log(`[LiveKitSession] Clearing input field:`, inputId);
+    // This would normally directly set the value of the input to empty string
+    // For complex components like editors, you'd need custom logic
+    const input = document.getElementById(inputId) as HTMLInputElement | HTMLTextAreaElement;
+    if (input) {
+      input.value = '';
+    }
+  };
+  
+  const handleEditorReadonlySections = (editorId: string, ranges: Array<{start: any, end: any, readOnly: boolean}>) => {
+    console.log(`[LiveKitSession] Setting editor readonly sections:`, { editorId, ranges });
+    // This would integrate with your specific editor implementation
+  };
+  
+  const handlePlayAudioCue = (soundName: string) => {
+    console.log(`[LiveKitSession] Playing audio cue:`, soundName);
+    // Map sound names to actual audio files
+    const soundMap: {[key: string]: string} = {
+      'correct_answer_ding': '/sounds/correct_answer_ding.mp3',
+      'error_buzz': '/sounds/error_buzz.mp3',
+      'notification_pop': '/sounds/notification_pop.mp3'
+    };
+    
+    // Play the audio if it exists in our map
+    if (soundMap[soundName]) {
+      if (!audioRef.current) {
+        audioRef.current = new Audio(soundMap[soundName]);
+      } else {
+        audioRef.current.src = soundMap[soundName];
+      }
+      audioRef.current.play().catch(err => console.error('Error playing audio:', err));
+    }
+  };
+  
+  const handleLoadingIndicator = (indicatorId: string, isLoading: boolean, message?: string) => {
+    console.log(`[LiveKitSession] Updating loading indicator:`, { indicatorId, isLoading, message });
+    setIsLoading(prev => ({
+      ...prev,
+      [indicatorId]: { isLoading, message }
+    }));
+  };
+
   useEffect(() => {
     const handlePerformUIAction = async (
       data: RpcInvocationData // Data object from LiveKit, includes payload
     ): Promise<string> => { // LiveKit RPC handler must return Promise<string>
-      const payloadString = data.payload as string | undefined; // Assume data.payload is string | undefined (base64 encoded)
-      let requestId = "";
+      console.log('[LiveKitSession] B2F RPC (handlePerformUIAction) invoked by agent.');
+      
+      // Import ReactUIActions if not already imported
       try {
-        if (!payloadString) {
-          console.error('Agent PerformUIAction: No payload received.');
-          const errResponse = ClientUIActionResponse.create({ success: false, message: "Error: No payload" });
+        // Create props object for ReactUIActions
+        const reactUIActionsProps = {
+          // Text content updaters
+          textStateUpdaters: {
+            'agentUpdatableText': setAgentUpdatableTextState,
+          },
+          // Visibility updaters
+          visibilityStateUpdaters: {
+            'agentToggleVisibilityElement': setIsAgentElementVisible,
+          },
+          // Timer control updaters
+          timerControlUpdaters: {
+            'speakingTaskTimer': handleTimerControl,
+          },
+          // Progress indicator updaters
+          progressIndicatorUpdaters: {
+            'drillProgressIndicator': handleProgressUpdate,
+          },
+          // Score updaters
+          scoreUpdaters: {
+            'drillScoreDisplay': handleScoreUpdate,
+          },
+          // New UI action handlers
+          buttonPropertiesUpdaters: {
+            'submitAnswerButton': (properties: any) => handleButtonPropertiesUpdate('submitAnswerButton', properties),
+            'startRecordingButton': (properties: any) => handleButtonPropertiesUpdate('startRecordingButton', properties),
+            'submitSpeakingTaskButton': (properties: any) => handleButtonPropertiesUpdate('submitSpeakingTaskButton', properties),
+            'roxStartRecommendedTaskButton': (properties: any) => handleButtonPropertiesUpdate('roxStartRecommendedTaskButton', properties),
+          },
+          buttonOptionsUpdaters: {
+            'feedbackOptionsPanel': (buttons: any) => handleButtonOptionsUpdate('feedbackOptionsPanel', buttons),
+            'p7NavigationPanel': (buttons: any) => handleButtonOptionsUpdate('p7NavigationPanel', buttons),
+          },
+          inputFieldClearers: {
+            'drillAnswerInputText': () => handleInputFieldClear('drillAnswerInputText'),
+          },
+          editorReadonlySectionsUpdaters: {
+            'scaffoldingFullEssayEditor': (ranges: any) => handleEditorReadonlySections('scaffoldingFullEssayEditor', ranges),
+          },
+          audioCuePlayers: {
+            'audio_player': (soundName: string) => handlePlayAudioCue(soundName),
+          },
+          loadingIndicatorUpdaters: {
+            'globalLoadingIndicator': (isLoading: boolean, message?: string) => handleLoadingIndicator('globalLoadingIndicator', isLoading, message),
+          },
+          // Enable logging
+          logActions: true
+        };
+        
+        // Use the imported handleReactUIAction function
+        const { handleReactUIAction } = await import('@/components/ui/ReactUIActions');
+        return await handleReactUIAction(data, reactUIActionsProps);
+      } catch (error) {
+        console.error('[LiveKitSession] Error using ReactUIActions:', error);
+        
+        // Fallback to legacy implementation
+        const payloadString = data.payload as string | undefined; // Assume data.payload is string | undefined (base64 encoded)
+        let requestId = "";
+        try {
+          if (!payloadString) {
+            console.error('Agent PerformUIAction: No payload received.');
+            const errResponse = ClientUIActionResponse.create({ success: false, message: "Error: No payload" });
+            return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+          }
+
+          const decodedPayload = base64ToUint8Array(payloadString);
+          const request = AgentToClientUIActionRequest.decode(decodedPayload);
+          requestId = request.requestId; // Store for response
+
+          console.log(`Agent PerformUIAction Request Received: `, request);
+
+          let success = true;
+          let message = "Action performed successfully.";
+
+          // --- Execute the UI Action ---
+          switch (request.actionType) {
+            case ClientUIActionType.SHOW_ALERT:
+              const alertMsg = request.parameters["message"] || "Agent alert!";
+              alert(`Agent Alert: ${alertMsg}`); // Simple alert for now
+              message = `Alert shown: ${alertMsg}`;
+              break;
+
+            case ClientUIActionType.UPDATE_TEXT_CONTENT:
+              const newText = request.parameters["text"];
+              if (request.targetElementId && newText !== undefined) {
+                // React way: Update state
+                if (request.targetElementId === "agentUpdatableText") { // Example mapping
+                    setAgentUpdatableTextState(newText);
+                    message = `Element '${request.targetElementId}' text updated (React state).`;
+                } else {
+                // Direct DOM manipulation (less ideal in React, but for generic elements):
+                  const element = document.getElementById(request.targetElementId);
+                  if (element) {
+                    element.innerText = newText;
+                    message = `Element '${request.targetElementId}' text updated.`;
+                  } else {
+                    success = false;
+                    message = `Error: Element '${request.targetElementId}' not found.`;
+                  }
+                }
+              } else {
+                success = false;
+                message = "Error: Missing targetElementId or text parameter for UPDATE_TEXT_CONTENT.";
+              }
+              break;
+
+            case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
+              if (request.targetElementId) {
+                // React way:
+                if (request.targetElementId === "agentToggleVisibilityElement") {
+                    setIsAgentElementVisible(prev => !prev); // Simple toggle
+                    message = `Element '${request.targetElementId}' visibility toggled (React state).`;
+                } else {
+                // Direct DOM manipulation:
+                  const element = document.getElementById(request.targetElementId);
+                  if (element) {
+                    element.style.display = element.style.display === 'none' ? '' : 'none';
+                    message = `Element '${request.targetElementId}' visibility toggled.`;
+                  } else {
+                    success = false;
+                    message = `Error: Element '${request.targetElementId}' not found.`;
+                  }
+                }
+              } else {
+                success = false;
+                message = "Error: Missing targetElementId for TOGGLE_ELEMENT_VISIBILITY.";
+              }
+              break;
+
+            default:
+              success = false;
+              message = `Error: Unknown action_type '${request.actionType}'.`;
+              console.warn(`Unknown agent UI action: ${request.actionType}`);
+          }
+
+          const response = ClientUIActionResponse.create({ requestId, success, message });
+          return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+
+        } catch (innerError) {
+          console.error('Error handling Agent PerformUIAction:', innerError);
+          const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
+          const errResponse = ClientUIActionResponse.create({
+            requestId,
+            success: false,
+            message: `Client error processing UI action: ${errMessage}`
+          });
           return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
         }
-
-        const decodedPayload = base64ToUint8Array(payloadString);
-        const request = AgentToClientUIActionRequest.decode(decodedPayload);
-        requestId = request.requestId; // Store for response
-
-        console.log(`Agent PerformUIAction Request Received: `, request);
-
-        let success = true;
-        let message = "Action performed successfully.";
-
-        // --- Execute the UI Action ---
-        switch (request.actionType) {
-          case ClientUIActionType.SHOW_ALERT:
-            const alertMsg = request.parameters["message"] || "Agent alert!";
-            alert(`Agent Alert: ${alertMsg}`); // Simple alert for now
-            message = `Alert shown: ${alertMsg}`;
-            break;
-
-          case ClientUIActionType.UPDATE_TEXT_CONTENT:
-            const newText = request.parameters["text"];
-            if (request.targetElementId && newText !== undefined) {
-              // React way: Update state
-              if (request.targetElementId === "agentUpdatableText") { // Example mapping
-                  setAgentUpdatableTextState(newText);
-                  message = `Element '${request.targetElementId}' text updated (React state).`;
-              } else {
-              // Direct DOM manipulation (less ideal in React, but for generic elements):
-                const element = document.getElementById(request.targetElementId);
-                if (element) {
-                  element.innerText = newText;
-                  message = `Element '${request.targetElementId}' text updated.`;
-                } else {
-                  success = false;
-                  message = `Error: Element '${request.targetElementId}' not found.`;
-                }
-              }
-            } else {
-              success = false;
-              message = "Error: Missing targetElementId or text parameter for UPDATE_TEXT_CONTENT.";
-            }
-            break;
-
-          case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
-            if (request.targetElementId) {
-              // React way:
-              if (request.targetElementId === "agentToggleVisibilityElement") {
-                  setIsAgentElementVisible(prev => !prev); // Simple toggle
-                  message = `Element '${request.targetElementId}' visibility toggled (React state).`;
-              } else {
-              // Direct DOM manipulation:
-                const element = document.getElementById(request.targetElementId);
-                if (element) {
-                  element.style.display = element.style.display === 'none' ? '' : 'none';
-                  message = `Element '${request.targetElementId}' visibility toggled.`;
-                } else {
-                  success = false;
-                  message = `Error: Element '${request.targetElementId}' not found.`;
-                }
-              }
-            } else {
-              success = false;
-              message = "Error: Missing targetElementId for TOGGLE_ELEMENT_VISIBILITY.";
-            }
-            break;
-
-          default:
-            success = false;
-            message = `Error: Unknown action_type '${request.actionType}'.`;
-            console.warn(`Unknown agent UI action: ${request.actionType}`);
-        }
-
-        const response = ClientUIActionResponse.create({ requestId, success, message });
-        return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
-
-      } catch (error) {
-        console.error('Error handling Agent PerformUIAction:', error);
-        const errMessage = error instanceof Error ? error.message : String(error);
-        const errResponse = ClientUIActionResponse.create({
-          requestId,
-          success: false,
-          message: `Client error processing UI action: ${errMessage}`
-        });
-        return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
       }
     };
 

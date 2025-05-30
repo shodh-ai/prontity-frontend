@@ -3,6 +3,7 @@ import json
 import base64
 import uuid
 import time
+import asyncio
 from livekit.rtc.rpc import RpcInvocationData # For RPC invocation data
 from generated.protos import interaction_pb2 # Your generated protobuf types
 
@@ -64,43 +65,53 @@ class AgentInteractionService: # Simple class without inheritance
                 # Log the raw custom_data for debugging
                 logger.info(f"RPC: Raw custom_data received: {request.custom_data}")
                 
-                # Parse JSON with better error handling
-                parsed_custom_data = json.loads(request.custom_data)
+                # Check if it looks like JSON (starts with { or [)
+                if (request.custom_data.strip().startswith('{') or request.custom_data.strip().startswith('[')):
+                    try:
+                        # Try to parse as JSON
+                        parsed_custom_data = json.loads(request.custom_data)
+                        logger.info(f"RPC: Successfully parsed custom_data as JSON: {parsed_custom_data}")
+                        
+                        # Handle structured JSON data
+                        if isinstance(parsed_custom_data, dict):
+                            # Update context if it's a dictionary
+                            if 'context' in parsed_custom_data:
+                                self.agent_instance._latest_student_context = parsed_custom_data['context']
+                                logger.info(f"RPC: Updated student context: {parsed_custom_data['context']}")
+                            if 'session_id' in parsed_custom_data:
+                                self.agent_instance._latest_session_id = parsed_custom_data['session_id']
+                                logger.info(f"RPC: Updated session_id: {parsed_custom_data['session_id']}")
+                            
+                            # Extract any additional data for further processing
+                            if 'action' in parsed_custom_data:
+                                logger.info(f"RPC: Client requested action: {parsed_custom_data['action']}")
+                        else:
+                            logger.warning(f"RPC: Parsed JSON is not a dictionary. Type: {type(parsed_custom_data)}")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"RPC: JSON parsing failed despite JSON-like format. Error: {e}")
+                        # Fall through to plain string handling
                 
-                # Validate parsed data is a dictionary
-                if not isinstance(parsed_custom_data, dict):
-                    logger.warning(f"RPC: custom_data parsed successfully but is not a dictionary. Type: {type(parsed_custom_data)}")
-                    parsed_custom_data = {"user_id": "default_user", "parsed_data": parsed_custom_data}
+                # Handle as plain string (either non-JSON or JSON parsing failed)
+                # Create a context with the message
+                message_context = {
+                    "user_id": f"user_{invocation_data.caller_identity}",
+                    "message": request.custom_data
+                }
+                self.agent_instance._latest_student_context = message_context
+                logger.info(f"RPC: Created context with plain string data: {message_context}")
                 
-                # Ensure user_id exists (required by InteractionRequestContext)
-                if "user_id" not in parsed_custom_data:
-                    logger.warning("RPC: custom_data missing required 'user_id' field. Adding default.")
-                    parsed_custom_data["user_id"] = f"default_{invocation_data.caller_identity or 'user'}"
-                
-                # Store the validated context
-                self.agent_instance._latest_student_context = parsed_custom_data
-                logger.info(f"RPC: Updated agent_instance._latest_student_context with: {parsed_custom_data}")
-
-                # Handle session ID (prioritize session_id over sessionId)
-                if 'session_id' in parsed_custom_data:
-                    self.agent_instance._latest_session_id = parsed_custom_data['session_id']
-                    logger.info(f"RPC: Updated agent_instance._latest_session_id with: {parsed_custom_data['session_id']}")
-                elif 'sessionId' in parsed_custom_data: # Fallback for camelCase
-                    self.agent_instance._latest_session_id = parsed_custom_data['sessionId']
-                    logger.info(f"RPC: Updated agent_instance._latest_session_id with (from sessionId): {parsed_custom_data['sessionId']}")
-                else:
-                    # Generate a session ID if none exists
+                # Generate a session ID if needed
+                if not hasattr(self.agent_instance, '_latest_session_id') or not self.agent_instance._latest_session_id:
                     session_id = f"session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
                     self.agent_instance._latest_session_id = session_id
-                    parsed_custom_data['session_id'] = session_id
-                    logger.info(f"RPC: Generated and added new session_id: {session_id}")
-
-            except json.JSONDecodeError as e:
-                logger.error(f"RPC: Failed to parse custom_data JSON: {request.custom_data}. Error: {e}")
-                # Create a minimal valid context when JSON parsing fails
+                    message_context['session_id'] = session_id
+                    logger.info(f"RPC: Generated new session_id: {session_id}")
+            except Exception as e:
+                logger.error(f"RPC: Error processing custom_data: {e}", exc_info=True)
+                # Create a minimal context for error recovery
                 minimal_context = {
-                    "user_id": f"error_recovery_{invocation_data.caller_identity or 'user'}",
-                    "error_info": f"JSON parse error: {str(e)}",
+                    "user_id": f"error_recovery_{invocation_data.caller_identity}",
+                    "error_info": f"Error processing data: {str(e)}",
                     "original_data": request.custom_data
                 }
                 self.agent_instance._latest_student_context = minimal_context
@@ -111,8 +122,6 @@ class AgentInteractionService: # Simple class without inheritance
                 minimal_context['session_id'] = session_id
                 
                 logger.info(f"RPC: Created minimal context for error recovery: {minimal_context}")
-            except Exception as e:
-                logger.error(f"RPC: Error processing custom_data: {e}", exc_info=True)
         elif not self.agent_instance:
             logger.warning("RPC: agent_instance is not available. Cannot update context.")
         elif not request.custom_data:
@@ -152,13 +161,16 @@ class AgentInteractionService: # Simple class without inheritance
         return base64_response
         
     async def _send_test_request_to_backend(self):
-        """Send a test request to the backend API to verify context passing."""
+        """Send a test request to the backend API and then manually process the UI actions."""
         import aiohttp
         import os
+        import json
+        import uuid
+        from livekit.agents.llm import ChatChunk, ChoiceDelta, FunctionToolCall
         
         if not self.agent_instance:
             logger.error("Cannot send test request: agent_instance is not available")
-            return
+            return False
             
         # Get the backend URL from environment or use a default
         backend_url = os.environ.get("MY_CUSTOM_AGENT_URL", "http://localhost:5005/process_interaction")
@@ -167,9 +179,15 @@ class AgentInteractionService: # Simple class without inheritance
             logger.info(f"Sending test request to backend API at {backend_url}")
             
             # Prepare payload with the context from agent instance
+            # Make a copy of the context to avoid modifying the original
+            context = dict(self.agent_instance._latest_student_context)
+            
+            # Add task_stage to the context object (not at top level)
+            context["task_stage"] = "testing_specific_context_from_button"  # Special task_stage to trigger UI action test
+            
             payload = {
                 "transcript": "This is a test request from RPC handler",
-                "current_context": self.agent_instance._latest_student_context,
+                "current_context": context,
                 "session_id": self.agent_instance._latest_session_id
             }
             
@@ -183,7 +201,53 @@ class AgentInteractionService: # Simple class without inheritance
                     
                     logger.info(f"Backend API test response: Status={status}, Response={response_text[:100]}...")
                     
+                    # NEW CODE: Process the response to extract DOM actions
+                    if status == 200:
+                        try:
+                            # Parse the JSON response
+                            result = json.loads(response_text)
+                            
+                            # Extract DOM actions if present
+                            dom_actions = None
+                            if "dom_actions" in result:
+                                dom_actions = result["dom_actions"]
+                                logger.info(f"Extracted DOM actions from response: {dom_actions}")
+                            
+                            # If we have DOM actions, create a tool call and manually trigger on_llm_response_done
+                            if dom_actions:
+                                # Create a special tool call for dom_actions
+                                dom_actions_str = json.dumps(dom_actions)
+                                tool_call = FunctionToolCall(
+                                    type='function',
+                                    name='_internal_dom_actions',
+                                    arguments=dom_actions_str,
+                                    call_id='dom_actions_tool_call'
+                                )
+                                
+                                # Create a ChatChunk with the tool call
+                                chat_chunk = ChatChunk(
+                                    id=str(uuid.uuid4()),
+                                    delta=ChoiceDelta(
+                                        role='assistant',
+                                        content=result.get("response_for_tts", ""),
+                                        tool_calls=[tool_call]
+                                    )
+                                )
+                                
+                                logger.info(f"Created ChatChunk with DOM actions tool call: {tool_call}")
+                                
+                                # Manually call on_llm_response_done to process the DOM actions
+                                if hasattr(self.agent_instance, 'on_llm_response_done'):
+                                    logger.info("Manually calling on_llm_response_done with DOM actions")
+                                    asyncio.create_task(self.agent_instance.on_llm_response_done([chat_chunk]))
+                                else:
+                                    logger.error("Agent instance does not have on_llm_response_done method")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse JSON response: {e}")
+                        except Exception as e:
+                            logger.error(f"Error processing response: {e}", exc_info=True)
+            
             return True
         except Exception as e:
-            logger.error(f"Error sending test request to backend: {e}")
+            logger.error(f"Error sending test request to backend: {e}", exc_info=True)
             return False

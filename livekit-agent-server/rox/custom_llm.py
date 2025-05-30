@@ -6,6 +6,8 @@ import logging
 import time
 import aiohttp # Required for async HTTP requests: pip install aiohttp
 from typing import AsyncIterable, Optional, TYPE_CHECKING
+import uuid
+import asyncio
 
 if TYPE_CHECKING:
     from .main import RoxAgent # Import RoxAgent for type hinting to avoid circular dependency
@@ -276,11 +278,14 @@ class CustomLLMBridge(LLM):
                             async with session.post(self._agent_url, json=payload) as response:
                                 logger.info(f"CustomLLMBridge: Received HTTP response status: {response.status}")
                                 response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
-                                result = await response.json() # Expecting JSON back, e.g., {"response": "..."}
+                                result = await response.json() # Expecting JSON back
                                 logger.info(f"CustomLLMBridge: Parsed JSON response: {json.dumps(result, indent=2)}")
-                                response_text = result.get("response", "") # Extract the response text
+                                response_text = result.get("response_for_tts", "") # Extract the response text, changed from "response"
                                 
-                                # Check for special actions from the agent
+                                # Initialize dom_actions to None
+                                dom_actions = None
+                                
+                                # Check for special actions from the agent (single action/payload format)
                                 if "action" in result and "payload" in result:
                                     action = result["action"]
                                     payload_from_response = result["payload"] # Renamed to avoid conflict
@@ -314,16 +319,44 @@ class CustomLLMBridge(LLM):
                 if dom_actions:
                     current_metadata = {"dom_actions": json.dumps(dom_actions)}
                 
-                # Yield the response back to the LiveKit pipeline as a single chunk,
-                # including dom_actions in metadata if they exist.
-                yield ChatChunk(
+                # Create a special tool call for dom_actions if present
+                tool_calls = []
+                if dom_actions:
+                    # Create a special tool call to carry the dom_actions
+                    dom_actions_str = json.dumps(dom_actions)
+                    tool_call = {
+                        # Match the expected ChoiceDelta model structure with top-level fields
+                        "call_id": "dom_actions_tool_call",
+                        "name": "_internal_dom_actions",
+                        "arguments": dom_actions_str
+                    }
+                    tool_calls.append(tool_call)
+                    logger.info(f"Created special tool call with dom_actions: {dom_actions}")
+                
+                # Create the ChatChunk with basic fields
+                chat_chunk = ChatChunk(
                     id=str(uuid.uuid4()),
                     delta=ChoiceDelta(
                         role='assistant',
                         content=response_text,
-                        metadata=current_metadata # dom_actions are now here
+                        tool_calls=tool_calls  # Include dom_actions as a tool call
                     )
-                )            
+                )
+                
+                # DIRECT TEST: Explicitly call on_llm_response_done to test dom_actions flow
+                # This bypasses the normal event mechanism which might be broken
+                if dom_actions and self._rox_agent_ref and hasattr(self._rox_agent_ref, 'on_llm_response_done'):
+                    logger.warning("DIRECT TEST: Manually calling on_llm_response_done with chunk containing dom_actions")
+                    logger.info(f"DOM Actions being sent to RoxAgent via tool_call: {dom_actions}")
+                    # Log the structure of the chat_chunk for debugging
+                    tool_calls = getattr(chat_chunk.delta, 'tool_calls', [])
+                    logger.info(f"ChatChunk structure: id={chat_chunk.id}, tool_calls={tool_calls}")
+                    
+                    # Create task to avoid blocking, since on_llm_response_done is async
+                    asyncio.create_task(self._rox_agent_ref.on_llm_response_done([chat_chunk]))
+                
+                # Yield the ChatChunk to the normal LiveKit pipeline
+                yield chat_chunk
                 logger.debug("Finished yielding response from CustomLLMBridge.")
             
             # Yield the async generator

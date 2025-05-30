@@ -12,6 +12,25 @@ class ClientUIActionType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     SHOW_ALERT: _ClassVar[ClientUIActionType]
     UPDATE_TEXT_CONTENT: _ClassVar[ClientUIActionType]
     TOGGLE_ELEMENT_VISIBILITY: _ClassVar[ClientUIActionType]
+    START_TIMER: _ClassVar[ClientUIActionType]
+    STOP_TIMER: _ClassVar[ClientUIActionType]
+    PAUSE_TIMER: _ClassVar[ClientUIActionType]
+    RESET_TIMER: _ClassVar[ClientUIActionType]
+    UPDATE_PROGRESS_INDICATOR: _ClassVar[ClientUIActionType]
+    UPDATE_SCORE_OR_PROGRESS: _ClassVar[ClientUIActionType]
+    SHOW_ELEMENT: _ClassVar[ClientUIActionType]
+    HIDE_ELEMENT: _ClassVar[ClientUIActionType]
+    NAVIGATE_TO_PAGE: _ClassVar[ClientUIActionType]
+    UPDATE_LIVE_TRANSCRIPT: _ClassVar[ClientUIActionType]
+    DISPLAY_TRANSCRIPT_OR_TEXT: _ClassVar[ClientUIActionType]
+    DISPLAY_REMARKS_LIST: _ClassVar[ClientUIActionType]
+    SET_BUTTON_PROPERTIES: _ClassVar[ClientUIActionType]
+    ENABLE_BUTTON: _ClassVar[ClientUIActionType]
+    DISABLE_BUTTON: _ClassVar[ClientUIActionType]
+    SHOW_BUTTON_OPTIONS: _ClassVar[ClientUIActionType]
+    CLEAR_INPUT_FIELD: _ClassVar[ClientUIActionType]
+    SET_EDITOR_READONLY_SECTIONS: _ClassVar[ClientUIActionType]
+    SHOW_LOADING_INDICATOR: _ClassVar[ClientUIActionType]
     HIGHLIGHT_TEXT_RANGES: _ClassVar[ClientUIActionType]
     SUGGEST_TEXT_EDIT: _ClassVar[ClientUIActionType]
     SHOW_INLINE_SUGGESTION: _ClassVar[ClientUIActionType]
@@ -22,6 +41,25 @@ NO_ACTION: ClientUIActionType
 SHOW_ALERT: ClientUIActionType
 UPDATE_TEXT_CONTENT: ClientUIActionType
 TOGGLE_ELEMENT_VISIBILITY: ClientUIActionType
+START_TIMER: ClientUIActionType
+STOP_TIMER: ClientUIActionType
+PAUSE_TIMER: ClientUIActionType
+RESET_TIMER: ClientUIActionType
+UPDATE_PROGRESS_INDICATOR: ClientUIActionType
+UPDATE_SCORE_OR_PROGRESS: ClientUIActionType
+SHOW_ELEMENT: ClientUIActionType
+HIDE_ELEMENT: ClientUIActionType
+NAVIGATE_TO_PAGE: ClientUIActionType
+UPDATE_LIVE_TRANSCRIPT: ClientUIActionType
+DISPLAY_TRANSCRIPT_OR_TEXT: ClientUIActionType
+DISPLAY_REMARKS_LIST: ClientUIActionType
+SET_BUTTON_PROPERTIES: ClientUIActionType
+ENABLE_BUTTON: ClientUIActionType
+DISABLE_BUTTON: ClientUIActionType
+SHOW_BUTTON_OPTIONS: ClientUIActionType
+CLEAR_INPUT_FIELD: ClientUIActionType
+SET_EDITOR_READONLY_SECTIONS: ClientUIActionType
+SHOW_LOADING_INDICATOR: ClientUIActionType
 HIGHLIGHT_TEXT_RANGES: ClientUIActionType
 SUGGEST_TEXT_EDIT: ClientUIActionType
 SHOW_INLINE_SUGGESTION: ClientUIActionType

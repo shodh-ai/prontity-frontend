@@ -120,13 +120,44 @@ enum ClientUIActionType {
   SHOW_ALERT = 1;
   UPDATE_TEXT_CONTENT = 2;
   TOGGLE_ELEMENT_VISIBILITY = 3;
-  HIGHLIGHT_TEXT_RANGES = 4; // Action to highlight text ranges
-  SUGGEST_TEXT_EDIT = 5;     // Action to suggest a text edit
-  SHOW_INLINE_SUGGESTION = 6; // Action to show a non-intrusive inline suggestion
-  SHOW_TOOLTIP_OR_COMMENT = 7;  // Action to display a tooltip or comment
-  SET_EDITOR_CONTENT = 8;       // Action to set the entire content of an editor
-  APPEND_TEXT_TO_EDITOR_REALTIME = 9; // Action to append text chunks to an editor
+  START_TIMER = 4;
+  STOP_TIMER = 5;
+  PAUSE_TIMER = 6;
+  RESET_TIMER = 7;
+  UPDATE_PROGRESS_INDICATOR = 8;
+  UPDATE_SCORE_OR_PROGRESS = 9;
+  // UI Control & State Actions
+  SHOW_ELEMENT = 10;
+  HIDE_ELEMENT = 11;
+  // Navigation Actions
+  NAVIGATE_TO_PAGE = 12;
+  // Content Display Actions
+  UPDATE_LIVE_TRANSCRIPT = 13;
+  DISPLAY_TRANSCRIPT_OR_TEXT = 14;
+  DISPLAY_REMARKS_LIST = 15;
+  
+  // Button & Input Actions
+  SET_BUTTON_PROPERTIES = 21;
+  ENABLE_BUTTON = 22;
+  DISABLE_BUTTON = 23;
+  SHOW_BUTTON_OPTIONS = 24;
+  CLEAR_INPUT_FIELD = 25;
+  
+  // Editor & Content Actions
+  SET_EDITOR_READONLY_SECTIONS = 26;
+  
+  // Feedback & Loading Actions
+  SHOW_LOADING_INDICATOR = 27;
+  // Add more actions here as needed
+
+  HIGHLIGHT_TEXT_RANGES = 28; // Action to highlight text ranges
+  SUGGEST_TEXT_EDIT = 29;     // Action to suggest a text edit
+  SHOW_INLINE_SUGGESTION = 30; // Action to show a non-intrusive inline suggestion
+  SHOW_TOOLTIP_OR_COMMENT = 31;  // Action to display a tooltip or comment
+  SET_EDITOR_CONTENT = 32;       // Action to set the entire content of an editor
+  APPEND_TEXT_TO_EDITOR_REALTIME = 33; // Action to append text chunks to an editor
   // Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC
+
 }
 
 // Request from Agent to Client to perform a UI action

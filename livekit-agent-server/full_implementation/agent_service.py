@@ -33,13 +33,6 @@ for env_path in possible_env_paths:
         logger.info(f"Loading environment from: {env_path}")
         load_dotenv(dotenv_path=env_path)
 
-# Directly set environment variable if passed as argument
-def set_api_key(api_key):
-    if api_key:
-        os.environ['GOOGLE_API_KEY'] = api_key
-        return True
-    return False
-
 # Will check for required environment variables after parsing args
 
 # Import LiveKit packages
@@ -86,9 +79,12 @@ class AIAssistant(Agent):
         super().__init__(instructions=instructions)
 
 
-def entrypoint(room, identity, assistant_type="toefl", voice="Puck", temperature=0.8):
+def entrypoint(room, identity, assistant_type="toefl", voice="Puck", temperature=0.8, google_api_key=None):
     """Entrypoint function for the agent that will be called by the LiveKit CLI"""
     logger.info(f"Agent entrypoint called for room '{room}' with identity '{identity}'")
+    
+    # Create the AI assistant with instructions based on type
+    agent = AIAssistant(assistant_type=assistant_type, custom_instructions=None)
     
     # Create the Google realtime model with the specified voice and temperature
     try:
@@ -96,8 +92,8 @@ def entrypoint(room, identity, assistant_type="toefl", voice="Puck", temperature
             model="gemini-2.0-flash-exp",
             voice=voice,
             temperature=temperature,
-            instructions=f"You are a helpful assistant for {assistant_type} speaking practice.",
-            api_key=GOOGLE_API_KEY,  # Explicitly pass the API key
+            instructions=agent.instructions,  # Use instructions from AIAssistant
+            api_key=google_api_key,  # Explicitly pass the API key
         )
         logger.info("Successfully created Google realtime model")
     except Exception as e:
@@ -106,9 +102,6 @@ def entrypoint(room, identity, assistant_type="toefl", voice="Puck", temperature
     
     # Create the agent session
     session = AgentSession(llm=model)
-    
-    # Create the AI assistant with instructions based on type
-    agent = AIAssistant(assistant_type=assistant_type)
     
     # Configure room input options with noise cancellation
     input_options = RoomInputOptions(
@@ -129,6 +122,9 @@ def entrypoint(room, identity, assistant_type="toefl", voice="Puck", temperature
     else:
         greeting += "this conversation. How can I assist you today?"
     
+    # Use generate_reply_sync to output the initial greeting.
+    # While the parameter is 'instructions', for this model/plugin,
+    # providing direct text here results in it being spoken.
     session.generate_reply_sync(instructions=greeting)
     
     logger.info(f"Agent successfully started in room {room}")
@@ -141,11 +137,12 @@ def run_agent_cli(room_name, identity="ai-assistant", assistant_type="toefl", vo
         # Create a WorkerOptions object with our entrypoint function
         worker_options = agents.WorkerOptions(
             entrypoint_fnc=lambda room: entrypoint(
-                room, 
-                identity, 
+                room,
+                identity,
                 assistant_type,
                 voice,
-                temperature
+                temperature,
+                google_api_key=os.environ.get('GOOGLE_API_KEY')
             ),
             url=os.environ.get('LIVEKIT_URL'),
             api_key=os.environ.get('LIVEKIT_API_KEY'),

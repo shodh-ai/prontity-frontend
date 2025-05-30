@@ -14,13 +14,16 @@ import time   # For timestamps in session IDs
 from livekit import rtc # For B2F RPC type hints
 from generated.protos import interaction_pb2 # For B2F and F2B RPC messages
 
+import aiohttp
 import os
 import sys
+import json
 import logging
 import argparse
 import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
+from typing import Optional, Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, # Changed default to INFO, DEBUG can be very verbose
@@ -52,7 +55,7 @@ try:
         logger.warning(f"Tavus plugin not found (ImportError: {ie}). Tavus features will be disabled.")
 
 except ImportError as e: # For other plugins like deepgram, silero, etc.
-    logger.error(f"Failed to import core LiveKit plugins (deepgram, silero, noise_cancellation, turn_detector): {e}")
+    logger.error(f"Failed to import core LiveKit plugins (deepgram, silero, turn_detector): {e}")
     logger.error("Please install/check: 'livekit-agents[deepgram,silero,turn-detector]' and 'livekit-plugins-noise-cancellation'")
     sys.exit(1)
 
@@ -119,17 +122,106 @@ GLOBAL_AVATAR_ENABLED = tavus_module is not None and TAVUS_ENABLED # Default to 
 class RoxAgent(Agent):
     """Simple Rox AI assistant"""
     def __init__(self, page_path="roxpage") -> None:
-        super().__init__(instructions="You are Rox, an AI assistant for students using the learning platform. You help students understand their learning status and guide them through their learning journey.")
+        super().__init__(instructions="You are Rox, an AI assistant helping users.")
         self.page_path = page_path
-        
-        # Initialize context and session variables needed by CustomLLMBridge
-        self._latest_student_context = {"user_id": "default_init_user"}
-        self._latest_session_id = f"init_session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
-        
-        logger.info(f"RoxAgent instance created for page: {self.page_path}")
-        logger.info(f"RoxAgent initialized with default context: {self._latest_student_context}")
-        logger.info(f"RoxAgent initialized with session ID: {self._latest_session_id}")
-        
+        self.latest_transcript_time = 0
+        self._latest_student_context: Optional[Dict[str, Any]] = None
+        self._latest_session_id: Optional[str] = None
+        self._interaction_service_registered = False # Flag to track RPC service registration
+        # Initialize the CustomLLMBridge instance here, passing self (RoxAgent instance)
+        self.custom_llm_bridge = CustomLLMBridge(rox_agent_ref=self) # Pass self as rox_agent_ref
+        logger.info(f"RoxAgent.__init__: self (type: {type(self)}) is a JobContext. self.room initially: {getattr(self, 'room', 'Not yet initialized')}")
+        logger.info(f"RoxAgent.__init__ called for page_path: {page_path}. Attributes: {dir(self)}")
+
+    async def send_ui_action_to_frontend(self, action_data: dict):
+        """
+        Sends a structured UI action to the frontend by invoking a client-side RPC method.
+        action_data should be a dict like:
+        {"action_type_str": "SHOW_ALERT", "parameters": {"message": "Hello!"}}
+        """
+        if not getattr(self, 'room', None):
+            logger.error("RoxAgent.send_ui_action_to_frontend: Room (self.room) not available.")
+            return
+
+        try:
+            action_type_str = action_data.get("action_type_str")
+            parameters = action_data.get("parameters", {})
+
+            if not action_type_str:
+                logger.warning("RoxAgent.send_ui_action_to_frontend: 'action_type_str' missing in action_data.")
+                return
+
+            try:
+                action_type_enum = interaction_pb2.ClientUIActionType.Value(action_type_str)
+            except ValueError:
+                logger.error(f"RoxAgent.send_ui_action_to_frontend: Invalid action_type_str '{action_type_str}'. Known values: {interaction_pb2.ClientUIActionType.keys()}")
+                return
+
+            request_id = str(uuid.uuid4())
+            
+            action_request_proto = interaction_pb2.AgentToClientUIActionRequest(
+                requestId=request_id,
+                actionType=action_type_enum,
+                # targetElementId is optional, can be omitted if not relevant for the action
+                parametersJson=json.dumps(parameters) # Client expects parameters as a JSON string
+            )
+
+            payload_bytes = action_request_proto.SerializeToString()
+            # The client's handlePerformUIAction expects a base64 string which it decodes.
+            # However, room.rpc.send_request payload is bytes.
+            # It's assumed LiveKit handles the bytes -> base64 string transfer if client receives string.
+
+            service_name = "rox.interaction.ClientSideUI"
+            method_name = "PerformUIAction"
+
+            logger.info(f"RoxAgent: Sending UI action RPC to frontend: {action_type_str}, params: {json.dumps(parameters)}, service: {service_name}, method: {method_name}")
+
+            # Sending without target_sids or target_identity broadcasts to all other participants.
+            # If specific targeting is needed, populate target_sids or target_identity.
+            await self.room.rpc.send_request(
+                service=service_name,
+                method=method_name,
+                payload=payload_bytes, # Send raw protobuf bytes
+                timeout=10 # seconds
+            )
+            logger.debug(f"RoxAgent: Successfully sent RPC request for UI action '{action_type_str}'.")
+
+        except Exception as e:
+            logger.error(f"RoxAgent.send_ui_action_to_frontend: Error sending UI action RPC: {e}", exc_info=True)
+
+    async def dispatch_frontend_rpc(self, rpc_call_data: dict):
+        logger.critical(f"!!!!!! RoxAgent.dispatch_frontend_rpc (id: {id(self)}) ENTERED. self.room: {getattr(self, 'room', 'N/A')} !!!!!!")
+        """
+        Sends a generic RPC-like call (e.g., for UI actions like alerts) to the frontend 
+        via the data channel.
+        rpc_call_data should be a dict like:
+        {"function_name": "show_alert", "args": {"title": "Alert!", "message": "This is an alert."}}
+        """
+        if not getattr(self, 'room', None):
+            logger.error("RoxAgent.dispatch_frontend_rpc: Room (self.room) not available.")
+            return
+
+        try:
+            # The frontend will expect a specific topic for these kinds of messages.
+            # Let's define it, e.g., "agent_rpc_calls"
+            rpc_topic = "agent_rpc_calls" 
+            
+            # The payload needs to be bytes. We'll send the rpc_call_data as a JSON string.
+            payload_str = json.dumps(rpc_call_data)
+            payload_bytes = payload_str.encode('utf-8')
+
+            logger.info(f"RoxAgent: Dispatching RPC data to frontend via data channel. Topic: '{rpc_topic}', Data: {payload_str}")
+            
+            await self.room.send_data(
+                payload=payload_bytes,
+                topic=rpc_topic,
+                reliable=True  # Ensure reliable delivery for UI commands
+            )
+            logger.debug(f"RoxAgent: Successfully sent data for RPC call '{rpc_call_data.get('function_name')}' via data channel.")
+
+        except Exception as e:
+            logger.error(f"RoxAgent.dispatch_frontend_rpc: Error sending data via data channel: {e}", exc_info=True)
+
     async def on_transcript(self, transcript: str, language: str) -> None:
         """Called when a user transcript is received"""
         logger.info(f"USER SAID (lang: {language}): '{transcript}'")
@@ -155,62 +247,75 @@ async def trigger_client_ui_action(
     client_identity: str,
     action_type: interaction_pb2.ClientUIActionType, # Use the enum from your protos
     target_element_id: str = None,
-    parameters: dict = None
+    parameters: dict = None,
+    highlight_ranges_payload_data: list = None  # New parameter for highlight data
 ) -> interaction_pb2.ClientUIActionResponse | None:
     """
     Sends an RPC to a specific client to perform a UI action.
+    Can now handle highlight_ranges_payload.
     """
     target_participant = None
-    # Correctly iterate over remote_participants
-    for participant in room.remote_participants.values():
-        if participant.identity == client_identity:
-            target_participant = participant
-            break
-
+    # Check local participant as well, in case agent is sending to itself (e.g., for testing)
+    if room.local_participant and room.local_participant.identity == client_identity:
+        target_participant = room.local_participant
+    else:
+        for participant_info in room.remote_participants.values(): # participant_info is rtc.RemoteParticipant
+            if participant_info.identity == client_identity:
+                target_participant = participant_info # Use participant_info directly
+                break
+    
     if not target_participant:
-        logger.error(f"B2F RPC: Client '{client_identity}' not found in room '{room.name}'. Cannot trigger UI action.")
+        logger.error(f"B2F RPC: Client '{client_identity}' not found in room '{room.name}'. Cannot send UI action.")
         return None
 
-    request_id = str(uuid.uuid4())
-    proto_params = parameters if parameters is not None else {}
+    request_pb = interaction_pb2.AgentToClientUIActionRequest()
+    request_pb.request_id = f"ui-{str(uuid.uuid4())[:8]}" # Generate a unique request ID
+    request_pb.action_type = action_type
+    if target_element_id:
+        request_pb.target_element_id = target_element_id
+    if parameters:
+        for key, value in parameters.items():
+            request_pb.parameters[key] = str(value) # Ensure value is string
 
-    request_pb = interaction_pb2.AgentToClientUIActionRequest(
-        request_id=request_id,
-        action_type=action_type,
-        target_element_id=target_element_id if target_element_id else "",
-        parameters=proto_params
-    )
+    # Populate highlight_ranges_payload if data is provided
+    if action_type == interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES and highlight_ranges_payload_data:
+        for hl_data in highlight_ranges_payload_data:
+            highlight_proto = request_pb.highlight_ranges_payload.add()
+            highlight_proto.id = hl_data.get("id", "")
+            highlight_proto.start = hl_data.get("start", 0)
+            highlight_proto.end = hl_data.get("end", 0)
+            highlight_proto.type = hl_data.get("type", "")
+            highlight_proto.message = hl_data.get("message", "")
+            highlight_proto.wrong_version = hl_data.get("wrongVersion", "")
+            highlight_proto.correct_version = hl_data.get("correctVersion", "")
 
-    serialized_request = request_pb.SerializeToString()
-    # Serialize the protobuf message to binary
-    serialized_request = request_pb.SerializeToString()
-    # Base64 encode the binary data so the client can decode it with atob()
-    base64_encoded_request = base64.b64encode(serialized_request).decode('utf-8')
-
-    rpc_method_name = "rox.interaction.ClientSideUI/PerformUIAction" # Must match client registration
+    service_name = "rox.interaction.ClientSideUI" 
+    method_name = "PerformUIAction"
+    rpc_method_name = f"{service_name}/{method_name}" # For logging and potentially for the call
 
     try:
-        # Send the RPC using room.send_request (room is passed as an argument)
-        logger.info(f"B2F RPC: Sending '{rpc_method_name}' to '{client_identity}' (SID: {target_participant.sid}). Action: {action_type}, Target: '{target_element_id}', Params: {parameters}")
-        # perform_rpc returns the response as a string already (a base64-encoded string from client)
+        payload_bytes = request_pb.SerializeToString()
+        
+        logger.info(f"B2F RPC: Sending '{rpc_method_name}' to client '{client_identity}' with request_id '{request_pb.request_id}'. Action: {interaction_pb2.ClientUIActionType.Name(action_type)}")
+        
+        base64_encoded_payload = base64.b64encode(payload_bytes).decode('utf-8')
+
+        # Send the RPC using room.local_participant.perform_rpc
         response_payload_str = await room.local_participant.perform_rpc(
             destination_identity=client_identity,
             method=rpc_method_name,
-            payload=base64_encoded_request  # Send the base64-encoded payload instead of raw bytes
-            # timeout parameter removed as it's not supported in this SDK version
+            payload=base64_encoded_payload
         )
-        # No need to decode to utf-8 as it's already a string
-        decoded_response_bytes = base64.b64decode(response_payload_str)
-        response_pb = interaction_pb2.ClientUIActionResponse()
-        response_pb.ParseFromString(decoded_response_bytes)
+        response_bytes = base64.b64decode(response_payload_str)
 
-        # Use request_pb.request_id for the log message, as request_id is part of the request_pb proto
+        response_pb = interaction_pb2.ClientUIActionResponse()
+        response_pb.ParseFromString(response_bytes)
+
         logger.info(f"B2F RPC: Response from client '{client_identity}' for UI action '{request_pb.request_id}': Success={response_pb.success}, Msg='{response_pb.message}'")
         return response_pb
     except Exception as e:
         logger.error(f"B2F RPC: Error sending '{rpc_method_name}' to '{client_identity}' or processing response: {e}", exc_info=True)
         return None
-
 
 async def agent_main_logic(ctx: JobContext):
     """
@@ -250,46 +355,39 @@ async def agent_main_logic(ctx: JobContext):
 
     logger.info(f"B2F Agent Logic: Proceeding to send UI actions to client: '{target_client_identity}'")
 
+    # TEST: Send a highlight request
+    if target_client_identity and ctx.room:
+        logger.info(f"B2F Agent Logic: Attempting to send a test HIGHLIGHT_TEXT_RANGES action to {target_client_identity}")
+        sample_highlights = [
+            {"id": "first-word-hl", "start": 1, "end": 6, "type": "agent_highlight", "message": "Highlighting the first word 'Hello'"}
+        ]
+        # Ensure interaction_pb2 is available in this scope. It should be if imported globally.
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES,
+            highlight_ranges_payload_data=sample_highlights
+        )
+        logger.info(f"B2F Agent Logic: Test HIGHLIGHT_TEXT_RANGES action sent to {target_client_identity}")
+
+    # Disable automatic UI actions - all UI actions will come from FastAPI
+    logger.info("B2F Agent Logic: Automatic UI actions are disabled. UI actions will be controlled by FastAPI.")
+    
+    # Simply keep the task alive
     try:
-        logger.info(f"B2F Agent Logic: Attempting Action 1: SHOW_ALERT to '{target_client_identity}'.")
-        # Action 1: Show Alert
-        await trigger_client_ui_action(
-            room=ctx.room,
-            client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
-            parameters={"message": "Agent says hello via B2F RPC!"}
-        )
-        logger.info(f"B2F Agent Logic: Successfully sent Action 1: SHOW_ALERT to '{target_client_identity}'.")
-        await asyncio.sleep(3)
-
-        logger.info(f"B2F Agent Logic: Attempting Action 2: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
-        # Action 2: Update Text
-        await trigger_client_ui_action(
-            room=ctx.room,
-            client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
-            target_element_id="agentUpdatableTextRoxPage", # Must match ID in rox/page.tsx JSX
-            parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
-        )
-        logger.info(f"B2F Agent Logic: Successfully sent Action 2: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
-        await asyncio.sleep(3)
-
-        logger.info(f"B2F Agent Logic: Attempting Action 3: TOGGLE_ELEMENT_VISIBILITY to '{target_client_identity}'.")
-        # Action 3: Toggle Visibility (will toggle based on client's current state)
-        await trigger_client_ui_action(
-            room=ctx.room,
-            client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY,
-            target_element_id="agentToggleVisibilityElementRoxPage" # Must match ID
-        )
-        logger.info(f"B2F Agent Logic: Successfully sent Action 3: TOGGLE_ELEMENT_VISIBILITY to '{target_client_identity}'.")
-        logger.info("B2F Agent Logic: All test UI actions sent.")
+        while True:
+            await asyncio.sleep(10)  # Just keep the task alive without sending any actions
 
     except Exception as e:
         logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
 
 
 async def entrypoint(ctx: JobContext):
+    # Configure the module-level logger (named 'rox.main', aliased as 'logger' in this file)
+    # to ensure its messages are processed and displayed.
+    logger.setLevel(logging.DEBUG)
+    logger.debug(f"Logger '{logger.name}' (used by RoxAgent methods) configured to {logging.getLevelName(logger.getEffectiveLevel())} in entrypoint.")
+    logger.info(f"ENTRYPOINT: Received ctx of type: {type(ctx)}. ctx.room initially: {getattr(ctx, 'room', 'Not yet initialized')}")
     """Main entrypoint for the agent job."""
     global GLOBAL_PAGE_PATH, GLOBAL_MODEL, GLOBAL_TEMPERATURE, GLOBAL_AVATAR_ENABLED # Allow modification by CLI
 
@@ -312,6 +410,7 @@ async def entrypoint(ctx: JobContext):
     
     # Create a Rox agent instance
     rox_agent_instance = RoxAgent(page_path=GLOBAL_PAGE_PATH)
+    logger.info(f"ENTRYPOINT: rox_agent_instance (id: {id(rox_agent_instance)}) created. rox_agent_instance.room (same as ctx.room): {getattr(rox_agent_instance, 'room', 'N/A')}, rox_agent_instance.room.status: {getattr(rox_agent_instance.room, 'status', 'N/A') if getattr(rox_agent_instance, 'room', None) else 'N/A'}")
 
     avatar_session = None
     if GLOBAL_AVATAR_ENABLED:

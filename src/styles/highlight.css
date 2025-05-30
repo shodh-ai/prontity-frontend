@@ -31,6 +31,18 @@
   border-bottom: 1.5px dashed green;
 }
 
+/* Style for the default 'agent_highlight' type */
+.highlight.highlight-agent_highlight {
+  background-color: rgba(255, 100, 0, 0.3); /* Bright orange, hard to miss */
+  border-bottom: 2px solid darkorange;
+}
+
+/* Style for the 'test_highlight' type seen in logs */
+.highlight.highlight-test_highlight {
+  background-color: rgba(0, 255, 255, 0.3); /* Bright cyan, hard to miss */
+  border-bottom: 2px solid teal;
+}
+
 /* Active highlight styling */
 .highlight.highlight-active {
   /* Make the active one stand out more */

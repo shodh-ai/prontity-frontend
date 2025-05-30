@@ -17,9 +17,47 @@ message AgentResponse {
   string data_payload = 2;   // Optional: any data agent wants to return
 }
 
+// Message for dispatching UI actions to the frontend
+message UIAction {
+  enum ActionType {
+    UNSPECIFIED = 0;
+    ALERT = 1;
+    DISMISS_ALERT = 2;
+    // You can add other specific UI action types here later
+    // e.g., SHOW_MODAL = 3; UPDATE_ELEMENT = 4;
+  }
+  ActionType action_type = 1;
+  optional Alert alert = 2; // Payload for alert actions
+  // Add other optional fields for different action types, e.g.:
+  // optional Modal modal_payload = 3;
+  // optional ElementUpdate update_payload = 4;
+}
+
+message Alert {
+  string title = 1;
+  string message = 2;
+  repeated AlertButton buttons = 3;
+}
+
+message AlertButton {
+  string label = 1;
+  UIAction action = 2; // The action to perform when this button is clicked (e.g., DISMISS_ALERT)
+}
+
 // Service the agent will implement (called by frontend)
 service AgentInteraction {
   rpc HandleFrontendButton(FrontendButtonClickRequest) returns (AgentResponse);
+}
+
+// Message to represent a single text highlight range
+message HighlightRangeProto {
+  string id = 1;                 // Unique identifier for the highlight
+  int32 start = 2;               // Start position (ProseMirror index)
+  int32 end = 3;                 // End position (ProseMirror index)
+  string type = 4;               // Type of highlight (e.g., 'grammar', 'suggestion')
+  optional string message = 5;    // Optional message/comment
+  optional string wrong_version = 6; // Optional original text needing correction
+  optional string correct_version = 7;// Optional suggested correction
 }
 
 // Optional: Service the frontend could implement (called by agent for updates)
@@ -37,6 +75,7 @@ enum ClientUIActionType {
   SHOW_ALERT = 1;
   UPDATE_TEXT_CONTENT = 2;
   TOGGLE_ELEMENT_VISIBILITY = 3;
+  HIGHLIGHT_TEXT_RANGES = 4; // Action to highlight text ranges
   // Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC
 }
 
@@ -46,6 +85,7 @@ message AgentToClientUIActionRequest {
   ClientUIActionType action_type = 2;
   string target_element_id = 3;   // Optional: ID of the HTML element to target
   map<string, string> parameters = 4; // Flexible parameters, e.g.,
+  repeated HighlightRangeProto highlight_ranges_payload = 5; // Payload for HIGHLIGHT_TEXT_RANGES
                                       // For SHOW_ALERT: {"message": "Hello!", "type": "info/error/warning"}
                                       // For UPDATE_TEXT_CONTENT: {"text": "New content"}
                                       // For TOGGLE_ELEMENT_VISIBILITY: {"visible": "true/false"} (or just toggle)

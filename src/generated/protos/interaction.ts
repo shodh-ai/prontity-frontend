@@ -14,8 +14,9 @@ export enum ClientUIActionType {
   NO_ACTION = 0,
   SHOW_ALERT = 1,
   UPDATE_TEXT_CONTENT = 2,
-  /** TOGGLE_ELEMENT_VISIBILITY - Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC */
   TOGGLE_ELEMENT_VISIBILITY = 3,
+  /** HIGHLIGHT_TEXT_RANGES - Action to highlight text ranges */
+  HIGHLIGHT_TEXT_RANGES = 4,
   UNRECOGNIZED = -1,
 }
 
@@ -33,6 +34,9 @@ export function clientUIActionTypeFromJSON(object: any): ClientUIActionType {
     case 3:
     case "TOGGLE_ELEMENT_VISIBILITY":
       return ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY;
+    case 4:
+    case "HIGHLIGHT_TEXT_RANGES":
+      return ClientUIActionType.HIGHLIGHT_TEXT_RANGES;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -50,6 +54,8 @@ export function clientUIActionTypeToJSON(object: ClientUIActionType): string {
       return "UPDATE_TEXT_CONTENT";
     case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
       return "TOGGLE_ELEMENT_VISIBILITY";
+    case ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
+      return "HIGHLIGHT_TEXT_RANGES";
     case ClientUIActionType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -76,6 +82,90 @@ export interface AgentResponse {
   dataPayload: string;
 }
 
+/** Message for dispatching UI actions to the frontend */
+export interface UIAction {
+  actionType: UIAction_ActionType;
+  /** Payload for alert actions */
+  alert?: Alert | undefined;
+}
+
+export enum UIAction_ActionType {
+  UNSPECIFIED = 0,
+  ALERT = 1,
+  /**
+   * DISMISS_ALERT - You can add other specific UI action types here later
+   * e.g., SHOW_MODAL = 3; UPDATE_ELEMENT = 4;
+   */
+  DISMISS_ALERT = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function uIAction_ActionTypeFromJSON(object: any): UIAction_ActionType {
+  switch (object) {
+    case 0:
+    case "UNSPECIFIED":
+      return UIAction_ActionType.UNSPECIFIED;
+    case 1:
+    case "ALERT":
+      return UIAction_ActionType.ALERT;
+    case 2:
+    case "DISMISS_ALERT":
+      return UIAction_ActionType.DISMISS_ALERT;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return UIAction_ActionType.UNRECOGNIZED;
+  }
+}
+
+export function uIAction_ActionTypeToJSON(object: UIAction_ActionType): string {
+  switch (object) {
+    case UIAction_ActionType.UNSPECIFIED:
+      return "UNSPECIFIED";
+    case UIAction_ActionType.ALERT:
+      return "ALERT";
+    case UIAction_ActionType.DISMISS_ALERT:
+      return "DISMISS_ALERT";
+    case UIAction_ActionType.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
+export interface Alert {
+  title: string;
+  message: string;
+  buttons: AlertButton[];
+}
+
+export interface AlertButton {
+  label: string;
+  /** The action to perform when this button is clicked (e.g., DISMISS_ALERT) */
+  action: UIAction | undefined;
+}
+
+/** Message to represent a single text highlight range */
+export interface HighlightRangeProto {
+  /** Unique identifier for the highlight */
+  id: string;
+  /** Start position (ProseMirror index) */
+  start: number;
+  /** End position (ProseMirror index) */
+  end: number;
+  /** Type of highlight (e.g., 'grammar', 'suggestion') */
+  type: string;
+  /** Optional message/comment */
+  message?:
+    | string
+    | undefined;
+  /** Optional original text needing correction */
+  wrongVersion?:
+    | string
+    | undefined;
+  /** Optional suggested correction */
+  correctVersion?: string | undefined;
+}
+
 /** Request from Agent to Client to perform a UI action */
 export interface AgentToClientUIActionRequest {
   /** Optional: for tracking/correlation */
@@ -85,6 +175,8 @@ export interface AgentToClientUIActionRequest {
   targetElementId: string;
   /** Flexible parameters, e.g., */
   parameters: { [key: string]: string };
+  /** Payload for HIGHLIGHT_TEXT_RANGES */
+  highlightRangesPayload: HighlightRangeProto[];
 }
 
 export interface AgentToClientUIActionRequest_ParametersEntry {
@@ -296,8 +388,410 @@ export const AgentResponse: MessageFns<AgentResponse> = {
   },
 };
 
+function createBaseUIAction(): UIAction {
+  return { actionType: 0, alert: undefined };
+}
+
+export const UIAction: MessageFns<UIAction> = {
+  encode(message: UIAction, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.actionType !== 0) {
+      writer.uint32(8).int32(message.actionType);
+    }
+    if (message.alert !== undefined) {
+      Alert.encode(message.alert, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UIAction {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUIAction();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.actionType = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.alert = Alert.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): UIAction {
+    return {
+      actionType: isSet(object.actionType) ? uIAction_ActionTypeFromJSON(object.actionType) : 0,
+      alert: isSet(object.alert) ? Alert.fromJSON(object.alert) : undefined,
+    };
+  },
+
+  toJSON(message: UIAction): unknown {
+    const obj: any = {};
+    if (message.actionType !== 0) {
+      obj.actionType = uIAction_ActionTypeToJSON(message.actionType);
+    }
+    if (message.alert !== undefined) {
+      obj.alert = Alert.toJSON(message.alert);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<UIAction>): UIAction {
+    return UIAction.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<UIAction>): UIAction {
+    const message = createBaseUIAction();
+    message.actionType = object.actionType ?? 0;
+    message.alert = (object.alert !== undefined && object.alert !== null) ? Alert.fromPartial(object.alert) : undefined;
+    return message;
+  },
+};
+
+function createBaseAlert(): Alert {
+  return { title: "", message: "", buttons: [] };
+}
+
+export const Alert: MessageFns<Alert> = {
+  encode(message: Alert, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.title !== "") {
+      writer.uint32(10).string(message.title);
+    }
+    if (message.message !== "") {
+      writer.uint32(18).string(message.message);
+    }
+    for (const v of message.buttons) {
+      AlertButton.encode(v!, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Alert {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAlert();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.title = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.message = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.buttons.push(AlertButton.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): Alert {
+    return {
+      title: isSet(object.title) ? globalThis.String(object.title) : "",
+      message: isSet(object.message) ? globalThis.String(object.message) : "",
+      buttons: globalThis.Array.isArray(object?.buttons) ? object.buttons.map((e: any) => AlertButton.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: Alert): unknown {
+    const obj: any = {};
+    if (message.title !== "") {
+      obj.title = message.title;
+    }
+    if (message.message !== "") {
+      obj.message = message.message;
+    }
+    if (message.buttons?.length) {
+      obj.buttons = message.buttons.map((e) => AlertButton.toJSON(e));
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<Alert>): Alert {
+    return Alert.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<Alert>): Alert {
+    const message = createBaseAlert();
+    message.title = object.title ?? "";
+    message.message = object.message ?? "";
+    message.buttons = object.buttons?.map((e) => AlertButton.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseAlertButton(): AlertButton {
+  return { label: "", action: undefined };
+}
+
+export const AlertButton: MessageFns<AlertButton> = {
+  encode(message: AlertButton, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.label !== "") {
+      writer.uint32(10).string(message.label);
+    }
+    if (message.action !== undefined) {
+      UIAction.encode(message.action, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AlertButton {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAlertButton();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.label = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.action = UIAction.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AlertButton {
+    return {
+      label: isSet(object.label) ? globalThis.String(object.label) : "",
+      action: isSet(object.action) ? UIAction.fromJSON(object.action) : undefined,
+    };
+  },
+
+  toJSON(message: AlertButton): unknown {
+    const obj: any = {};
+    if (message.label !== "") {
+      obj.label = message.label;
+    }
+    if (message.action !== undefined) {
+      obj.action = UIAction.toJSON(message.action);
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<AlertButton>): AlertButton {
+    return AlertButton.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<AlertButton>): AlertButton {
+    const message = createBaseAlertButton();
+    message.label = object.label ?? "";
+    message.action = (object.action !== undefined && object.action !== null)
+      ? UIAction.fromPartial(object.action)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseHighlightRangeProto(): HighlightRangeProto {
+  return { id: "", start: 0, end: 0, type: "", message: undefined, wrongVersion: undefined, correctVersion: undefined };
+}
+
+export const HighlightRangeProto: MessageFns<HighlightRangeProto> = {
+  encode(message: HighlightRangeProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.start !== 0) {
+      writer.uint32(16).int32(message.start);
+    }
+    if (message.end !== 0) {
+      writer.uint32(24).int32(message.end);
+    }
+    if (message.type !== "") {
+      writer.uint32(34).string(message.type);
+    }
+    if (message.message !== undefined) {
+      writer.uint32(42).string(message.message);
+    }
+    if (message.wrongVersion !== undefined) {
+      writer.uint32(50).string(message.wrongVersion);
+    }
+    if (message.correctVersion !== undefined) {
+      writer.uint32(58).string(message.correctVersion);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HighlightRangeProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHighlightRangeProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.id = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.start = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.end = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.type = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.message = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.wrongVersion = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.correctVersion = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HighlightRangeProto {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      start: isSet(object.start) ? globalThis.Number(object.start) : 0,
+      end: isSet(object.end) ? globalThis.Number(object.end) : 0,
+      type: isSet(object.type) ? globalThis.String(object.type) : "",
+      message: isSet(object.message) ? globalThis.String(object.message) : undefined,
+      wrongVersion: isSet(object.wrongVersion) ? globalThis.String(object.wrongVersion) : undefined,
+      correctVersion: isSet(object.correctVersion) ? globalThis.String(object.correctVersion) : undefined,
+    };
+  },
+
+  toJSON(message: HighlightRangeProto): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.start !== 0) {
+      obj.start = Math.round(message.start);
+    }
+    if (message.end !== 0) {
+      obj.end = Math.round(message.end);
+    }
+    if (message.type !== "") {
+      obj.type = message.type;
+    }
+    if (message.message !== undefined) {
+      obj.message = message.message;
+    }
+    if (message.wrongVersion !== undefined) {
+      obj.wrongVersion = message.wrongVersion;
+    }
+    if (message.correctVersion !== undefined) {
+      obj.correctVersion = message.correctVersion;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<HighlightRangeProto>): HighlightRangeProto {
+    return HighlightRangeProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<HighlightRangeProto>): HighlightRangeProto {
+    const message = createBaseHighlightRangeProto();
+    message.id = object.id ?? "";
+    message.start = object.start ?? 0;
+    message.end = object.end ?? 0;
+    message.type = object.type ?? "";
+    message.message = object.message ?? undefined;
+    message.wrongVersion = object.wrongVersion ?? undefined;
+    message.correctVersion = object.correctVersion ?? undefined;
+    return message;
+  },
+};
+
 function createBaseAgentToClientUIActionRequest(): AgentToClientUIActionRequest {
-  return { requestId: "", actionType: 0, targetElementId: "", parameters: {} };
+  return { requestId: "", actionType: 0, targetElementId: "", parameters: {}, highlightRangesPayload: [] };
 }
 
 export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionRequest> = {
@@ -314,6 +808,9 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
     Object.entries(message.parameters).forEach(([key, value]) => {
       AgentToClientUIActionRequest_ParametersEntry.encode({ key: key as any, value }, writer.uint32(34).fork()).join();
     });
+    for (const v of message.highlightRangesPayload) {
+      HighlightRangeProto.encode(v!, writer.uint32(42).fork()).join();
+    }
     return writer;
   },
 
@@ -359,6 +856,14 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
           }
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.highlightRangesPayload.push(HighlightRangeProto.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -379,6 +884,9 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
           return acc;
         }, {})
         : {},
+      highlightRangesPayload: globalThis.Array.isArray(object?.highlightRangesPayload)
+        ? object.highlightRangesPayload.map((e: any) => HighlightRangeProto.fromJSON(e))
+        : [],
     };
   },
 
@@ -402,6 +910,9 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
         });
       }
     }
+    if (message.highlightRangesPayload?.length) {
+      obj.highlightRangesPayload = message.highlightRangesPayload.map((e) => HighlightRangeProto.toJSON(e));
+    }
     return obj;
   },
 
@@ -422,6 +933,8 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
       },
       {},
     );
+    message.highlightRangesPayload = object.highlightRangesPayload?.map((e) => HighlightRangeProto.fromPartial(e)) ||
+      [];
     return message;
   },
 };

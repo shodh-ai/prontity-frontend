@@ -5,6 +5,9 @@
 /* Import highlight styles */
 @import './highlight.css';
 
+/* Import strikethrough styles */
+@import './strikethrough.css';
+
 @layer components {
   .all-\[unset\] {
     all: unset;

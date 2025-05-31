@@ -162,12 +162,76 @@ class RoxAgent(Agent):
 
             request_id = str(uuid.uuid4())
             
-            action_request_proto = interaction_pb2.AgentToClientUIActionRequest(
-                requestId=request_id,
-                actionType=action_type_enum,
-                # targetElementId is optional, can be omitted if not relevant for the action
-                parametersJson=json.dumps(parameters) # Client expects parameters as a JSON string
-            )
+            action_request_proto_args = {
+                "requestId": request_id,
+                "actionType": action_type_enum,
+            }
+
+            # targetElementId is a top-level field in AgentToClientUIActionRequest.
+            # If it's passed in `parameters`, extract it and remove from `parameters` dict
+            # so it's not duplicated in parametersJson.
+            if "targetElementId" in parameters:
+                 action_request_proto_args["targetElementId"] = parameters.pop("targetElementId")
+
+            # Handle specific payload types first
+            if action_type_enum == interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES:
+                strikethrough_ranges_data = action_data.get("strikethrough_ranges_data", [])
+                proto_ranges = []
+                for r_data in strikethrough_ranges_data:
+                    proto_range_args = {
+                        "id": r_data.get("id", str(uuid.uuid4())),
+                        "start": r_data.get("start", 0),
+                        "end": r_data.get("end", 0),
+                        "type": r_data.get("type", "default_strikethrough")
+                    }
+                    if "message" in r_data: # Optional field
+                        proto_range_args["message"] = r_data["message"]
+                    proto_ranges.append(interaction_pb2.StrikeThroughRangeProto(**proto_range_args))
+                action_request_proto_args["strikethrough_ranges_payload"] = proto_ranges
+                # Send any remaining parameters if they are still relevant for this action type
+                action_request_proto_args["parametersJson"] = json.dumps(parameters) if parameters else "{}"
+
+            elif action_type_enum == interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
+                highlight_ranges_data = action_data.get("highlight_ranges_data", []) 
+                proto_ranges = []
+                for r_data in highlight_ranges_data:
+                    proto_range_args = {
+                        "id": r_data.get("id", str(uuid.uuid4())),
+                        "start": r_data.get("start", 0),
+                        "end": r_data.get("end", 0),
+                        "type": r_data.get("type", "default_highlight")
+                    }
+                    if "message" in r_data:
+                        proto_range_args["message"] = r_data["message"]
+                    if "wrong_version" in r_data:
+                        proto_range_args["wrong_version"] = r_data["wrong_version"]
+                    if "correct_version" in r_data:
+                        proto_range_args["correct_version"] = r_data["correct_version"]
+                    proto_ranges.append(interaction_pb2.HighlightRangeProto(**proto_range_args))
+                action_request_proto_args["highlight_ranges_payload"] = proto_ranges
+                action_request_proto_args["parametersJson"] = json.dumps(parameters) if parameters else "{}"
+            
+            # TODO: Add elif blocks here for other action types that use specific payloads
+            # For example, for SUGGEST_TEXT_EDIT, SET_EDITOR_CONTENT etc.
+            # Ensure to handle their respective payload fields (e.g., suggest_text_edit_payload)
+            # and decide how to treat `parameters` and `parametersJson` for them.
+            # Example structure:
+            # elif action_type_enum == interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT:
+            #     suggest_payload_data = action_data.get("suggest_text_edit_payload_data") # Define your key
+            #     if suggest_payload_data:
+            #         # Construct interaction_pb2.SuggestTextEditPayloadProto from suggest_payload_data
+            #         # p_args = {k: v for k, v in suggest_payload_data.items() if v is not None}
+            #         # action_request_proto_args["suggest_text_edit_payload"] = interaction_pb2.SuggestTextEditPayloadProto(**p_args)
+            #         action_request_proto_args["parametersJson"] = json.dumps(parameters) if parameters else "{}"
+            #     else:
+            #         logger.warning(f"Action {action_type_enum} but no specific payload data found in action_data.")
+            #         action_request_proto_args["parametersJson"] = json.dumps(parameters) if parameters else "{}"
+
+            else:
+                # Fallback for actions that primarily use parametersJson or if specific payload data wasn't provided
+                action_request_proto_args["parametersJson"] = json.dumps(parameters) if parameters else "{}"
+            
+            action_request_proto = interaction_pb2.AgentToClientUIActionRequest(**action_request_proto_args)
 
             payload_bytes = action_request_proto.SerializeToString()
             # The client's handlePerformUIAction expects a base64 string which it decodes.
@@ -252,6 +316,7 @@ async def trigger_client_ui_action(
     target_element_id: str = None,
     parameters: dict = None,
     highlight_ranges_payload_data: list = None,  # New parameter for highlight data
+    strikethrough_ranges_data: list = None,  # New parameter for strikethrough data
     suggest_text_edit_payload_data: Optional[Dict[str, Any]] = None, # New parameter for text edit suggestion
     show_inline_suggestion_payload_data: Optional[Dict[str, Any]] = None, # For SHOW_INLINE_SUGGESTION
     show_tooltip_or_comment_payload_data: Optional[Dict[str, Any]] = None, # For SHOW_TOOLTIP_OR_COMMENT
@@ -296,6 +361,16 @@ async def trigger_client_ui_action(
             highlight_proto.message = hl_data.get("message", "")
             highlight_proto.wrong_version = hl_data.get("wrongVersion", "")
             highlight_proto.correct_version = hl_data.get("correctVersion", "")
+            
+    # Populate strikethrough_ranges_payload if data is provided
+    if action_type == interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES and strikethrough_ranges_data:
+        for st_data in strikethrough_ranges_data:
+            strikethrough_proto = request_pb.strikethrough_ranges_payload.add()
+            strikethrough_proto.id = st_data.get("id", "")
+            strikethrough_proto.start = st_data.get("start", 0)
+            strikethrough_proto.end = st_data.get("end", 0)
+            strikethrough_proto.type = st_data.get("type", "")
+            strikethrough_proto.message = st_data.get("message", "")
 
     # Populate suggest_text_edit_payload if data is provided
     if action_type == interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT and suggest_text_edit_payload_data:
@@ -433,6 +508,23 @@ async def agent_main_logic(ctx: JobContext):
 
         # TEST: Send a SUGGEST_TEXT_EDIT request
         await asyncio.sleep(2) # Small delay before next test action
+    if target_client_identity and ctx.room:
+        logger.info(f"B2F Agent Logic: Attempting to send a test STRIKETHROUGH action to {target_client_identity}")
+        sample_strikethroughs = [
+            {"id": "first-word-st", "start": 1, "end": 6, "type": "agent_strikethrough", "message": "Striking out the first word 'Hello'"},
+            {"id": "second-word-st", "start": 10, "end": 15, "type": "error_strikethrough"} # Example with different type and no message
+        ]
+        # Ensure interaction_pb2 is available in this scope. It should be if imported globally.
+        await trigger_client_ui_action(
+            room=ctx.room,
+            client_identity=target_client_identity,
+            action_type=interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES,
+            parameters={"source": "test"},
+            strikethrough_ranges_data=sample_strikethroughs
+        )
+        logger.info(f"B2F Agent Logic: Test STRIKETHROUGH_TEXT_RANGES action sent to {target_client_identity}")
+        await asyncio.sleep(2) # Small delay before next test action
+
         logger.info(f"B2F Agent Logic: Attempting to send a test SUGGEST_TEXT_EDIT action to {target_client_identity}")
         sample_text_edit = {
             "suggestion_id": "edit-suggestion-1",

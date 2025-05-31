@@ -3,6 +3,12 @@ import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { createHighlightPlugin, highlightPluginKey } from './HighlightPluginLogic';
 import { Highlight } from './highlightInterface';
+import { StrikeThroughRange } from './strikeThroughInterface'; // Added import
+
+// --- Stable default prop values ---
+const DEFAULT_HIGHLIGHT_DATA: Highlight[] = [];
+const DEFAULT_STRIKETHROUGH_DATA: StrikeThroughRange[] = [];
+import { strikeThroughPluginKey } from './StrikeThroughPluginLogic'; // Added import
 
 // --- Define Prop Types ---
 interface TiptapEditorProps {
@@ -15,6 +21,10 @@ interface TiptapEditorProps {
   // Props for HighlightPlugin
   highlightData?: Highlight[]; // Now using our proper Highlight interface type
   activeHighlightId?: string | number | null;
+  // Props for StrikeThroughPlugin
+  strikeThroughData?: StrikeThroughRange[]; // Added prop
+  activeStrikeThroughId?: string | number | null; // Added prop
+  onStrikeThroughClick?: (strikeThroughId: string | number) => void; // Added prop
   // Standard React props like className can be added if needed
   className?: string;
 }
@@ -34,8 +44,12 @@ const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       extensions,          // Required prop
       onUpdate,
       onHighlightClick,    // Optional callback for highlight clicks
-      highlightData = [],  // Default to empty array
+      highlightData = DEFAULT_HIGHLIGHT_DATA,  // Use stable default
       activeHighlightId = null, // Default to null
+      // Strikethrough props
+      strikeThroughData = DEFAULT_STRIKETHROUGH_DATA, // Use stable default
+      activeStrikeThroughId = null, // Default to null
+      onStrikeThroughClick, // Optional callback for strikethrough clicks
       className = '',      // Default className
     },
     ref
@@ -100,6 +114,26 @@ const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
     [isEditable, initialContent]
     );
 
+    useEffect(() => {
+      if (editor) {
+        console.log('[ChatBubbleDebug] TiptapEditor: editor instance from useEditor is NOW AVAILABLE:', editor);
+      } else {
+        console.log('[ChatBubbleDebug] TiptapEditor: editor instance from useEditor is still null/undefined.');
+      }
+    }, [editor]);
+
+    // --- Expose Editor Instance via Ref ---
+    useImperativeHandle(ref, () => {
+      if (editor) {
+        console.log('[ChatBubbleDebug] TiptapEditor useImperativeHandle: EXPOSING editor instance:', editor);
+      } else {
+        console.log('[ChatBubbleDebug] TiptapEditor useImperativeHandle: editor instance is NULL, exposing { editor: null }');
+      }
+      return {
+        editor: editor, // Exposes the Tiptap editor instance
+      };
+    }, [editor]); // Re-run when the editor instance itself changes
+
     // --- EFFECT: Update Highlights when Props Change ---
     useEffect(() => {
       if (!editor || editor.isDestroyed) {
@@ -162,6 +196,47 @@ const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         }
       }
     }, [editor, highlightData, activeHighlightId, onHighlightClick]); // Run effect when these change
+
+    // --- EFFECT: Update Strikethroughs when Props Change ---
+    useEffect(() => {
+      if (!editor || editor.isDestroyed) {
+        return;
+      }
+
+      console.log('TiptapEditor: onStrikeThroughClick callback present:', !!onStrikeThroughClick);
+
+      if (editor && strikeThroughData) {
+        const validatedStrikeThroughs = strikeThroughData.filter(s => {
+          if (s.id === undefined || s.start === undefined || s.end === undefined || !s.type) {
+            console.warn('Invalid strikethrough data detected, missing required properties:', s);
+            return false;
+          }
+          if (typeof s.start !== 'number' || typeof s.end !== 'number' || s.start > s.end) {
+            console.warn('Invalid strikethrough position detected:', s);
+            return false;
+          }
+          if (editor && (s.start < 0 || s.end > editor.state.doc.content.size)) {
+            console.warn('Strikethrough position out of document bounds:', s);
+            return false;
+          }
+          return true;
+        });
+
+        if (validatedStrikeThroughs.length < strikeThroughData.length) {
+          console.warn(`Filtered out ${strikeThroughData.length - validatedStrikeThroughs.length} invalid strikethroughs`);
+        }
+
+        try {
+          editor.view.dispatch(editor.state.tr.setMeta(strikeThroughPluginKey, {
+            strikeThroughData: validatedStrikeThroughs,
+            activeStrikeThroughId,
+            onStrikeThroughClick,
+          }));
+        } catch (e) {
+          console.error('Error updating strikethroughs:', e);
+        }
+      }
+    }, [editor, strikeThroughData, activeStrikeThroughId, onStrikeThroughClick]); // Run effect when these change
 
     // --- EDGE CASE #8: Connection status handling ---
     // Effect to handle reconnection attempts

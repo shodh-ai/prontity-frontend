@@ -52,6 +52,8 @@ export enum ClientUIActionType {
   SET_EDITOR_CONTENT = 32,
   /** APPEND_TEXT_TO_EDITOR_REALTIME - Action to append text chunks to an editor */
   APPEND_TEXT_TO_EDITOR_REALTIME = 33,
+  /** STRIKETHROUGH_TEXT_RANGES - Action to strikethrough text ranges */
+  STRIKETHROUGH_TEXT_RANGES = 34,
   UNRECOGNIZED = -1,
 }
 
@@ -144,6 +146,9 @@ export function clientUIActionTypeFromJSON(object: any): ClientUIActionType {
     case 33:
     case "APPEND_TEXT_TO_EDITOR_REALTIME":
       return ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME;
+    case 34:
+    case "STRIKETHROUGH_TEXT_RANGES":
+      return ClientUIActionType.STRIKETHROUGH_TEXT_RANGES;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -211,6 +216,8 @@ export function clientUIActionTypeToJSON(object: ClientUIActionType): string {
       return "SET_EDITOR_CONTENT";
     case ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME:
       return "APPEND_TEXT_TO_EDITOR_REALTIME";
+    case ClientUIActionType.STRIKETHROUGH_TEXT_RANGES:
+      return "STRIKETHROUGH_TEXT_RANGES";
     case ClientUIActionType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -337,6 +344,20 @@ export interface HighlightRangeProto {
   correctVersion?: string | undefined;
 }
 
+/** Message to represent a single text strikethrough range */
+export interface StrikeThroughRangeProto {
+  /** Unique identifier for the strikethrough */
+  id: string;
+  /** Start position (ProseMirror index) */
+  start: number;
+  /** End position (ProseMirror index) */
+  end: number;
+  /** Type of strikethrough (e.g., 'deletion', 'suggestion') */
+  type: string;
+  /** Optional message/comment */
+  message?: string | undefined;
+}
+
 /** Message to represent a single text edit suggestion */
 export interface SuggestTextEditPayloadProto {
   /** Unique identifier for the suggestion */
@@ -431,7 +452,11 @@ export interface AgentToClientUIActionRequest {
     | SetEditorContentPayloadProto
     | undefined;
   /** Payload for APPEND_TEXT_TO_EDITOR_REALTIME */
-  appendTextToEditorRealtimePayload?: AppendTextToEditorRealtimePayloadProto | undefined;
+  appendTextToEditorRealtimePayload?:
+    | AppendTextToEditorRealtimePayloadProto
+    | undefined;
+  /** Payload for STRIKETHROUGH_TEXT_RANGES */
+  strikethroughRangesPayload: StrikeThroughRangeProto[];
 }
 
 export interface AgentToClientUIActionRequest_ParametersEntry {
@@ -1185,6 +1210,130 @@ export const HighlightRangeProto: MessageFns<HighlightRangeProto> = {
   },
 };
 
+function createBaseStrikeThroughRangeProto(): StrikeThroughRangeProto {
+  return { id: "", start: 0, end: 0, type: "", message: undefined };
+}
+
+export const StrikeThroughRangeProto: MessageFns<StrikeThroughRangeProto> = {
+  encode(message: StrikeThroughRangeProto, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.start !== 0) {
+      writer.uint32(16).int32(message.start);
+    }
+    if (message.end !== 0) {
+      writer.uint32(24).int32(message.end);
+    }
+    if (message.type !== "") {
+      writer.uint32(34).string(message.type);
+    }
+    if (message.message !== undefined) {
+      writer.uint32(42).string(message.message);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StrikeThroughRangeProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStrikeThroughRangeProto();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.id = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.start = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.end = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.type = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.message = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StrikeThroughRangeProto {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      start: isSet(object.start) ? globalThis.Number(object.start) : 0,
+      end: isSet(object.end) ? globalThis.Number(object.end) : 0,
+      type: isSet(object.type) ? globalThis.String(object.type) : "",
+      message: isSet(object.message) ? globalThis.String(object.message) : undefined,
+    };
+  },
+
+  toJSON(message: StrikeThroughRangeProto): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.start !== 0) {
+      obj.start = Math.round(message.start);
+    }
+    if (message.end !== 0) {
+      obj.end = Math.round(message.end);
+    }
+    if (message.type !== "") {
+      obj.type = message.type;
+    }
+    if (message.message !== undefined) {
+      obj.message = message.message;
+    }
+    return obj;
+  },
+
+  create(base?: DeepPartial<StrikeThroughRangeProto>): StrikeThroughRangeProto {
+    return StrikeThroughRangeProto.fromPartial(base ?? {});
+  },
+  fromPartial(object: DeepPartial<StrikeThroughRangeProto>): StrikeThroughRangeProto {
+    const message = createBaseStrikeThroughRangeProto();
+    message.id = object.id ?? "";
+    message.start = object.start ?? 0;
+    message.end = object.end ?? 0;
+    message.type = object.type ?? "";
+    message.message = object.message ?? undefined;
+    return message;
+  },
+};
+
 function createBaseSuggestTextEditPayloadProto(): SuggestTextEditPayloadProto {
   return { suggestionId: "", startPos: 0, endPos: 0, originalText: "", newText: "" };
 }
@@ -1753,6 +1902,7 @@ function createBaseAgentToClientUIActionRequest(): AgentToClientUIActionRequest 
     showTooltipOrCommentPayload: undefined,
     setEditorContentPayload: undefined,
     appendTextToEditorRealtimePayload: undefined,
+    strikethroughRangesPayload: [],
   };
 }
 
@@ -1788,6 +1938,9 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
     if (message.appendTextToEditorRealtimePayload !== undefined) {
       AppendTextToEditorRealtimePayloadProto.encode(message.appendTextToEditorRealtimePayload, writer.uint32(82).fork())
         .join();
+    }
+    for (const v of message.strikethroughRangesPayload) {
+      StrikeThroughRangeProto.encode(v!, writer.uint32(90).fork()).join();
     }
     return writer;
   },
@@ -1885,6 +2038,14 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
           );
           continue;
         }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.strikethroughRangesPayload.push(StrikeThroughRangeProto.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1923,6 +2084,9 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
       appendTextToEditorRealtimePayload: isSet(object.appendTextToEditorRealtimePayload)
         ? AppendTextToEditorRealtimePayloadProto.fromJSON(object.appendTextToEditorRealtimePayload)
         : undefined,
+      strikethroughRangesPayload: globalThis.Array.isArray(object?.strikethroughRangesPayload)
+        ? object.strikethroughRangesPayload.map((e: any) => StrikeThroughRangeProto.fromJSON(e))
+        : [],
     };
   },
 
@@ -1966,6 +2130,9 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
         message.appendTextToEditorRealtimePayload,
       );
     }
+    if (message.strikethroughRangesPayload?.length) {
+      obj.strikethroughRangesPayload = message.strikethroughRangesPayload.map((e) => StrikeThroughRangeProto.toJSON(e));
+    }
     return obj;
   },
 
@@ -2008,6 +2175,8 @@ export const AgentToClientUIActionRequest: MessageFns<AgentToClientUIActionReque
       (object.appendTextToEditorRealtimePayload !== undefined && object.appendTextToEditorRealtimePayload !== null)
         ? AppendTextToEditorRealtimePayloadProto.fromPartial(object.appendTextToEditorRealtimePayload)
         : undefined;
+    message.strikethroughRangesPayload =
+      object.strikethroughRangesPayload?.map((e) => StrikeThroughRangeProto.fromPartial(e)) || [];
     return message;
   },
 };

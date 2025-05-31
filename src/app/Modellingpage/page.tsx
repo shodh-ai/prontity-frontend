@@ -805,7 +805,7 @@ export default function RoxPage() {
             maxWidth: '800px', // Constrain width for better readability
             width: '90%', // Ensure it's responsive
         }}>
-            <h4 style={{ marginBottom: '10px', color: '#333', textAlign: 'center' }}>Editable Text Area (with Highlights)</h4>
+            <h4 style={{ marginBottom: '10px', color: '#333', textAlign: 'center' }}></h4>
             <TiptapEditor
                 initialContent={editorContent}
                 extensions={tiptapExtensions}

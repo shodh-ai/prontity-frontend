@@ -71,6 +71,15 @@ message HighlightRangeProto {
   optional string correct_version = 7;// Optional suggested correction
 }
 
+// Message to represent a single text strikethrough range
+message StrikeThroughRangeProto {
+  string id = 1;                 // Unique identifier for the strikethrough
+  int32 start = 2;               // Start position (ProseMirror index)
+  int32 end = 3;                 // End position (ProseMirror index)
+  string type = 4;               // Type of strikethrough (e.g., 'deletion', 'suggestion')
+  optional string message = 5;    // Optional message/comment
+}
+
 // Message to represent a single text edit suggestion
 message SuggestTextEditPayloadProto {
   string suggestion_id = 1;     // Unique identifier for the suggestion
@@ -167,6 +176,7 @@ enum ClientUIActionType {
   SHOW_TOOLTIP_OR_COMMENT = 31;  // Action to display a tooltip or comment
   SET_EDITOR_CONTENT = 32;       // Action to set the entire content of an editor
   APPEND_TEXT_TO_EDITOR_REALTIME = 33; // Action to append text chunks to an editor
+  STRIKETHROUGH_TEXT_RANGES = 34;      // Action to strikethrough text ranges
   // Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC
 
 }
@@ -183,6 +193,7 @@ message AgentToClientUIActionRequest {
   optional ShowTooltipOrCommentPayloadProto show_tooltip_or_comment_payload = 8; // Payload for SHOW_TOOLTIP_OR_COMMENT
   optional SetEditorContentPayloadProto set_editor_content_payload = 9;       // Payload for SET_EDITOR_CONTENT
   optional AppendTextToEditorRealtimePayloadProto append_text_to_editor_realtime_payload = 10; // Payload for APPEND_TEXT_TO_EDITOR_REALTIME
+  repeated StrikeThroughRangeProto strikethrough_ranges_payload = 11; // Payload for STRIKETHROUGH_TEXT_RANGES
                                       // For SHOW_ALERT: {"message": "Hello!", "type": "info/error/warning"}
                                       // For UPDATE_TEXT_CONTENT: {"text": "New content"}
                                       // For TOGGLE_ELEMENT_VISIBILITY: {"visible": "true/false"} (or just toggle)

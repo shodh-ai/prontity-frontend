@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import TiptapEditor, { TiptapEditorHandle } from '@/components/TiptapEditor'; // Adjusted path, import handle
 import { StarterKit } from '@tiptap/starter-kit';
 import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension'; // Import the extension instead of the raw plugin
-import { Highlight } from '@/components/TiptapEditor/highlightInterface'; // Adjusted path
+import { ChatBubbleExtension } from '@/components/TiptapEditor/ChatBubbleExtension'; // Import ChatBubbleExtension
+import { StrikeThroughExtension } from '@/components/TiptapEditor/StrikeThroughExtension'; // Direct import
+import ChatBubble from '@/components/ChatBubble'; // Import ChatBubble component
+import ReactDOM from 'react-dom';
+import { Highlight } from '@/components/TiptapEditor/highlightInterface'; // Import Highlight interface
+import { Editor } from '@tiptap/core';
 import Image from 'next/image';
 import {
   Room,
@@ -19,6 +24,7 @@ import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import AgentTextInput from '@/components/ui/AgentTextInput';
 // Import other UI components if needed, e.g., Button from '@/components/ui/button';
 import StudentStatusDisplay from '@/components/StudentStatusDisplay';
+import AiFeedbackDisplay, { AiFeedbackMessage } from '@/components/AiFeedbackDisplay'; // Import the new component and interface
 import { Button } from '@/components/ui/button'; // Assuming you have a Button component
 import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession'; // Import LiveKitRpcAdapter
 import AudioHandler from '@/components/Audiorendering'; // Import AudioHandler
@@ -30,8 +36,10 @@ import {
   ClientUIActionResponse,
   ClientUIActionType,
   NotifyPageLoadRequest,   // For F2B Page Load Notification
-  HighlightRangeProto, // Added for text highlighting payload
+  HighlightRangeProto,
+  StrikeThroughRangeProto, // Added for text highlighting payload
 } from '@/generated/protos/interaction';
+import { StrikeThroughRange } from '@/components/TiptapEditor/strikeThroughInterface';
 
 // Helper functions for Base64
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -65,6 +73,8 @@ export default function RoxPage() {
   const docsIconRef = useRef<HTMLImageElement>(null);
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
   const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
+  const [aiFeedbackMessages, setAiFeedbackMessages] = useState<AiFeedbackMessage[]>([]); // State for AI feedback
+  const [visibleBubbleId, setVisibleBubbleId] = useState<string | null>(null);
 
   // State for agent-controlled UI elements
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState(
@@ -74,9 +84,20 @@ export default function RoxPage() {
 
   // State for Tiptap Editor
   const [editorContent, setEditorContent] = useState<string>(
-    '<p>Hello from Tiptap! The agent will highlight text in this editor.</p><p>This is a second paragraph to test highlighting across multiple blocks of text. The agent can receive commands to highlight specific ranges here.</p>'
+    '<p>Hello from Tiptap! The agent will highlight text in this editor. Say Hello again for another test.</p><p>This is a second paragraph to test highlighting across multiple blocks of text. The agent can receive commands to highlight specific ranges here.</p>'
   );
   const [highlightData, setHighlightData] = useState<Highlight[]>([]);
+  const [strikeThroughData, setStrikeThroughData] = useState<StrikeThroughRange[]>([]);
+  const [activeStrikeThroughId, setActiveStrikeThroughId] = useState<string | null>(null);
+
+  // State for chat bubbles
+  interface ActiveBubble {
+    id: string; // Corresponds to the span ID from ChatBubbleExtension
+    content: string;
+    element: HTMLElement | null; // The anchor element in the editor
+  }
+  const [activeBubbles, setActiveBubbles] = useState<ActiveBubble[]>([]);
+  const [tiptapInstance, setTiptapInstance] = useState<Editor | null>(null);
 
   // Callback to handle text suggestion clicks
   const handleTextSuggestionClick = (highlight: Highlight) => {
@@ -112,9 +133,78 @@ export default function RoxPage() {
     setHighlightData(prev => prev.filter(h => h.id !== highlight.id));
   };
 
+  // Effect to get the Tiptap editor instance once available
+  useLayoutEffect(() => {
+    const currentEditorOnRef = tiptapEditorRef.current?.editor;
+    console.log('[ChatBubbleDebug] RoxPage useLayoutEffect for tiptapInstance. tiptapEditorRef.current:', tiptapEditorRef.current);
+    console.log('[ChatBubbleDebug] RoxPage useLayoutEffect for tiptapInstance. currentEditorOnRef:', currentEditorOnRef);
+    console.log('[ChatBubbleDebug] RoxPage useLayoutEffect for tiptapInstance. Current tiptapInstance state:', tiptapInstance);
+
+    if (currentEditorOnRef && currentEditorOnRef !== tiptapInstance) {
+      console.log('[ChatBubbleDebug] RoxPage useLayoutEffect: Attempting to SET tiptapInstance with:', currentEditorOnRef);
+      setTiptapInstance(currentEditorOnRef);
+    } else if (!currentEditorOnRef && tiptapInstance !== null) {
+      console.log('[ChatBubbleDebug] RoxPage useLayoutEffect: Attempting to CLEAR tiptapInstance.');
+      setTiptapInstance(null);
+    } else {
+      // console.log('[ChatBubbleDebug] RoxPage useLayoutEffect: No change to tiptapInstance needed.');
+    }
+    // No dependency array means this runs after every render, checking the ref.
+  });
+
+  // Effect to listen for chat bubble anchor clicks
+  useEffect(() => {
+    const handleAnchorClick = (event: Event) => {
+      const customEvent = event as CustomEvent<{ bubbleId: string }>;
+      console.log('[ChatBubbleDebug] RoxPage: Received event:', event);
+      
+      if (customEvent.detail && customEvent.detail.bubbleId) {
+        const clickedBubbleId = customEvent.detail.bubbleId;
+        console.log('[ChatBubbleDebug] RoxPage: Received chat-bubble-anchor-click for ID:', clickedBubbleId);
+        
+        // Find if this bubble exists in activeBubbles
+        const bubbleExists = activeBubbles.some(bubble => bubble.id === clickedBubbleId);
+        console.log('[ChatBubbleDebug] Bubble exists in activeBubbles?', bubbleExists);
+        
+        // Toggle visibility
+        setVisibleBubbleId(prevVisibleId => {
+          const newValue = prevVisibleId === clickedBubbleId ? null : clickedBubbleId;
+          console.log('[ChatBubbleDebug] Toggling visibleBubbleId from', prevVisibleId, 'to', newValue);
+          return newValue;
+        });
+      } else {
+        console.error('[ChatBubbleDebug] Event missing detail or bubbleId:', customEvent);
+      }
+    };
+
+    // Add a global click handler to test if clicks are being captured
+    const testClickHandler = (e: MouseEvent) => {
+      console.log('[ChatBubbleDebug] Document click detected at:', e.clientX, e.clientY);
+      // Check if click was in editor area
+      const editorEl = document.querySelector('.ProseMirror');
+      if (editorEl && editorEl.contains(e.target as Node)) {
+        console.log('[ChatBubbleDebug] Click was inside editor');
+      }
+    };
+    
+    document.addEventListener('click', testClickHandler, true);
+    document.addEventListener('chat-bubble-anchor-click', handleAnchorClick);
+    console.log('[ChatBubbleDebug] RoxPage: Added all event listeners.');
+
+    return () => {
+      document.removeEventListener('click', testClickHandler, true);
+      document.removeEventListener('chat-bubble-anchor-click', handleAnchorClick);
+      console.log('[ChatBubbleDebug] RoxPage: Removed all event listeners.');
+    };
+  }, [activeBubbles]); // Add activeBubbles as dependency
+
   // Tiptap extensions
   const tiptapExtensions = [
     StarterKit.configure(),
+    ChatBubbleExtension.configure({
+      targetWord: 'Hello', // The word to attach bubbles to
+      bubbleIdPrefix: 'roxpage-bubble-'
+    }),
     HighlightExtension.configure({
       onHighlightClick: (highlightId) => {
         console.log('[RoxPage] Highlight clicked in Tiptap, ID:', highlightId);
@@ -125,9 +215,57 @@ export default function RoxPage() {
       },
       onTextSuggestionClick: handleTextSuggestionClick, // Wire up the new callback
     }),
+    StrikeThroughExtension.configure({
+      onStrikeThroughClick: (strikeThroughId: string | number) => {
+        console.log('[RoxPage] StrikeThrough clicked in Tiptap, ID:', strikeThroughId);
+        const clickedStrikeThrough = strikeThroughData.find(s => s.id === strikeThroughId);
+        if (clickedStrikeThrough) {
+          console.log('[RoxPage] Clicked strikethrough data:', clickedStrikeThrough);
+          // Convert id to string if it's a number to match state type
+          const idAsString = typeof strikeThroughId === 'number' ? String(strikeThroughId) : strikeThroughId;
+          setActiveStrikeThroughId(prevId => prevId === idAsString ? null : idAsString);
+        }
+      },
+    }),
     // Placeholder.configure({ placeholder: 'Start typing...' }),
     // CharacterCount.configure({ limit: 10000 }),
   ];
+
+  // Effect to find bubble anchor points and prepare them for React Portals
+  useEffect(() => {
+    console.log('[ChatBubbleDebug] Bubble useEffect. isConnected:', isConnected, 'TiptapInstance:', !!tiptapInstance);
+
+    if (!tiptapInstance || !isConnected) {
+      console.log('[ChatBubbleDebug] Tiptap instance not ready or not connected. Exiting bubble setup.');
+      // Optionally clear bubbles if conditions are not met
+      if (activeBubbles.length > 0) setActiveBubbles([]); 
+      return;
+    }
+
+    const editorView = tiptapInstance.view;
+    console.log('[ChatBubbleDebug] Editor view:', editorView);
+    const bubbleAnchors = editorView.dom.querySelectorAll('span.chat-bubble-anchor');
+    console.log('[ChatBubbleDebug] Found bubble anchors:', bubbleAnchors); 
+    
+    const newActiveBubbles: ActiveBubble[] = [];
+    bubbleAnchors.forEach((anchorElement, index) => {
+      console.log(`[ChatBubbleDebug] Anchor ${index}:`, anchorElement, anchorElement.id);
+      // For this example, let's activate the first bubble over "Hello"
+      if (index === 0) { // Only activate the first 'Hello'
+        newActiveBubbles.push({
+          id: anchorElement.id,
+          content: 'This is a bubble!', // Content for the first bubble
+          element: anchorElement as HTMLElement,
+        });
+      }
+    });
+    console.log('[ChatBubbleDebug] New active bubbles state:', newActiveBubbles);
+    setActiveBubbles(newActiveBubbles);
+
+    // Cleanup: If you need to remove bubbles when component unmounts or editor updates significantly
+    // you might need more sophisticated logic here or within the extension.
+
+  }, [isConnected, editorContent, tiptapInstance, setActiveBubbles, activeBubbles.length]); // Added tiptapInstance and activeBubbles.length
 
   const roomName = 'Roxpage'; // Or dynamically set if needed
   const userName = 'TestUser'; // Or dynamically set if needed
@@ -165,6 +303,22 @@ export default function RoxPage() {
 
       let success = true;
       let message = "Action performed successfully by RoxPage.";
+
+      // Example: How you might receive feedback via PerformUIAction
+      // This is a placeholder. You'll need to define how your AI agent sends feedback.
+      if (request.actionType === ClientUIActionType.SHOW_ALERT && request.parameters?.source === 'AI_FEEDBACK') {
+        const newFeedback: AiFeedbackMessage = {
+          id: request.requestId || `feedback-${Date.now()}`,
+          text: request.parameters.message || 'AI provided feedback.',
+          timestamp: new Date(),
+          source: 'AI',
+        };
+        setAiFeedbackMessages(prevMessages => [...prevMessages, newFeedback]);
+        message = "AI Feedback processed and displayed.";
+        // Set success to true if this was the intended action for SHOW_ALERT with this source
+        // success = true; 
+        // Potentially break or return here if this SHOW_ALERT is only for feedback
+      }
 
       // Add a fallback div to display editor content if the editor fails
       if (!document.getElementById('editorFallbackDisplay')) {
@@ -288,6 +442,58 @@ export default function RoxPage() {
           }
           break;
 
+
+          case ClientUIActionType.STRIKETHROUGH_TEXT_RANGES:
+            console.log('[RoxPage] B2F Action: STRIKETHROUGH_TEXT_RANGES');
+            try { // Outer try for the whole STRIKETHROUGH_TEXT_RANGES logic
+              // Prioritize using the new strikethroughRangesPayload
+              if (request.strikethroughRangesPayload && Array.isArray(request.strikethroughRangesPayload) && request.strikethroughRangesPayload.length > 0) {
+                const newStrikeThroughs = request.strikethroughRangesPayload.map((s: StrikeThroughRangeProto) => ({
+                  id: s.id || `strikethrough-${Date.now()}-${Math.random()}`,
+                  start: s.start,
+                  end: s.end,
+                  type: s.type || 'default_strikethrough',
+                  message: s.message || undefined, // Ensure message is string or undefined
+                }));
+                setStrikeThroughData(newStrikeThroughs as StrikeThroughRange[]); // Ensure StrikeThroughRange type matches
+                message = 'Text ranges strikethrough successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to old parameters.strikeThroughData (with a warning)
+                const strikeThroughsString = request.parameters["strikeThroughData"];
+                if (strikeThroughsString) {
+                  console.warn('[RoxPage] STRIKETHROUGH_TEXT_RANGES: Using fallback "parameters.strikeThroughData". Please update agent to use "strikethroughRangesPayload".');
+                  // Inner try for parsing fallback data
+                  try {
+                    const parsedStrikeThroughs = JSON.parse(strikeThroughsString) as any[];
+                    const newStrikeThroughs = parsedStrikeThroughs.map((s: any) => ({
+                      id: s.id || `strikethrough-${Date.now()}-${Math.random()}`,
+                      start: s.start,
+                      end: s.end,
+                      type: s.type || 'default_strikethrough',
+                      message: s.message || undefined,
+                    }));
+                    setStrikeThroughData(newStrikeThroughs as StrikeThroughRange[]);
+                    message = 'Text ranges strikethrough successfully from fallback parameters.';
+                    success = true;
+                  } catch (parseError) { // Catch for JSON.parse error
+                    console.error('[RoxPage] STRIKETHROUGH_TEXT_RANGES: Failed to parse fallback strikeThroughData', parseError);
+                    success = false;
+                    message = "Error: Failed to parse strikeThroughData from parameters.";
+                  }
+                } else {
+                  // Neither payload nor fallback parameters found
+                  success = false;
+                  message = "Error: No strikethrough data found in payload or parameters for STRIKETHROUGH_TEXT_RANGES.";
+                }
+              }
+            } catch (e) { // Catch for the outer try block for STRIKETHROUGH_TEXT_RANGES
+              console.error('[RoxPage] STRIKETHROUGH_TEXT_RANGES: Error processing strikethrough action:', e);
+              success = false;
+              message = 'Error: Could not process strikethrough data.';
+            }
+            break;
+  
         case ClientUIActionType.SUGGEST_TEXT_EDIT:
           console.log('[RoxPage] B2F Action: SUGGEST_TEXT_EDIT');
           if (request.suggestTextEditPayload) {
@@ -766,12 +972,24 @@ export default function RoxPage() {
     setIsStudentStatusDisplayOpen(!isStudentStatusDisplayOpen);
   };
 
+  // Mock function to add AI feedback for testing
+  const addMockAiFeedback = () => {
+    const mockMessage: AiFeedbackMessage = {
+      id: `mock-feedback-${Date.now()}`,
+      text: `This is a mock AI feedback message added at ${new Date().toLocaleTimeString()}. Consider revising the conclusion. It seems a bit abrupt.`,
+      timestamp: new Date(),
+      source: 'AI (Mock)',
+    };
+    setAiFeedbackMessages(prev => [...prev, mockMessage]);
+  };
+
   return (
     <div className="flex h-screen bg-white text-gray-800 overflow-hidden bg-[image:radial-gradient(ellipse_at_top_right,_#B7C8F3_0%,_transparent_70%),_radial-gradient(ellipse_at_bottom_left,_#B7C8F3_0%,_transparent_70%)]">
       {/* Sidebar */}
       <aside className="w-20 p-4 flex flex-col items-center space-y-6">
         <Image src="/final-logo-1.png" alt="Logo" width={32} height={32} className="rounded-lg" />
-        <div className="flex-grow flex flex-col items-center justify-center space-y-4">
+        <div className="flex-grow overflow-y-auto p-6 space-y-6 tiptap-container">
+          <Button onClick={addMockAiFeedback} variant="outline" className="mb-4">Add Mock AI Feedback</Button>
           <Image src="/user.svg" alt="User Profile" width={24} height={24} className="cursor-pointer hover:opacity-75" />
           <Image src="/mic-on.svg" alt="Mic On" width={24} height={24} className="cursor-pointer hover:opacity-75" />
           <Image src="/next.svg" alt="Next" width={24} height={24} className="cursor-pointer hover:opacity-75" />
@@ -789,11 +1007,12 @@ export default function RoxPage() {
             </Button>
             {rpcCallStatus && <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 text-center w-full break-words">{rpcCallStatus}</p>}
           </div>
-        )}</aside>
+        )}
+      </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 flex flex-col items-center justify-center p-8 relative">
-          {isConnected && room && <AudioHandler room={room} />}
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col items-center justify-center p-8 relative">
+        {isConnected && room && <AudioHandler room={room} />}
 
         {/* Tiptap Editor Integration */}
         <div style={{
@@ -807,9 +1026,18 @@ export default function RoxPage() {
         }}>
             <h4 style={{ marginBottom: '10px', color: '#333', textAlign: 'center' }}>Editable Text Area (with Highlights)</h4>
             <TiptapEditor
+                ref={tiptapEditorRef}
                 initialContent={editorContent}
                 extensions={tiptapExtensions}
                 highlightData={highlightData}
+                strikeThroughData={strikeThroughData}
+                activeStrikeThroughId={activeStrikeThroughId}
+                onStrikeThroughClick={(id: string | number) => {
+                  console.log('[RoxPage] StrikeThrough clicked (callback), ID:', id);
+                  // Convert id to string if it's a number to match state type
+                  const idAsString = typeof id === 'number' ? String(id) : id;
+                  setActiveStrikeThroughId(prevId => prevId === idAsString ? null : idAsString);
+                }}
                 isEditable={true} // Set to true to allow editing, false for display-only with highlights
                 // Optional: if you need to sync content back from user edits
                 onUpdate={({ editor }) => {
@@ -820,6 +1048,39 @@ export default function RoxPage() {
             />
         </div>
 
+        {/* AI Feedback Display Section */}
+        <AiFeedbackDisplay messages={aiFeedbackMessages} />
+        
+        {/* Test button to toggle first chat bubble */}
+        <div className="mb-4">
+          <Button 
+            onClick={() => {
+              console.log('[ChatBubbleDebug] Test button clicked');
+              const firstBubbleId = activeBubbles[0]?.id;
+              if (firstBubbleId) {
+                console.log('[ChatBubbleDebug] First bubble ID:', firstBubbleId);
+                setVisibleBubbleId(prevId => prevId === firstBubbleId ? null : firstBubbleId);
+              } else {
+                console.log('[ChatBubbleDebug] No bubbles available yet');
+              }
+            }}
+            variant="outline"
+            className="mb-2"
+          >
+            Toggle First Chat Bubble
+          </Button>
+        </div>
+
+        {/* Render Chat Bubbles using Portals */}
+        {activeBubbles.map(bubble => {
+          if (bubble.element && bubble.id === visibleBubbleId) { // Only render if ID matches visibleBubbleId
+            return ReactDOM.createPortal(
+              <ChatBubble content={bubble.content} />,
+              bubble.element
+            );
+          }
+          return null;
+        })}
 
         <div className="w-full max-w-3xl absolute bottom-0 mb-12 flex flex-col items-center">
             
@@ -851,3 +1112,5 @@ export default function RoxPage() {
     </div>
   );
 }
+
+

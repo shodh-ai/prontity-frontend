@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState, useEffect, useContext } from 'react';
-import { RoomContext } from '@livekit/components-react';
+import React, { useState, useEffect } from 'react';
+import { Room } from 'livekit-client'; // Import Room type
 import Timer from './Timer';
 
 interface TimerControllerProps {
   visible?: boolean;
+  room: Room | null;
+  onTimerStarts?: () => void; // Callback for when timer starts
+  onTimerEnds?: () => void;   // Callback for when timer ends
 }
 
-const TimerController: React.FC<TimerControllerProps> = ({ visible = true }) => {
-  const room = useContext(RoomContext);
+const TimerController: React.FC<TimerControllerProps> = ({ visible = true, room, onTimerStarts, onTimerEnds }) => {
   const [timerActive, setTimerActive] = useState(false);
   const [timerDuration, setTimerDuration] = useState(45);
   const [timerLabel, setTimerLabel] = useState('Time Remaining');
@@ -18,6 +20,7 @@ const TimerController: React.FC<TimerControllerProps> = ({ visible = true }) => 
   // Handle completion of the timer
   const handleTimerComplete = () => {
     console.log('Timer completed');
+    onTimerEnds?.(); // Call the reconnect callback
     setTimerActive(false);
   };
 
@@ -40,6 +43,7 @@ const TimerController: React.FC<TimerControllerProps> = ({ visible = true }) => 
             setTimerDuration(data.duration || 45);
             setTimerLabel(data.message || 'Time Remaining');
             setTimerMode(data.mode || 'speaking');
+            onTimerStarts?.(); // Call the disconnect callback
             setTimerActive(true);
           } else if (data.action === 'stop') {
             setTimerActive(false);
@@ -52,13 +56,13 @@ const TimerController: React.FC<TimerControllerProps> = ({ visible = true }) => 
 
     // Register listener for data messages - using correct LiveKit event name
     if (room) {
-      room.on('dataReceived', handleData as any);
+      room.on('dataReceived', handleData);
     }
 
     return () => {
       // Clean up listener
       if (room) {
-        room.off('dataReceived', handleData as any);
+        room.off('dataReceived', handleData);
       }
     };
   }, [room]);

@@ -40,6 +40,11 @@ class AgentInteractionStub(object):
                 request_serializer=interaction__pb2.FrontendButtonClickRequest.SerializeToString,
                 response_deserializer=interaction__pb2.AgentResponse.FromString,
                 _registered_method=True)
+        self.NotifyPageLoad = channel.unary_unary(
+                '/rox.interaction.AgentInteraction/NotifyPageLoad',
+                request_serializer=interaction__pb2.NotifyPageLoadRequest.SerializeToString,
+                response_deserializer=interaction__pb2.AgentResponse.FromString,
+                _registered_method=True)
 
 
 class AgentInteractionServicer(object):
@@ -52,12 +57,24 @@ class AgentInteractionServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def NotifyPageLoad(self, request, context):
+        """Agent acknowledges page load
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AgentInteractionServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'HandleFrontendButton': grpc.unary_unary_rpc_method_handler(
                     servicer.HandleFrontendButton,
                     request_deserializer=interaction__pb2.FrontendButtonClickRequest.FromString,
+                    response_serializer=interaction__pb2.AgentResponse.SerializeToString,
+            ),
+            'NotifyPageLoad': grpc.unary_unary_rpc_method_handler(
+                    servicer.NotifyPageLoad,
+                    request_deserializer=interaction__pb2.NotifyPageLoadRequest.FromString,
                     response_serializer=interaction__pb2.AgentResponse.SerializeToString,
             ),
     }
@@ -88,6 +105,33 @@ class AgentInteraction(object):
             target,
             '/rox.interaction.AgentInteraction/HandleFrontendButton',
             interaction__pb2.FrontendButtonClickRequest.SerializeToString,
+            interaction__pb2.AgentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def NotifyPageLoad(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/rox.interaction.AgentInteraction/NotifyPageLoad',
+            interaction__pb2.NotifyPageLoadRequest.SerializeToString,
             interaction__pb2.AgentResponse.FromString,
             options,
             channel_credentials,

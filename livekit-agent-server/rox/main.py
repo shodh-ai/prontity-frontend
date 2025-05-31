@@ -660,6 +660,12 @@ async def entrypoint(ctx: JobContext):
                     agent_rpc_service.HandleFrontendButton
                 )
                 logger.info("Successfully registered RPC handler for rox.interaction.AgentInteraction/HandleFrontendButton.")
+
+                ctx.room.local_participant.register_rpc_method(
+                    "rox.interaction.AgentInteraction/NotifyPageLoad",  # Use package.Service/Method name
+                    agent_rpc_service.NotifyPageLoad
+                )
+                logger.info("Successfully registered RPC handler for rox.interaction.AgentInteraction/NotifyPageLoad.")
             else:
                 logger.error("Cannot register RPC handler: room or local_participant not available.")
         except Exception as e_rpc_reg:

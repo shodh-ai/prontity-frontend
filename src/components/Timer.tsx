@@ -1,28 +1,61 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+
+export interface TimerHandle {
+  startTimer: (duration: number) => void;
+  stopTimer: () => void;
+  // resetTimer: (newInitialSeconds?: number) => void; // Optional: for future use
+}
 
 interface TimerProps {
   initialSeconds?: number;
-  onComplete?: () => void;
+  onTimerStarts?: () => void; // Called when timer explicitly starts
+  onTimerEnds?: () => void;   // Called when timer completes or is stopped
   timerLabel?: string;
-  isActive?: boolean;
+  // isActive prop is removed as control is now via startTimer/stopTimer
   mode?: 'preparation' | 'speaking';
 }
 
-const Timer: React.FC<TimerProps> = ({
+const Timer = forwardRef<TimerHandle, TimerProps>(({ 
   initialSeconds = 45,
-  onComplete,
+  onTimerStarts,
+  onTimerEnds,
   timerLabel = 'Time Remaining',
-  isActive = false,
   mode = 'speaking'
-}) => {
+}, ref) => {
   const [seconds, setSeconds] = useState(initialSeconds);
-  const [isRunning, setIsRunning] = useState(isActive);
+  const [isRunning, setIsRunning] = useState(false); // Default to not running
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [label, setLabel] = useState(timerLabel);
 
-  // Style variations based on mode
+  // Expose startTimer and stopTimer via ref
+  useImperativeHandle(ref, () => ({
+    startTimer: (duration: number) => {
+      console.log(`[Timer] startTimer called with duration: ${duration}`);
+      setSeconds(duration);
+      setIsRunning(true);
+      if (onTimerStarts) {
+        onTimerStarts();
+      }
+    },
+    stopTimer: () => {
+      console.log('[Timer] stopTimer called');
+      setIsRunning(false);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      // Optionally call onTimerEnds if stopping manually means "ending"
+      // if (onTimerEnds) onTimerEnds(); 
+    },
+    // resetTimer: (newInitialSeconds?: number) => {
+    //   setIsRunning(false);
+    //   if (intervalRef.current) clearInterval(intervalRef.current);
+    //   setSeconds(newInitialSeconds ?? initialSeconds);
+    // }
+  }));
+
+  // Style variations
   const getBgColor = () => {
     if (!isRunning) return 'bg-gray-100';
     if (mode === 'preparation') return 'bg-blue-100';
@@ -35,22 +68,24 @@ const Timer: React.FC<TimerProps> = ({
     return seconds <= 10 ? 'text-red-700' : 'text-green-700';
   };
 
-  // Format seconds into MM:SS
   const formatTime = (secs: number): string => {
     const minutes = Math.floor(secs / 60);
     const remainingSeconds = secs % 60;
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
 
-  // Effects to handle timer start/stop
+  // Update label when prop changes
   useEffect(() => {
-    setIsRunning(isActive);
-  }, [isActive]);
-
-  useEffect(() => {
-    setSeconds(initialSeconds);
     setLabel(timerLabel);
-  }, [initialSeconds, timerLabel]);
+  }, [timerLabel]);
+  
+  // Reset seconds if initialSeconds prop changes AND timer is not running
+  useEffect(() => {
+    if (!isRunning) {
+        setSeconds(initialSeconds);
+    }
+  }, [initialSeconds, isRunning]);
+
 
   // Main timer logic
   useEffect(() => {
@@ -58,10 +93,11 @@ const Timer: React.FC<TimerProps> = ({
       intervalRef.current = setInterval(() => {
         setSeconds((prevSeconds) => {
           if (prevSeconds <= 1) {
-            // Timer finished
-            if (onComplete) onComplete();
             clearInterval(intervalRef.current as NodeJS.Timeout);
             setIsRunning(false);
+            if (onTimerEnds) { // Use onTimerEnds
+              onTimerEnds();
+            }
             return 0;
           }
           return prevSeconds - 1;
@@ -76,12 +112,7 @@ const Timer: React.FC<TimerProps> = ({
         clearInterval(intervalRef.current);
       }
     };
-  }, [isRunning, seconds, onComplete]);
-
-  // Skip rendering if timer is not active and has never been started
-  if (!isRunning && seconds === initialSeconds) {
-    return null;
-  }
+  }, [isRunning, seconds, onTimerEnds]);
 
   return (
     <div className={`p-4 rounded-lg shadow mb-4 transition-all ${getBgColor()}`}>
@@ -103,6 +134,7 @@ const Timer: React.FC<TimerProps> = ({
       )}
     </div>
   );
-};
+});
 
+Timer.displayName = 'Timer'; // for better debugging in React DevTools
 export default Timer;

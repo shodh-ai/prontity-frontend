@@ -44,9 +44,20 @@ message AlertButton {
   UIAction action = 2; // The action to perform when this button is clicked (e.g., DISMISS_ALERT)
 }
 
+// Message sent from frontend on page load to notify the agent
+message NotifyPageLoadRequest {
+  string task_stage = 1;     // e.g., "ROX_WELCOME_INIT"
+  string user_id = 2;        // User's identifier
+  string current_page = 3;   // e.g., "P1_RoxHome"
+  string session_id = 4;     // LiveKit Room SID or custom session ID
+  string chat_history = 5;   // Serialized chat history (e.g., JSON string)
+  optional string transcript = 6; // Optional: e.g., "client_loaded_rox_page"
+}
+
 // Service the agent will implement (called by frontend)
 service AgentInteraction {
   rpc HandleFrontendButton(FrontendButtonClickRequest) returns (AgentResponse);
+  rpc NotifyPageLoad(NotifyPageLoadRequest) returns (AgentResponse); // Agent acknowledges page load
 }
 
 // Message to represent a single text highlight range

@@ -121,6 +121,22 @@ class AlertButton(_message.Message):
     action: UIAction
     def __init__(self, label: _Optional[str] = ..., action: _Optional[_Union[UIAction, _Mapping]] = ...) -> None: ...
 
+class NotifyPageLoadRequest(_message.Message):
+    __slots__ = ("task_stage", "user_id", "current_page", "session_id", "chat_history", "transcript")
+    TASK_STAGE_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    CURRENT_PAGE_FIELD_NUMBER: _ClassVar[int]
+    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
+    CHAT_HISTORY_FIELD_NUMBER: _ClassVar[int]
+    TRANSCRIPT_FIELD_NUMBER: _ClassVar[int]
+    task_stage: str
+    user_id: str
+    current_page: str
+    session_id: str
+    chat_history: str
+    transcript: str
+    def __init__(self, task_stage: _Optional[str] = ..., user_id: _Optional[str] = ..., current_page: _Optional[str] = ..., session_id: _Optional[str] = ..., chat_history: _Optional[str] = ..., transcript: _Optional[str] = ...) -> None: ...
+
 class HighlightRangeProto(_message.Message):
     __slots__ = ("id", "start", "end", "type", "message", "wrong_version", "correct_version")
     ID_FIELD_NUMBER: _ClassVar[int]

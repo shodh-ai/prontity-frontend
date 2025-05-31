@@ -239,3 +239,96 @@ class AgentInteractionService: # Simple class without inheritance
         except Exception as e:
             logger.error(f"Error sending test request to backend: {e}")
             return False
+
+    async def NotifyPageLoad(self, invocation_data: RpcInvocationData) -> str:
+        logger.info(f"RPC NotifyPageLoad: Received call from participant: {invocation_data.caller_identity}")
+
+        request = interaction_pb2.NotifyPageLoadRequest()
+        try:
+            if isinstance(invocation_data.payload, str):
+                logger.info(f"RPC NotifyPageLoad: Payload is a string, assuming base64 encoded. Length: {len(invocation_data.payload)}")
+                try:
+                    decoded_bytes = base64.b64decode(invocation_data.payload)
+                    payload_bytes = decoded_bytes
+                except Exception as e:
+                    logger.error(f"RPC NotifyPageLoad: Failed to decode base64 payload: {e}")
+                    payload_bytes = invocation_data.payload.encode('utf-8') # Fallback
+            elif isinstance(invocation_data.payload, bytes):
+                logger.info(f"RPC NotifyPageLoad: Payload is already bytes. Length: {len(invocation_data.payload)}")
+                payload_bytes = invocation_data.payload
+            else:
+                logger.error(f"RPC NotifyPageLoad: Cannot handle payload type {type(invocation_data.payload)}")
+                error_response = interaction_pb2.AgentResponse(status_message=f"Error: Unhandled payload type {type(invocation_data.payload)}")
+                serialized_error = error_response.SerializeToString()
+                return base64.b64encode(serialized_error).decode('utf-8')
+
+            request.ParseFromString(payload_bytes)
+            logger.info(f"RPC NotifyPageLoad: Successfully parsed NotifyPageLoadRequest: user_id='{request.user_id}', page='{request.current_page}', session_id='{request.session_id}'")
+
+        except Exception as e:
+            logger.error(f"RPC NotifyPageLoad: Failed to parse payload: {e}", exc_info=True)
+            error_response = interaction_pb2.AgentResponse(
+                status_message=f"Error processing NotifyPageLoad request: {str(e)}",
+                data_payload="Parse error"
+            )
+            serialized_error = error_response.SerializeToString()
+            return base64.b64encode(serialized_error).decode('utf-8')
+
+        if self.agent_instance:
+            # Update agent's context
+            page_load_context = {
+                "user_id": request.user_id,
+                "task_stage": request.task_stage,
+                "current_page": request.current_page,
+                "session_id": request.session_id,
+                "chat_history": request.chat_history, # Assuming it's a JSON string as sent by client
+                "transcript_on_load": request.transcript, # Optional field
+                "page_load_timestamp": time.time()
+            }
+            self.agent_instance._latest_student_context = page_load_context
+            self.agent_instance._latest_session_id = request.session_id
+            logger.info(f"RPC NotifyPageLoad: Agent context updated. User: '{request.user_id}', Page: '{request.current_page}', Session: '{request.session_id}'")
+            logger.debug(f"RPC NotifyPageLoad: Full context updated: {page_load_context}")
+
+            # --- START MODIFICATION FOR TIMER TEST ---
+            if request.current_page == 'writingpractisetest':
+                logger.info(f"RPC NotifyPageLoad: Page is 'writingpractisetest'. Attempting to send START_TIMER command to {invocation_data.caller_identity}.")
+                try:
+                    timer_duration = 10  # seconds
+                    ui_action_request = interaction_pb2.AgentToClientUIActionRequest(
+                        action_type=interaction_pb2.ClientUIActionType.START_TIMER,
+                        start_timer_payload=interaction_pb2.StartTimerPayload(duration_seconds=timer_duration)
+                    )
+                    
+                    if hasattr(self.agent_instance, 'send_action_to_participant'):
+                        await self.agent_instance.send_action_to_participant(
+                            participant_identity=invocation_data.caller_identity,
+                            action_request=ui_action_request
+                        )
+                        logger.info(f"RPC NotifyPageLoad: START_TIMER command ({timer_duration}s) sent to {invocation_data.caller_identity}.")
+                    elif hasattr(self.agent_instance, '_room_manager') and hasattr(self.agent_instance._room_manager, 'send_action_to_participant_in_default_room'):
+                         await self.agent_instance._room_manager.send_action_to_participant_in_default_room(
+                            participant_identity=invocation_data.caller_identity,
+                            action_request=ui_action_request
+                        )
+                         logger.info(f"RPC NotifyPageLoad: START_TIMER command ({timer_duration}s) sent via RoomManager to {invocation_data.caller_identity}.")
+                    else:
+                        logger.error("RPC NotifyPageLoad: Agent instance does not have a recognized method to send action to participant. Timer not started.")
+
+                except Exception as e:
+                    logger.error(f"RPC NotifyPageLoad: Failed to send START_TIMER command: {e}", exc_info=True)
+            # --- END MODIFICATION FOR TIMER TEST ---
+
+            status_msg = f"Page load notification for '{request.current_page}' by user '{request.user_id}' received and processed."
+            data_payload_str = f"Session ID: {request.session_id}, Context Updated."
+        else:
+            logger.warning("RPC NotifyPageLoad: agent_instance is None. Cannot update context.")
+            status_msg = "Page load notification received, but agent instance not available to update context."
+            data_payload_str = "Agent instance not found."
+
+        response = interaction_pb2.AgentResponse(
+            status_message=status_msg,
+            data_payload=data_payload_str
+        )
+        serialized_response = response.SerializeToString()
+        return base64.b64encode(serialized_response).decode('utf-8')

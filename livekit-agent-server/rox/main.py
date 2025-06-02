@@ -867,10 +867,12 @@ async def entrypoint(ctx: JobContext):
                     logger.info(f"    PARTICIPANT_METADATA: Processing participant Identity: {p_obj.identity}, SID: {p_obj.sid}")
                     if p_obj.metadata:
                         try:
+                            logger.info(f"      PARTICIPANT_METADATA: Raw p_obj.metadata for {p_obj.identity}: {p_obj.metadata}")
                             metadata_dict = json.loads(p_obj.metadata)
+                            logger.info(f"      PARTICIPANT_METADATA: Parsed metadata_dict for {p_obj.identity}: {metadata_dict}")
                             user_token = metadata_dict.get('userToken')
-                            user_id_from_meta = metadata_dict.get('user_id') # Key from tokenController.js
-                            custom_llm_bridge.add_user_token(user_token)
+                            user_id_from_meta = metadata_dict.get('userId') # Key from tokenController.js
+                            custom_llm_bridge.add_user_token(user_token,user_id_from_meta)
                             if user_token:
                                 logger.info(f"      PARTICIPANT_METADATA: Found userToken for {p_obj.identity}: {user_token[:20]}...")
                             if user_id_from_meta:

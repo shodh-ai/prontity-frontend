@@ -40,9 +40,10 @@ class CustomLLMBridge(LLM):
             logger.info(f"CustomLLMBridge initialized with RoxAgent reference. Will send requests to: {self._agent_url} for page: {self._page_name}")
         else:
             logger.warning(f"CustomLLMBridge initialized WITHOUT RoxAgent reference. Context data will not be available. Will send requests to: {self._agent_url} for page: {self._page_name}")
-    def add_user_token(self, user_token: str):
+    def add_user_token(self, user_token: str, user_id: str):
         self._user_token = user_token
-        logger.info(f"User token added to CustomLLMBridge: {self._user_token}")
+        self._user_id = user_id
+        logger.info(f"!!!!!!!!!!!!!! User token added to CustomLLMBridge: {self._user_token} and user_id: {self._user_id}!!!!!!!!!!!!!!")
     def chat(self, *, chat_ctx: ChatContext = None, tools = None, tool_choice = None):
         """
         Receives the chat history, sends the latest user message to the external
@@ -244,13 +245,11 @@ class CustomLLMBridge(LLM):
                             
                             # Add the validated context to payload
                             payload['current_context'] = student_context
-                            payload['user_token'] = self._user_token
                             logger.info(f"CustomLLMBridge: Added validated current_context to payload: {student_context}")
                         else:
                             # Create a minimal valid context if none exists
                             minimal_context = {"user_id": "default_bridge_user"}
                             payload['current_context'] = minimal_context
-                            payload['user_token'] = self._user_token
                             logger.warning(f"CustomLLMBridge: Created minimal context as _latest_student_context was empty: {minimal_context}")
                         
                         # Add session_id to payload if available
@@ -261,19 +260,18 @@ class CustomLLMBridge(LLM):
                             # Generate a session ID if none exists
                             session_id = f"bridge_session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
                             payload['session_id'] = session_id
-                            payload['user_token'] = self._user_token
                             logger.warning(f"CustomLLMBridge: Generated and added new session_id as none existed: {session_id}")
                     else:
                         # Create minimal context for backend validation even without RoxAgent reference
                         minimal_context = {"user_id": "no_agent_ref_user"}
                         payload['current_context'] = minimal_context
-                        payload['user_token'] = self._user_token
                         payload['session_id'] = f"no_ref_session_{uuid.uuid4().hex[:8]}"
                         logger.warning(f"CustomLLMBridge: No RoxAgent reference, created minimal context: {minimal_context}")
 
                     # Add diagnostic field to track the flow
                     payload['_debug_source'] = 'custom_llm_bridge'
                     payload['usertoken'] = self._user_token
+                    payload['user_id'] = self._user_id
                     
                     # Force logging of the full payload to ensure we can see what's being sent
                     logger.info(f"CustomLLMBridge: CRITICAL - Sending payload to {self._agent_url}: {json.dumps(payload, indent=2)}")

@@ -27,6 +27,12 @@ import {
   ClientUIActionType,
 } from '@/generated/protos/interaction';
 
+interface UserProfile {
+  id: string;
+  // Add other relevant properties if known, e.g., name, email
+  [key: string]: any; // Allows for other properties not explicitly defined
+}
+
 // Helper functions for Base64
 function uint8ArrayToBase64(buffer: Uint8Array): string {
   let binary = '';
@@ -171,7 +177,23 @@ export default function RoxPage() {
 
         // IMPORTANT: Replace 'YOUR_PRONITY_SESSION_TOKEN' with the actual session token
         const pronitySessionToken = localStorage.getItem('token'); // TODO: Get this from auth state/context/storage
+        const userJsonString = localStorage.getItem('user'); // TODO: Get this from auth state/context/storage
+        let User: UserProfile | null = null;
 
+        if (userJsonString) {
+          try {
+            User = JSON.parse(userJsonString) as UserProfile; // Assume it matches UserProfile
+            console.log('[rox/page.tsx] Parsed User Object:', User);
+          } catch (parseError) {
+            console.error('[rox/page.tsx] Failed to parse User from localStorage:', parseError);
+            // User remains null if parsing fails, User?.id will be undefined
+          }
+        } else {
+          console.log('[rox/page.tsx] User string not found in localStorage.');
+          // User remains null
+        }
+        
+        const User_id = User?.id;
         if (!pronitySessionToken || pronitySessionToken === 'YOUR_PRONITY_SESSION_TOKEN') {
           console.error('[rox/page.tsx] Pronity session token is missing or is a placeholder. Cannot authenticate.');
           setError('Pronity session token is missing. Please log in.');
@@ -187,6 +209,7 @@ export default function RoxPage() {
           body: JSON.stringify({
             room_name: roomName, // Backend expects 'room_name'
             participant_identity: userName, // Backend expects 'participant_identity'
+            User_id: User_id
           }),
         };
         const resp = await fetch(tokenUrl, fetchOptions);

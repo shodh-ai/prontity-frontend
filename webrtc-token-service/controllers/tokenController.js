@@ -12,7 +12,9 @@ exports.generateToken = async (req, res, next) => {
     const { userId: application_user_id, name: authenticated_user_name } = req.userInfo;
 
     // Parameters from request body (optional overrides)
-    const { room_name: req_room_name, participant_identity: req_participant_identity } = req.body;
+    const { room_name: req_room_name, participant_identity: req_participant_identity, User_id: userId } = req.body;
+
+    console.log(`[tokenController] Received User_id from req.body: ${userId}, type: ${typeof userId}`);
 
     // Input validation (application_user_id is guaranteed by sessionAuth if it reaches here)
     // No need for: if (!application_user_id) { ... }
@@ -41,9 +43,11 @@ exports.generateToken = async (req, res, next) => {
       user_id: application_user_id, // Your application's user ID
       app_role: "student",
       userToken: req.userInfo.userToken,
+      userId: userId,
       // You can add other relevant, non-sensitive info here
     };
     const metadataString = JSON.stringify(metadataPayload);
+    console.log(`[tokenController] Generated metadataString: ${metadataString}`);
     // --- END KEY MODIFICATION AREA ---
 
     console.log("Metadata String:", metadataString);

@@ -29,7 +29,6 @@ import {
   AgentToClientUIActionRequest,
   ClientUIActionResponse,
   ClientUIActionType,
-  NotifyPageLoadRequest,   // For F2B Page Load Notification
   HighlightRangeProto, // Added for text highlighting payload
 } from '@/generated/protos/interaction';
 
@@ -546,71 +545,7 @@ export default function RoxPage() {
               console.error("[RoxPage] Failed to register B2F RPC handler 'PerformUIAction':", e);
             }
           }
-              // Send Page Load Notification to Agent for Writing Practice Test Page
-
-              const sendPageLoadNotificationToAgent = async (roomInstance: Room) => {
-
-                if (!liveKitRpcAdapterRef.current) {
-    
-                  console.error("[WritingPracticeTestPage] LiveKitRpcAdapter not available. Cannot send PageLoad notification.");
-    
-                  return;
-    
-                }
-    
-                try {
-    
-                  const pageLoadData = NotifyPageLoadRequest.create({
-    
-                    taskStage: "WRITING_PRACTICE_INIT", // Specific to writing practice page
-    
-                    userId: userName, // userName is 'TestUser' from component scope
-    
-                    currentPage: "P2_WritingPractice", // Specific to writing practice page
-    
-                    sessionId: (roomInstance as any).sid || roomInstance.name, // Attempt to get session ID, fallback to room name
-    
-                    chatHistory: JSON.stringify([]), // Empty chat history for initial load, or load from storage
-    
-                    transcript: "client_loaded_writing_practice_page",
-    
-                  });
-    
-                  const serializedRequest = NotifyPageLoadRequest.encode(pageLoadData).finish();
-    
-    
-    
-                  console.log("[WritingPracticeTestPage] Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'NotifyPageLoad' with request:", pageLoadData);
-    
-    
-    
-                  const serializedResponse = await liveKitRpcAdapterRef.current.request(
-    
-                    "rox.interaction.AgentInteraction",
-    
-                    "NotifyPageLoad",
-    
-                    serializedRequest
-    
-                  );
-    
-                  const responseMessage = AgentResponse.decode(serializedResponse);
-    
-                  console.log("[WritingPracticeTestPage] RPC Response from NotifyPageLoad:", responseMessage);
-    
-                  // Optionally, update UI or state based on responseMessage
-    
-                } catch (e) {
-    
-                  console.error(`[WritingPracticeTestPage] Error calling NotifyPageLoad RPC: ${e instanceof Error ? e.message : String(e)}`, e);
-    
-                }
-    
-              };
-    
-    
-    
-              setTimeout(() => sendPageLoadNotificationToAgent(newRoomInstance), 2000); // Added 2s delay
+          
           // Setup a listener for when participants join to identify the agent
           newRoomInstance.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
             console.log(`New participant connected: ${participant.identity}`);

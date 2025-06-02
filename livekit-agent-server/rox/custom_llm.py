@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Get the URL of your custom backend agent from environment variables
 # Example: export MY_CUSTOM_AGENT_URL="http://localhost:5005/process"
-MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL", "http://localhost:5005/process") # Default URL
+MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL") # Default URL
 
 class CustomLLMBridge(LLM):
     """
@@ -40,7 +40,9 @@ class CustomLLMBridge(LLM):
             logger.info(f"CustomLLMBridge initialized with RoxAgent reference. Will send requests to: {self._agent_url} for page: {self._page_name}")
         else:
             logger.warning(f"CustomLLMBridge initialized WITHOUT RoxAgent reference. Context data will not be available. Will send requests to: {self._agent_url} for page: {self._page_name}")
-
+    def add_user_token(self, user_token: str):
+        self._user_token = user_token
+        logger.info(f"User token added to CustomLLMBridge: {self._user_token}")
     def chat(self, *, chat_ctx: ChatContext = None, tools = None, tool_choice = None):
         """
         Receives the chat history, sends the latest user message to the external
@@ -204,7 +206,7 @@ class CustomLLMBridge(LLM):
                 try:
                     # Prepare payload
                     # Always include a transcript field, even if empty
-                    payload = {"transcript": transcript}
+                    payload = {"transcript": transcript, "user_token": self._user_token}
                     logger.info(f"CustomLLMBridge: Initialized payload with transcript: '{transcript}'")
 
                     # Retrieve and add context
@@ -242,11 +244,13 @@ class CustomLLMBridge(LLM):
                             
                             # Add the validated context to payload
                             payload['current_context'] = student_context
+                            payload['user_token'] = self._user_token
                             logger.info(f"CustomLLMBridge: Added validated current_context to payload: {student_context}")
                         else:
                             # Create a minimal valid context if none exists
                             minimal_context = {"user_id": "default_bridge_user"}
                             payload['current_context'] = minimal_context
+                            payload['user_token'] = self._user_token
                             logger.warning(f"CustomLLMBridge: Created minimal context as _latest_student_context was empty: {minimal_context}")
                         
                         # Add session_id to payload if available
@@ -257,16 +261,19 @@ class CustomLLMBridge(LLM):
                             # Generate a session ID if none exists
                             session_id = f"bridge_session_{uuid.uuid4().hex[:8]}_{int(time.time())}"
                             payload['session_id'] = session_id
+                            payload['user_token'] = self._user_token
                             logger.warning(f"CustomLLMBridge: Generated and added new session_id as none existed: {session_id}")
                     else:
                         # Create minimal context for backend validation even without RoxAgent reference
                         minimal_context = {"user_id": "no_agent_ref_user"}
                         payload['current_context'] = minimal_context
+                        payload['user_token'] = self._user_token
                         payload['session_id'] = f"no_ref_session_{uuid.uuid4().hex[:8]}"
                         logger.warning(f"CustomLLMBridge: No RoxAgent reference, created minimal context: {minimal_context}")
 
                     # Add diagnostic field to track the flow
                     payload['_debug_source'] = 'custom_llm_bridge'
+                    payload['usertoken'] = self._user_token
                     
                     # Force logging of the full payload to ensure we can see what's being sent
                     logger.info(f"CustomLLMBridge: CRITICAL - Sending payload to {self._agent_url}: {json.dumps(payload, indent=2)}")
@@ -274,7 +281,7 @@ class CustomLLMBridge(LLM):
                     # Use aiohttp for async HTTP requests
                     async with aiohttp.ClientSession() as session:
                         try:
-                            logger.info(f"CustomLLMBridge: Starting HTTP POST to {self._agent_url}")
+                            logger.info(f"CustomLLMBridge: Starting HTTP POST to {self._agent_url, payload}")
                             async with session.post(self._agent_url, json=payload) as response:
                                 logger.info(f"CustomLLMBridge: Received HTTP response status: {response.status}")
                                 response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)

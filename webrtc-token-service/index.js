@@ -4,7 +4,7 @@ const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
 const tokenRoutes = require('./routes/tokenRoutes');
-const { apiKeyAuth } = require('./middleware/auth');
+// const { sessionAuth } = require('./middleware/auth'); // sessionAuth is applied within tokenRoutes
 const { requestLogger } = require('./middleware/logger');
 
 // Try to load environment variables from multiple places
@@ -18,9 +18,9 @@ if (fs.existsSync(path.join(__dirname, '.env.local'))) {
 // Hardcoded credentials as a last resort for this specific development case
 if (!process.env.LIVEKIT_URL || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
   console.log('Setting LiveKit credentials from hardcoded values');
-  process.env.LIVEKIT_URL = 'wss://shodhai-w5ohxl10.livekit.cloud';
-  process.env.LIVEKIT_API_KEY = 'APICDcC9SAnb68D';
-  process.env.LIVEKIT_API_SECRET = 'vY9lvDaJRyUtpPGcU48xrdXEl5tVBQInwQoVVaDsSOL';
+  process.env.LIVEKIT_URL
+  process.env.LIVEKIT_API_KEY
+  process.env.LIVEKIT_API_SECRET
 }
 
 const app = express();
@@ -53,7 +53,7 @@ app.get('/health', (req, res) => {
 });
 
 // Apply API key authentication to protected routes
-app.use('/api', apiKeyAuth, tokenRoutes);
+app.use('/api', tokenRoutes); // tokenRoutes applies sessionAuth to specific endpoints
 
 // Error handling middleware
 app.use((err, req, res, next) => {

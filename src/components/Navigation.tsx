@@ -47,7 +47,7 @@ export default function Navigation() {
   return (
     <nav className="bg-blue-600 text-white p-4">
       <div className="container mx-auto flex flex-wrap items-center justify-between">
-        <Link href="/roxpage" className="font-semibold text-xl">Language Learning</Link>
+        <Link href="/rox" className="font-semibold text-xl">Language Learning</Link>
         
         <div className="flex space-x-4 items-center">
           {isAuthenticated ? (

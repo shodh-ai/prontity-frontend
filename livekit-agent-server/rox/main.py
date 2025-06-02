@@ -135,6 +135,7 @@ class RoxAgent(Agent):
         # Initialize the CustomLLMBridge instance here, passing self (RoxAgent instance)
         self.custom_llm_bridge = CustomLLMBridge(rox_agent_ref=self) # Pass self as rox_agent_ref
         self._room = None  # Initialize _room attribute
+        self.participant_data = {} # Stores participant-specific data like userToken
         logger.info(f"RoxAgent.__init__: self (type: {type(self)}) is a JobContext. self._room initially: {getattr(self, '_room', 'Not yet initialized')}")
         logger.info(f"RoxAgent.__init__ called for page_path: {page_path}. Attributes: {dir(self)}")
 
@@ -443,7 +444,7 @@ async def trigger_client_ui_action(
     show_tooltip_or_comment_payload_data: Optional[Dict[str, Any]] = None, # For SHOW_TOOLTIP_OR_COMMENT
     set_editor_content_payload_data: Optional[Dict[str, Any]] = None,      # For SET_EDITOR_CONTENT
     append_text_to_editor_realtime_payload_data: Optional[Dict[str, Any]] = None # For APPEND_TEXT_TO_EDITOR_REALTIME
-) -> Optional[interaction_pb2.ClientUIActionResponse]: # Return the response from the client
+ ) -> Optional[interaction_pb2.ClientUIActionResponse]: # Return the response from the client
     """
     Sends an RPC to a specific client to perform a UI action.
     Can now handle highlight_ranges_payload.
@@ -833,10 +834,11 @@ async def entrypoint(ctx: JobContext):
 
 
     try:
+        custom_llm_bridge = CustomLLMBridge(rox_agent_ref=rox_agent_instance)
         logger.info("Creating main agent session with VPA pipeline...")
         main_agent_session = agents.AgentSession( # Renamed for clarity
             stt=deepgram.STT(model="nova-2", language="multi"), # nova-2 or nova-3
-            llm=CustomLLMBridge(rox_agent_ref=rox_agent_instance), # Pass agent instance
+            llm=custom_llm_bridge, # Pass agent instance
             tts=deepgram.TTS(model=GLOBAL_MODEL),
             vad=silero.VAD.load(),
             turn_detection=MultilingualModel(),
@@ -861,6 +863,62 @@ async def entrypoint(ctx: JobContext):
         )
         rox_agent_instance._room = ctx.room # Assign the connected room to the agent instance
         logger.info(f"Main agent session started successfully. Assigned ctx.room to rox_agent_instance._room. rox_agent_instance._room is now: {rox_agent_instance._room}")
+
+        # Populate participant_data with metadata
+        if rox_agent_instance._room:
+            logger.info(f"PARTICIPANT_METADATA: Processing local and remote participants. Room SID: {rox_agent_instance._room.sid}, Name: {rox_agent_instance._room.name}")
+            
+            all_participants_to_process = []
+            
+            # Process local participant
+            local_p = rox_agent_instance._room.local_participant
+            if local_p:
+                logger.info(f"  PARTICIPANT_METADATA: Adding local_participant: Identity: {local_p.identity}, SID: {local_p.sid}")
+                all_participants_to_process.append(local_p)
+            else:
+                logger.info("  PARTICIPANT_METADATA: No local_participant found on room object.")
+
+            # Process remote participants
+            if hasattr(rox_agent_instance._room, 'remote_participants') and rox_agent_instance._room.remote_participants:
+                logger.info(f"  PARTICIPANT_METADATA: Found {len(rox_agent_instance._room.remote_participants)} remote_participants. Adding them.")
+                all_participants_to_process.extend(rox_agent_instance._room.remote_participants.values())
+            else:
+                logger.info("  PARTICIPANT_METADATA: No remote_participants found or attribute missing.")
+
+            if not all_participants_to_process:
+                logger.info("PARTICIPANT_METADATA: No participants (local or remote) found in the room to process metadata for.")
+            else:
+                logger.info(f"PARTICIPANT_METADATA: Total participants to process: {len(all_participants_to_process)}")
+                for p_obj in all_participants_to_process:
+                    logger.info(f"    PARTICIPANT_METADATA: Processing participant Identity: {p_obj.identity}, SID: {p_obj.sid}")
+                    if p_obj.metadata:
+                        try:
+                            logger.info(f"      PARTICIPANT_METADATA: Raw p_obj.metadata for {p_obj.identity}: {p_obj.metadata}")
+                            metadata_dict = json.loads(p_obj.metadata)
+                            logger.info(f"      PARTICIPANT_METADATA: Parsed metadata_dict for {p_obj.identity}: {metadata_dict}")
+                            user_token = metadata_dict.get('userToken')
+                            user_id_from_meta = metadata_dict.get('userId') # Key from tokenController.js
+                            custom_llm_bridge.add_user_token(user_token,user_id_from_meta)
+                            if user_token:
+                                logger.info(f"      PARTICIPANT_METADATA: Found userToken for {p_obj.identity}: {user_token[:20]}...")
+                            if user_id_from_meta:
+                                logger.info(f"      PARTICIPANT_METADATA: Found user_id in metadata for {p_obj.identity}: {user_id_from_meta}")
+                            
+                            rox_agent_instance.participant_data[p_obj.identity] = {
+                                'userToken': user_token,
+                                'userId': user_id_from_meta,
+                                'sid': p_obj.sid
+                            }
+                            logger.info(f"      PARTICIPANT_METADATA: Stored data for participant {p_obj.identity} (SID: {p_obj.sid})")
+
+                        except json.JSONDecodeError:
+                            logger.error(f"      PARTICIPANT_METADATA: Could not parse metadata for participant {p_obj.identity} (SID: {p_obj.sid}): {p_obj.metadata}")
+                        except Exception as e_meta:
+                            logger.error(f"      PARTICIPANT_METADATA: Error processing metadata for participant {p_obj.identity} (SID: {p_obj.sid}): {e_meta}")
+                    else:
+                        logger.info(f"      PARTICIPANT_METADATA: No metadata found for participant {p_obj.identity} (SID: {p_obj.sid})")
+        else:
+            logger.info("PARTICIPANT_METADATA: rox_agent_instance._room is None. Cannot process participants.")
 
         # Instantiate the RPC service, passing the agent instance
         agent_rpc_service = AgentInteractionService(agent_instance=rox_agent_instance)

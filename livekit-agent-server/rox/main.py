@@ -346,11 +346,25 @@ class RoxAgent(Agent):
                                 continue
 
                             for action_item in actions_from_backend:
-                                action_name_str = action_item.get('action')
-                                action_payload = action_item.get('payload', {})
-                                # target_id needs to be extracted carefully from payload
-                                target_id = action_payload.get('targetElementId', action_payload.get('target_element_id'))
-                                params = action_payload.get('parameters', {})
+                                # First look for new field names, then fall back to old ones for backward compatibility
+                                # 1. Action type (new: action_type, old: action or action_type_str)
+                                action_name_str = action_item.get('action_type', 
+                                                       action_item.get('action_type_str', 
+                                                           action_item.get('action')))
+                                
+                                # 2. Parameters (new: parameters, old: payload)
+                                params = action_item.get('parameters', 
+                                            action_item.get('payload', {}))
+                                
+                                # 3. Target element ID (new: top-level target_element_id, old: inside payload)
+                                # First check for top-level target_element_id (new format)
+                                target_id = action_item.get('target_element_id')
+                                if not target_id:  # If not found, check in parameters or payload (old format)
+                                    # Look in parameters first (new location within old payload structure)
+                                    target_id = params.get('targetElementId', params.get('target_element_id'))
+                                    
+                                # Initialize action_payload for logging (maintains backward compatibility with existing code)
+                                action_payload = action_item.get('payload', params)
 
                                 logger.info(f"Processing action from backend: Name='{action_name_str}', Target='{target_id}', Params='{params}'")
 
@@ -362,6 +376,18 @@ class RoxAgent(Agent):
                                     action_type_enum = interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT
                                 elif action_name_str == "TOGGLE_VISIBILITY":
                                     action_type_enum = interaction_pb2.ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY
+                                elif action_name_str == "DISPLAY_NEXT_TASK_BUTTON":
+                                    action_type_enum = interaction_pb2.ClientUIActionType.DISPLAY_NEXT_TASK_BUTTON
+                                elif action_name_str == "APPEND_TEXT_TO_EDITOR_REALTIME":
+                                    action_type_enum = interaction_pb2.ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME
+                                elif action_name_str == "SHOW_INLINE_SUGGESTION":
+                                    action_type_enum = interaction_pb2.ClientUIActionType.SHOW_INLINE_SUGGESTION
+                                elif action_name_str == "SHOW_TOOLTIP_OR_COMMENT":
+                                    action_type_enum = interaction_pb2.ClientUIActionType.SHOW_TOOLTIP_OR_COMMENT
+                                elif action_name_str == "SET_EDITOR_CONTENT":
+                                    action_type_enum = interaction_pb2.ClientUIActionType.SET_EDITOR_CONTENT
+                                elif action_name_str == "HIGHLIGHT_TEXT_RANGES":
+                                    action_type_enum = interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES
                                 # Add more mappings as needed based on interaction.proto
                                 else:
                                     logger.warning(f"Unknown action name '{action_name_str}' from backend. Skipping.")

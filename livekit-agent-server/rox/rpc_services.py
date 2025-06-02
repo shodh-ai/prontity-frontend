@@ -3,6 +3,7 @@ import json
 import base64
 import uuid
 import time
+import asyncio
 from livekit.rtc.rpc import RpcInvocationData # For RPC invocation data
 from generated.protos import interaction_pb2 # Your generated protobuf types
 
@@ -204,13 +205,16 @@ class AgentInteractionService: # Simple class without inheritance
         return base64_response
         
     async def _send_test_request_to_backend(self):
-        """Send a test request to the backend API to verify context passing."""
+        """Send a test request to the backend API and then manually process the UI actions."""
         import aiohttp
         import os
+        import json
+        import uuid
+        from livekit.agents.llm import ChatChunk, ChoiceDelta, FunctionToolCall
         
         if not self.agent_instance:
             logger.error("Cannot send test request: agent_instance is not available")
-            return
+            return False
             
         # Get the backend URL from environment or use a default
         backend_url = os.environ.get("MY_CUSTOM_AGENT_URL", "http://localhost:5005/process_interaction")
@@ -219,9 +223,15 @@ class AgentInteractionService: # Simple class without inheritance
             logger.info(f"Sending test request to backend API at {backend_url}")
             
             # Prepare payload with the context from agent instance
+            # Make a copy of the context to avoid modifying the original
+            context = dict(self.agent_instance._latest_student_context)
+            
+            # Add task_stage to the context object (not at top level)
+            context["task_stage"] = "testing_specific_context_from_button"  # Special task_stage to trigger UI action test
+            
             payload = {
                 "transcript": "This is a test request from RPC handler",
-                "current_context": self.agent_instance._latest_student_context,
+                "current_context": context,
                 "session_id": self.agent_instance._latest_session_id
             }
             
@@ -235,9 +245,55 @@ class AgentInteractionService: # Simple class without inheritance
                     
                     logger.info(f"Backend API test response: Status={status}, Response={response_text[:100]}...")
                     
+                    # NEW CODE: Process the response to extract DOM actions
+                    if status == 200:
+                        try:
+                            # Parse the JSON response
+                            result = json.loads(response_text)
+                            
+                            # Extract DOM actions if present
+                            dom_actions = None
+                            if "dom_actions" in result:
+                                dom_actions = result["dom_actions"]
+                                logger.info(f"Extracted DOM actions from response: {dom_actions}")
+                            
+                            # If we have DOM actions, create a tool call and manually trigger on_llm_response_done
+                            if dom_actions:
+                                # Create a special tool call for dom_actions
+                                dom_actions_str = json.dumps(dom_actions)
+                                tool_call = FunctionToolCall(
+                                    type='function',
+                                    name='_internal_dom_actions',
+                                    arguments=dom_actions_str,
+                                    call_id='dom_actions_tool_call'
+                                )
+                                
+                                # Create a ChatChunk with the tool call
+                                chat_chunk = ChatChunk(
+                                    id=str(uuid.uuid4()),
+                                    delta=ChoiceDelta(
+                                        role='assistant',
+                                        content=result.get("response_for_tts", ""),
+                                        tool_calls=[tool_call]
+                                    )
+                                )
+                                
+                                logger.info(f"Created ChatChunk with DOM actions tool call: {tool_call}")
+                                
+                                # Manually call on_llm_response_done to process the DOM actions
+                                if hasattr(self.agent_instance, 'on_llm_response_done'):
+                                    logger.info("Manually calling on_llm_response_done with DOM actions")
+                                    asyncio.create_task(self.agent_instance.on_llm_response_done([chat_chunk]))
+                                else:
+                                    logger.error("Agent instance does not have on_llm_response_done method")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse JSON response: {e}")
+                        except Exception as e:
+                            logger.error(f"Error processing response: {e}", exc_info=True)
+            
             return True
         except Exception as e:
-            logger.error(f"Error sending test request to backend: {e}")
+            logger.error(f"Error sending test request to backend: {e}", exc_info=True)
             return False
 
     async def NotifyPageLoad(self, invocation_data: RpcInvocationData) -> str:

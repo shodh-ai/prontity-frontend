@@ -26,6 +26,7 @@ import {
   AgentResponse, // Existing F2B
   // Add these for B2F
   AgentToClientUIActionRequest,
+  NotifyPageLoadRequest,
   ClientUIActionResponse,
   ClientUIActionType,
 } from "@/generated/protos/interaction";

@@ -57,7 +57,7 @@ export default function LoginPage() {
 
   // Function to manually navigate to main page
   const goToMainPage = () => {
-    router.push('/roxpage');
+    router.push('/rox');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,7 +87,7 @@ export default function LoginPage() {
       setIsLoggedIn(true);
       setUserProfile(result.user);
       console.log('Redirecting to main page');
-      router.push('/roxpage');
+      router.push('/rox');
     } catch (err: any) {
       let errorMsg = 'Invalid email or password';
       

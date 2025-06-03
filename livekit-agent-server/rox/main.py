@@ -403,10 +403,6 @@ async def agent_main_logic(agent_or_ctx):
     Parameters:
     agent_or_ctx: Either a RoxAgent instance or a JobContext object
     """
-    logger.info("B2F Agent Logic: Started.")
-    await asyncio.sleep(5) # Wait for client connection and RPC registration
-    logger.info("B2F Agent Logic: Initial 5-second sleep completed.")
-
     # Determine if we have a JobContext or RoxAgent
     if isinstance(agent_or_ctx, RoxAgent):
         agent_instance = agent_or_ctx
@@ -462,212 +458,211 @@ async def agent_main_logic(agent_or_ctx):
         logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found to send UI actions to.")
         return
     
-    logger.info(f"B2F Agent Logic: Proceeding to send UI actions to client: '{target_client_identity}'")
 
-    try:
-        # ==========================================
-        # ROX_COPY PAGE ACTIONS (from File 2)
-        # ==========================================
+    # try:
+    #     # ==========================================
+    #     # ROX_COPY PAGE ACTIONS (from File 2)
+    #     # ==========================================
         
-        logger.info(f"B2F Test: SHOW_ALERT to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
-            parameters={"message": "Agent says hello via MERGED B2F RPC!"}
-        )
-        await asyncio.sleep(2)
+    #     logger.info(f"B2F Test: SHOW_ALERT to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
+    #         parameters={"message": "Agent says hello via MERGED B2F RPC!"}
+    #     )
+    #     await asyncio.sleep(2)
 
-        logger.info(f"B2F Test: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
-            target_element_id="agentUpdatableTextRoxPage",
-            parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
-        )
-        await asyncio.sleep(2)
+    #     logger.info(f"B2F Test: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
+    #         target_element_id="agentUpdatableTextRoxPage",
+    #         parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
+    #     )
+    #     await asyncio.sleep(2)
 
-        logger.info(f"B2F Test: START_TIMER to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.START_TIMER,
-            target_element_id="speakingTaskTimer",
-            parameters={"duration_seconds": 30, "timer_type": "prep"}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: START_TIMER to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.START_TIMER,
+    #         target_element_id="speakingTaskTimer",
+    #         parameters={"duration_seconds": 30, "timer_type": "prep"}
+    #     )
+    #     await asyncio.sleep(1)
         
-        logger.info(f"B2F Test: PAUSE_TIMER (true) to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
-            target_element_id="speakingTaskTimer", parameters={"pause": "true"}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: PAUSE_TIMER (true) to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
+    #         target_element_id="speakingTaskTimer", parameters={"pause": "true"}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: PAUSE_TIMER (false) to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
-            target_element_id="speakingTaskTimer", parameters={"pause": "false"}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: PAUSE_TIMER (false) to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
+    #         target_element_id="speakingTaskTimer", parameters={"pause": "false"}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: UPDATE_PROGRESS_INDICATOR to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.UPDATE_PROGRESS_INDICATOR,
-            target_element_id="drillProgressIndicator",
-            parameters={"current_step": 3, "total_steps": 10, "message": "Processing speaking task..."}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: UPDATE_PROGRESS_INDICATOR to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_PROGRESS_INDICATOR,
+    #         target_element_id="drillProgressIndicator",
+    #         parameters={"current_step": 3, "total_steps": 10, "message": "Processing speaking task..."}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: SHOW_ELEMENT to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SHOW_ELEMENT,
-            target_element_id="roxLoadingIndicator", parameters={"show": "true"}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: SHOW_ELEMENT to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.SHOW_ELEMENT,
+    #         target_element_id="roxLoadingIndicator", parameters={"show": "true"}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: HIDE_ELEMENT to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.HIDE_ELEMENT,
-            target_element_id="roxLoadingIndicator", parameters={"show": "false"} # Assuming "show": "false" is how hide works
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: HIDE_ELEMENT to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.HIDE_ELEMENT,
+    #         target_element_id="roxLoadingIndicator", parameters={"show": "false"} # Assuming "show": "false" is how hide works
+    #     )
+    #     await asyncio.sleep(1)
         
-        # ==========================================
-        # NAVIGATE TO WRITINGPRACTICE PAGE (from File 2)
-        # ==========================================
-        logger.info(f"B2F Test: NAVIGATE_TO_PAGE (writingpractice) to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.NAVIGATE_TO_PAGE,
-            parameters={
-                "page_name": "writingpractice",
-                "data_for_page": json.dumps({ # Ensure data_for_page is a JSON string
-                    "user_id": "test123", "essay_id": "writing_sample_01",
-                    "mode": "feedback", "show_tutorial": False
-                })
-            }
-        )
-        await asyncio.sleep(3) # Allow time for navigation
+    #     # ==========================================
+    #     # NAVIGATE TO WRITINGPRACTICE PAGE (from File 2)
+    #     # ==========================================
+    #     logger.info(f"B2F Test: NAVIGATE_TO_PAGE (writingpractice) to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.NAVIGATE_TO_PAGE,
+    #         parameters={
+    #             "page_name": "writingpractice",
+    #             "data_for_page": json.dumps({ # Ensure data_for_page is a JSON string
+    #                 "user_id": "test123", "essay_id": "writing_sample_01",
+    #                 "mode": "feedback", "show_tutorial": False
+    #             })
+    #         }
+    #     )
+    #     await asyncio.sleep(3) # Allow time for navigation
 
-        # ==========================================
-        # WRITINGPRACTICE PAGE ACTIONS (from File 2)
-        # ==========================================
-        logger.info(f"B2F Test: UPDATE_LIVE_TRANSCRIPT (chunked) to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
-            target_element_id="liveTranscriptArea",
-            parameters={"new_chunk": "This is the first part ", "is_final_for_sentence": "false"}
-        )
-        await asyncio.sleep(0.5)
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
-            target_element_id="liveTranscriptArea",
-            parameters={"new_chunk": "of a live transcript.", "is_final_for_sentence": "true"}
-        )
-        await asyncio.sleep(1)
+    #     # ==========================================
+    #     # WRITINGPRACTICE PAGE ACTIONS (from File 2)
+    #     # ==========================================
+    #     logger.info(f"B2F Test: UPDATE_LIVE_TRANSCRIPT (chunked) to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
+    #         target_element_id="liveTranscriptArea",
+    #         parameters={"new_chunk": "This is the first part ", "is_final_for_sentence": "false"}
+    #     )
+    #     await asyncio.sleep(0.5)
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
+    #         target_element_id="liveTranscriptArea",
+    #         parameters={"new_chunk": "of a live transcript.", "is_final_for_sentence": "true"}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: DISPLAY_TRANSCRIPT_OR_TEXT to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.DISPLAY_TRANSCRIPT_OR_TEXT,
-            target_element_id="feedbackContent",
-            parameters={"text_content": "Essay feedback: Good structure, needs grammar work."}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: DISPLAY_TRANSCRIPT_OR_TEXT to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.DISPLAY_TRANSCRIPT_OR_TEXT,
+    #         target_element_id="feedbackContent",
+    #         parameters={"text_content": "Essay feedback: Good structure, needs grammar work."}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: DISPLAY_REMARKS_LIST to '{target_client_identity}'.")
-        remarks_data = [
-            {"id": "R1", "title": "Grammar", "details": "Subject-verb agreement.", "correction_suggestion": "Match verb to subject."},
-            {"id": "R2", "title": "Vocab", "details": "Limited range.", "correction_suggestion": "Use more academic terms."}
-        ]
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.DISPLAY_REMARKS_LIST,
-            target_element_id="feedbackRemarks",
-            parameters={"remarks": json.dumps(remarks_data)} # Ensure remarks is a JSON string
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: DISPLAY_REMARKS_LIST to '{target_client_identity}'.")
+    #     remarks_data = [
+    #         {"id": "R1", "title": "Grammar", "details": "Subject-verb agreement.", "correction_suggestion": "Match verb to subject."},
+    #         {"id": "R2", "title": "Vocab", "details": "Limited range.", "correction_suggestion": "Use more academic terms."}
+    #     ]
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.DISPLAY_REMARKS_LIST,
+    #         target_element_id="feedbackRemarks",
+    #         parameters={"remarks": json.dumps(remarks_data)} # Ensure remarks is a JSON string
+    #     )
+    #     await asyncio.sleep(1)
 
-        # ==========================================
-        # ACTIONS WITH DEDICATED PAYLOADS (from File 1)
-        # ==========================================
-        logger.info(f"B2F Test: HIGHLIGHT_TEXT_RANGES to '{target_client_identity}'.")
-        sample_highlights = [{"id": "hl1", "start": 0, "end": 5, "type": "test_hl", "message": "Test highlight"}]
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES,
-            target_element_id="liveWritingEditor", # Example target
-            highlight_ranges_payload_data=sample_highlights
-        )
-        await asyncio.sleep(1)
+    #     # ==========================================
+    #     # ACTIONS WITH DEDICATED PAYLOADS (from File 1)
+    #     # ==========================================
+    #     logger.info(f"B2F Test: HIGHLIGHT_TEXT_RANGES to '{target_client_identity}'.")
+    #     sample_highlights = [{"id": "hl1", "start": 0, "end": 5, "type": "test_hl", "message": "Test highlight"}]
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES,
+    #         target_element_id="liveWritingEditor", # Example target
+    #         highlight_ranges_payload_data=sample_highlights
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: STRIKETHROUGH_TEXT_RANGES to '{target_client_identity}'.")
-        sample_strikethroughs = [{"id": "st1", "start": 6, "end": 10, "type": "test_st", "message": "Test strikethrough"}]
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES,
-            target_element_id="liveWritingEditor",
-            strikethrough_ranges_data=sample_strikethroughs
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: STRIKETHROUGH_TEXT_RANGES to '{target_client_identity}'.")
+    #     sample_strikethroughs = [{"id": "st1", "start": 6, "end": 10, "type": "test_st", "message": "Test strikethrough"}]
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES,
+    #         target_element_id="liveWritingEditor",
+    #         strikethrough_ranges_data=sample_strikethroughs
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: SUGGEST_TEXT_EDIT to '{target_client_identity}'.")
-        sample_text_edit = {"suggestion_id": "edit1", "start_pos": 11, "end_pos": 15, "original_text": "olld", "new_text": "new"}
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT,
-            target_element_id="liveWritingEditor",
-            suggest_text_edit_payload_data=sample_text_edit
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: SUGGEST_TEXT_EDIT to '{target_client_identity}'.")
+    #     sample_text_edit = {"suggestion_id": "edit1", "start_pos": 11, "end_pos": 15, "original_text": "olld", "new_text": "new"}
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT,
+    #         target_element_id="liveWritingEditor",
+    #         suggest_text_edit_payload_data=sample_text_edit
+    #     )
+    #     await asyncio.sleep(1)
 
-        # ==========================================
-        # MORE ACTIONS (from File 2, using generic parameters)
-        # ==========================================
-        logger.info(f"B2F Test: SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SET_BUTTON_PROPERTIES,
-            target_element_id="submitAnswerButton",
-            parameters={"label": "Submit Essay Now", "disabled": "false", "style_class": "primary-button"}
-        )
-        await asyncio.sleep(1)
+    #     # ==========================================
+    #     # MORE ACTIONS (from File 2, using generic parameters)
+    #     # ==========================================
+    #     logger.info(f"B2F Test: SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.SET_BUTTON_PROPERTIES,
+    #         target_element_id="submitAnswerButton",
+    #         parameters={"label": "Submit Essay Now", "disabled": "false", "style_class": "primary-button"}
+    #     )
+    #     await asyncio.sleep(1)
         
-        logger.info(f"B2F Test: ENABLE_BUTTON to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.ENABLE_BUTTON,
-            target_element_id="startRecordingButton"
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: ENABLE_BUTTON to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.ENABLE_BUTTON,
+    #         target_element_id="startRecordingButton"
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (true) to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
-            target_element_id="globalLoadingIndicator",
-            parameters={"is_loading": "true", "message": "Processing..."}
-        )
-        await asyncio.sleep(2)
-        logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (false) to '{target_client_identity}'.")
-        await trigger_client_ui_action(
-            room=room, client_identity=target_client_identity,
-            action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
-            target_element_id="globalLoadingIndicator",
-            parameters={"is_loading": "false"}
-        )
-        await asyncio.sleep(1)
+    #     logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (true) to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
+    #         target_element_id="globalLoadingIndicator",
+    #         parameters={"is_loading": "true", "message": "Processing..."}
+    #     )
+    #     await asyncio.sleep(2)
+    #     logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (false) to '{target_client_identity}'.")
+    #     await trigger_client_ui_action(
+    #         room=room, client_identity=target_client_identity,
+    #         action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
+    #         target_element_id="globalLoadingIndicator",
+    #         parameters={"is_loading": "false"}
+    #     )
+    #     await asyncio.sleep(1)
 
-        logger.info("B2F Agent Logic: All test UI actions sent.")
+    #     logger.info("B2F Agent Logic: All test UI actions sent.")
 
-    except Exception as e:
-        logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
+    # except Exception as e:
+    #     logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
 
 
 async def entrypoint(ctx: JobContext):

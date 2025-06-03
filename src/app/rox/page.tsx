@@ -1,9 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import {
-  NotifyPageLoadRequest, // For F2B Page Load Notificatio
-} from "@/generated/protos/interaction";
 import Image from "next/image";
 import {
   Room,
@@ -399,13 +396,13 @@ export default function RoxPage() {
 
                 userId: userName, // userName is 'TestUser' from component scope
 
-                currentPage: "P2_WritingPractice", // Specific to writing practice page
+                currentPage: "RoxPage", // Specific to writing practice page
 
                 sessionId: (roomInstance as any).sid || roomInstance.name, // Attempt to get session ID, fallback to room name
 
                 chatHistory: JSON.stringify([]), // Empty chat history for initial load, or load from storage
 
-                transcript: "client_loaded_writing_practice_page",
+                transcript: "",
               });
 
               const serializedRequest =

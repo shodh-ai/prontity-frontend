@@ -338,7 +338,7 @@ class AgentInteractionService: # Simple class without inheritance
                 "current_page": request.current_page,
                 "session_id": request.session_id,
                 "chat_history": request.chat_history, # Assuming it's a JSON string as sent by client
-                "transcript_on_load": request.transcript, # Optional field
+                "transcript": request.transcript, # Optional field
                 "page_load_timestamp": time.time()
             }
             self.agent_instance._latest_student_context = page_load_context

@@ -178,7 +178,6 @@ enum ClientUIActionType {
   APPEND_TEXT_TO_EDITOR_REALTIME = 33; // Action to append text chunks to an editor
   STRIKETHROUGH_TEXT_RANGES = 34;      // Action to strikethrough text ranges
   // Add more actions here, e.g., CLICK_BUTTON, CHANGE_IMAGE_SRC
-
 }
 
 // Request from Agent to Client to perform a UI action

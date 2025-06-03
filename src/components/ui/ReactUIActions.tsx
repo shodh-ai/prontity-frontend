@@ -49,7 +49,14 @@ export enum ReactUIActionType {
   SHOW_BUTTON_OPTIONS = 24,
   CLEAR_INPUT_FIELD = 25,
   SET_EDITOR_READONLY_SECTIONS = 26,
-  SHOW_LOADING_INDICATOR = 27
+  SHOW_LOADING_INDICATOR = 27,
+  
+  // Feedback page specific actions
+  HIGHLIGHT_TEXT_RANGES = 28,
+  STRIKETHROUGH_TEXT_RANGES = 29,
+  SUGGEST_TEXT_EDIT = 30,
+  SHOW_INLINE_SUGGESTION = 31,
+  SHOW_TOOLTIP_OR_COMMENT = 32
 }
 
 // Helper functions for Base64 encoding/decoding
@@ -78,6 +85,35 @@ export interface ReactUIActionRequest {
   actionType: ReactUIActionType;
   targetElementId: string;
   parameters: { [key: string]: string };
+  
+  // Feedback page specific payloads
+  highlightRangesPayload?: any[];
+  strikethroughRangesPayload?: any[];
+  suggestTextEditPayload?: {
+    suggestionId: string;
+    startPos: number;
+    endPos: number;
+    originalText: string;
+    newText: string;
+  };
+  showInlineSuggestionPayload?: {
+    suggestionId: string;
+    startPos: number;
+    endPos: number;
+    suggestionText: string;
+    suggestionType?: string;
+  };
+  showTooltipOrCommentPayload?: {
+    id: string;
+    startPos: number;
+    endPos: number;
+    text: string;
+    tooltipType?: string;
+  };
+  appendTextToEditorRealtimePayload?: {
+    textChunk: string;
+    streamId?: string;
+  };
 }
 
 export interface ReactUIActionResponse {
@@ -113,6 +149,54 @@ export type EditorReadonlySectionsUpdater = (ranges: Array<{start: any, end: any
 export type AudioCuePlayer = (soundName: string) => void;
 export type LoadingIndicatorUpdater = (isLoading: boolean, message?: string) => void;
 
+// Feedback page specific types
+export interface Highlight {
+  id: string;
+  start: number;
+  end: number;
+  type: string;
+  message?: string;
+  data?: {
+    originalText?: string;
+    newText?: string;
+    suggestionId?: string;
+    suggestionType?: string;
+    tooltipId?: string;
+    tooltipType?: string;
+  };
+}
+
+export interface StrikeThroughRange {
+  id: string;
+  start: number;
+  end: number;
+  type: string;
+  message?: string;
+}
+
+export interface TextEditSuggestion {
+  suggestionId: string;
+  startPos: number;
+  endPos: number;
+  originalText: string;
+  newText: string;
+}
+
+export interface TooltipOrComment {
+  id: string;
+  startPos: number;
+  endPos: number;
+  text: string;
+  tooltipType?: string;
+}
+
+export type HighlightUpdater = (highlights: Highlight[]) => void;
+export type StrikeThroughUpdater = (ranges: StrikeThroughRange[]) => void;
+export type TextEditSuggestionUpdater = (suggestion: TextEditSuggestion) => void;
+export type TooltipOrCommentUpdater = (tooltip: TooltipOrComment) => void;
+export type EditorContentSetterUpdater = (content: string) => void;
+export type EditorAppendTextUpdater = (textChunk: string, streamId?: string) => void;
+
 // Main props interface for our React UI Actions component
 export interface ReactUIActionsProps {
   // Element state updaters (to be provided by parent components)
@@ -135,6 +219,14 @@ export interface ReactUIActionsProps {
   editorReadonlySectionsUpdaters?: { [elementId: string]: EditorReadonlySectionsUpdater };
   audioCuePlayers?: { [elementId: string]: AudioCuePlayer };
   loadingIndicatorUpdaters?: { [elementId: string]: LoadingIndicatorUpdater };
+  
+  // Feedback page specific updaters
+  highlightUpdaters?: { [elementId: string]: HighlightUpdater };
+  strikeThroughUpdaters?: { [elementId: string]: StrikeThroughUpdater };
+  textEditSuggestionUpdaters?: { [elementId: string]: TextEditSuggestionUpdater };
+  tooltipOrCommentUpdaters?: { [elementId: string]: TooltipOrCommentUpdater };
+  editorContentSetters?: { [elementId: string]: EditorContentSetterUpdater };
+  editorAppendTextUpdaters?: { [elementId: string]: EditorAppendTextUpdater };
   
   // Debugging options
   logActions?: boolean;
@@ -196,6 +288,13 @@ export const handleReactUIAction = async (
     editorReadonlySectionsUpdaters = {},
     audioCuePlayers = {},
     loadingIndicatorUpdaters = {},
+    // Feedback page specific updaters
+    highlightUpdaters = {},
+    strikeThroughUpdaters = {},
+    textEditSuggestionUpdaters = {},
+    tooltipOrCommentUpdaters = {},
+    editorContentSetters = {},
+    editorAppendTextUpdaters = {},
     logActions = false
   } = props;
 
@@ -1026,16 +1125,387 @@ export const handleReactUIAction = async (
           message = "Error: Missing targetElementId for SHOW_LOADING_INDICATOR.";
         }
         break;
-
-      default:
-        success = false;
-        message = `Error: Unknown action type '${request.actionType}'.`;
-        console.warn(`[ReactUIActions] Unknown UI action type: ${request.actionType}`);
+        
+      // Feedback page specific actions
+      case ReactUIActionType.HIGHLIGHT_TEXT_RANGES:
+        console.log('[ReactUIActions] Action: HIGHLIGHT_TEXT_RANGES');
+        try {
+          if (request.targetElementId) {
+            const updater = highlightUpdaters[request.targetElementId];
+            if (updater) {
+              // Use payload if available
+              if (request.highlightRangesPayload && Array.isArray(request.highlightRangesPayload) && request.highlightRangesPayload.length > 0) {
+                const newHighlights = request.highlightRangesPayload.map((h: any) => ({
+                  id: h.id || `highlight-${Date.now()}-${Math.random()}`,
+                  start: h.start,
+                  end: h.end,
+                  type: h.type || 'agent_highlight',
+                  message: h.message,
+                  data: {
+                    wrongVersion: h.wrongVersion,
+                    correctVersion: h.correctVersion
+                  }
+                }));
+                updater(newHighlights as Highlight[]);
+                message = 'Text ranges highlighted successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to parameters.highlightData
+                const highlightsString = request.parameters["highlightData"];
+                if (highlightsString) {
+                  try {
+                    const parsedHighlights = JSON.parse(highlightsString) as any[];
+                    const newHighlights = parsedHighlights.map((h: any) => ({
+                      id: h.id || `highlight-${Date.now()}-${Math.random()}`,
+                      start: h.start,
+                      end: h.end,
+                      type: h.type || 'agent_highlight',
+                      message: h.message,
+                      data: {
+                        wrongVersion: h.wrongVersion,
+                        correctVersion: h.correctVersion
+                      }
+                    }));
+                    updater(newHighlights as Highlight[]);
+                    message = 'Text ranges highlighted successfully from parameters.';
+                    success = true;
+                  } catch (parseError) {
+                    console.error('[ReactUIActions] HIGHLIGHT_TEXT_RANGES: Failed to parse highlightData', parseError);
+                    success = false;
+                    message = "Error: Failed to parse highlightData from parameters.";
+                  }
+                } else {
+                  success = false;
+                  message = "Error: No highlight data found in payload or parameters for HIGHLIGHT_TEXT_RANGES.";
+                }
+              }
+            } else {
+              success = false;
+              message = `Error: No highlight updater found for '${request.targetElementId}'.`;
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for HIGHLIGHT_TEXT_RANGES.";
+          }
+        } catch (e) {
+          console.error('[ReactUIActions] HIGHLIGHT_TEXT_RANGES: Error processing highlight action:', e);
+          success = false;
+          message = 'Error: Could not process highlight data.';
+        }
+        break;
+        
+      case ReactUIActionType.STRIKETHROUGH_TEXT_RANGES:
+        console.log('[ReactUIActions] Action: STRIKETHROUGH_TEXT_RANGES');
+        try {
+          if (request.targetElementId) {
+            const updater = strikeThroughUpdaters[request.targetElementId];
+            if (updater) {
+              // Use payload if available
+              if (request.strikethroughRangesPayload && Array.isArray(request.strikethroughRangesPayload) && request.strikethroughRangesPayload.length > 0) {
+                const newRanges = request.strikethroughRangesPayload.map((r: any) => ({
+                  id: r.id || `strikethrough-${Date.now()}-${Math.random()}`,
+                  start: r.start,
+                  end: r.end,
+                  type: r.type || 'agent_strikethrough',
+                  message: r.message
+                }));
+                updater(newRanges as StrikeThroughRange[]);
+                message = 'Strikethrough ranges applied successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to parameters.strikethroughData
+                const rangesString = request.parameters["strikethroughData"];
+                if (rangesString) {
+                  try {
+                    const parsedRanges = JSON.parse(rangesString) as any[];
+                    const newRanges = parsedRanges.map((r: any) => ({
+                      id: r.id || `strikethrough-${Date.now()}-${Math.random()}`,
+                      start: r.start,
+                      end: r.end,
+                      type: r.type || 'agent_strikethrough',
+                      message: r.message
+                    }));
+                    updater(newRanges as StrikeThroughRange[]);
+                    message = 'Strikethrough ranges applied successfully from parameters.';
+                    success = true;
+                  } catch (parseError) {
+                    console.error('[ReactUIActions] STRIKETHROUGH_TEXT_RANGES: Failed to parse strikethroughData', parseError);
+                    success = false;
+                    message = "Error: Failed to parse strikethroughData from parameters.";
+                  }
+                } else {
+                  success = false;
+                  message = "Error: No strikethrough data found in payload or parameters for STRIKETHROUGH_TEXT_RANGES.";
+                }
+              }
+            } else {
+              success = false;
+              message = `Error: No strikethrough updater found for '${request.targetElementId}'.`;
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for STRIKETHROUGH_TEXT_RANGES.";
+          }
+        } catch (e) {
+          console.error('[ReactUIActions] STRIKETHROUGH_TEXT_RANGES: Error processing strikethrough action:', e);
+          success = false;
+          message = 'Error: Could not process strikethrough data.';
+        }
+        break;
+        
+      case ReactUIActionType.SUGGEST_TEXT_EDIT:
+        console.log('[ReactUIActions] Action: SUGGEST_TEXT_EDIT');
+        try {
+          if (request.targetElementId) {
+            const updater = textEditSuggestionUpdaters[request.targetElementId];
+            if (updater) {
+              // Use payload if available
+              if (request.suggestTextEditPayload) {
+                const payload = request.suggestTextEditPayload;
+                const suggestion: TextEditSuggestion = {
+                  suggestionId: payload.suggestionId || `edit-${Date.now()}-${Math.random()}`,
+                  startPos: payload.startPos,
+                  endPos: payload.endPos,
+                  originalText: payload.originalText,
+                  newText: payload.newText
+                };
+                updater(suggestion);
+                message = 'Text edit suggestion applied successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to parameters
+                const suggestionId = request.parameters["suggestionId"] || `edit-${Date.now()}-${Math.random()}`;
+                const startPos = parseInt(request.parameters["startPos"] || "-1");
+                const endPos = parseInt(request.parameters["endPos"] || "-1");
+                const originalText = request.parameters["originalText"] || "";
+                const newText = request.parameters["newText"] || "";
+                
+                if (startPos >= 0 && endPos >= 0) {
+                  const suggestion: TextEditSuggestion = {
+                    suggestionId,
+                    startPos,
+                    endPos,
+                    originalText,
+                    newText
+                  };
+                  updater(suggestion);
+                  message = 'Text edit suggestion applied successfully from parameters.';
+                  success = true;
+                } else {
+                  success = false;
+                  message = "Error: Invalid startPos or endPos for SUGGEST_TEXT_EDIT.";
+                }
+              }
+            } else {
+              success = false;
+              message = `Error: No text edit suggestion updater found for '${request.targetElementId}'.`;
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for SUGGEST_TEXT_EDIT.";
+          }
+        } catch (e) {
+          console.error('[ReactUIActions] SUGGEST_TEXT_EDIT: Error processing text edit suggestion:', e);
+          success = false;
+          message = 'Error: Could not process text edit suggestion.';
+        }
+        break;
+        
+      case ReactUIActionType.SHOW_TOOLTIP_OR_COMMENT:
+        console.log('[ReactUIActions] Action: SHOW_TOOLTIP_OR_COMMENT');
+        try {
+          if (request.targetElementId) {
+            const updater = tooltipOrCommentUpdaters[request.targetElementId];
+            if (updater) {
+              // Use payload if available
+              if (request.showTooltipOrCommentPayload) {
+                const payload = request.showTooltipOrCommentPayload;
+                const tooltip: TooltipOrComment = {
+                  id: payload.id || `tooltip-${Date.now()}-${Math.random()}`,
+                  startPos: payload.startPos,
+                  endPos: payload.endPos,
+                  text: payload.text,
+                  tooltipType: payload.tooltipType || 'comment'
+                };
+                updater(tooltip);
+                message = 'Tooltip or comment shown successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to parameters
+                const id = request.parameters["id"] || `tooltip-${Date.now()}-${Math.random()}`;
+                const startPos = parseInt(request.parameters["startPos"] || "-1");
+                const endPos = parseInt(request.parameters["endPos"] || "-1");
+                const text = request.parameters["text"] || "";
+                const tooltipType = request.parameters["tooltipType"] || "comment";
+                
+                if (startPos >= 0 && endPos >= 0 && text) {
+                  const tooltip: TooltipOrComment = {
+                    id,
+                    startPos,
+                    endPos,
+                    text,
+                    tooltipType
+                  };
+                  updater(tooltip);
+                  message = 'Tooltip or comment shown successfully from parameters.';
+                  success = true;
+                } else {
+                  success = false;
+                  message = "Error: Invalid startPos, endPos, or missing text for SHOW_TOOLTIP_OR_COMMENT.";
+                }
+              }
+            } else {
+              success = false;
+              message = `Error: No tooltip or comment updater found for '${request.targetElementId}'.`;
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for SHOW_TOOLTIP_OR_COMMENT.";
+          }
+        } catch (e) {
+          console.error('[ReactUIActions] SHOW_TOOLTIP_OR_COMMENT: Error processing tooltip or comment:', e);
+          success = false;
+          message = 'Error: Could not process tooltip or comment.';
+        }
+        break;
+        
+      case ReactUIActionType.SHOW_INLINE_SUGGESTION:
+        console.log('[ReactUIActions] Action: SHOW_INLINE_SUGGESTION');
+        try {
+          if (request.targetElementId) {
+            const updater = textEditSuggestionUpdaters[request.targetElementId];
+            if (updater) {
+              // Use payload if available
+              if (request.showInlineSuggestionPayload) {
+                const payload = request.showInlineSuggestionPayload;
+                const suggestion: TextEditSuggestion = {
+                  suggestionId: payload.suggestionId || `inline-${Date.now()}-${Math.random()}`,
+                  startPos: payload.startPos,
+                  endPos: payload.endPos,
+                  originalText: "", // Inline suggestion doesn't replace text
+                  newText: payload.suggestionText
+                };
+                updater(suggestion);
+                message = 'Inline suggestion shown successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to parameters
+                const suggestionId = request.parameters["suggestionId"] || `inline-${Date.now()}-${Math.random()}`;
+                const startPos = parseInt(request.parameters["startPos"] || "-1");
+                const endPos = parseInt(request.parameters["endPos"] || "-1");
+                const suggestionText = request.parameters["suggestionText"] || "";
+                
+                if (startPos >= 0 && endPos >= 0 && suggestionText) {
+                  const suggestion: TextEditSuggestion = {
+                    suggestionId,
+                    startPos,
+                    endPos,
+                    originalText: "", // Inline suggestion doesn't replace text
+                    newText: suggestionText
+                  };
+                  updater(suggestion);
+                  message = 'Inline suggestion shown successfully from parameters.';
+                  success = true;
+                } else {
+                  success = false;
+                  message = "Error: Invalid startPos, endPos, or missing suggestionText for SHOW_INLINE_SUGGESTION.";
+                }
+              }
+            } else {
+              success = false;
+              message = `Error: No text edit suggestion updater found for '${request.targetElementId}'.`;
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for SHOW_INLINE_SUGGESTION.";
+          }
+        } catch (e) {
+          console.error('[ReactUIActions] SHOW_INLINE_SUGGESTION: Error processing inline suggestion:', e);
+          success = false;
+          message = 'Error: Could not process inline suggestion.';
+        }
+        break;
+        
+      case ReactUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME:
+        console.log('[ReactUIActions] Action: APPEND_TEXT_TO_EDITOR_REALTIME');
+        try {
+          if (request.targetElementId) {
+            const updater = editorAppendTextUpdaters[request.targetElementId];
+            if (updater) {
+              // Use payload if available
+              if (request.appendTextToEditorRealtimePayload) {
+                const payload = request.appendTextToEditorRealtimePayload;
+                updater(payload.textChunk, payload.streamId);
+                message = 'Text appended to editor successfully from payload.';
+                success = true;
+              } else {
+                // Fallback to parameters
+                const textChunk = request.parameters["textChunk"] || "";
+                const streamId = request.parameters["streamId"] || undefined;
+                
+                if (textChunk) {
+                  updater(textChunk, streamId);
+                  message = 'Text appended to editor successfully from parameters.';
+                  success = true;
+                } else {
+                  success = false;
+                  message = "Error: Missing textChunk for APPEND_TEXT_TO_EDITOR_REALTIME.";
+                }
+              }
+            } else {
+              success = false;
+              message = `Error: No editor append text updater found for '${request.targetElementId}'.`;
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for APPEND_TEXT_TO_EDITOR_REALTIME.";
+          }
+        } catch (e) {
+          console.error('[ReactUIActions] APPEND_TEXT_TO_EDITOR_REALTIME: Error appending text to editor:', e);
+          success = false;
+          message = 'Error: Could not append text to editor.';
+        }
+        break;
+        
+      case ReactUIActionType.SET_EDITOR_CONTENT:
+        console.log('[ReactUIActions] Action: SET_EDITOR_CONTENT');
+        try {
+          if (request.targetElementId) {
+            // First try the feedback page specific updater
+            const specificUpdater = editorContentSetters[request.targetElementId];
+            if (specificUpdater) {
+              const content = request.parameters["content"] || "";
+              specificUpdater(content);
+              message = `Editor '${request.targetElementId}' content set.`;
+              success = true;
+            } else {
+              // Fall back to the general updater
+              const generalUpdater = editorContentUpdaters[request.targetElementId];
+              if (generalUpdater) {
+                const content = request.parameters["content"] || "";
+                const isHtml = request.parameters["isHtml"] === "true";
+                generalUpdater(content, isHtml);
+                message = `Editor '${request.targetElementId}' content set.`;
+                success = true;
+              } else {
+                success = false;
+                message = `Error: No editor content updater found for '${request.targetElementId}'.`;
+              }
+            }
+          } else {
+            success = false;
+            message = "Error: Missing targetElementId for SET_EDITOR_CONTENT.";
+          }
+        } catch (error) {
+          success = false;
+          message = `Error setting editor content: ${error instanceof Error ? error.message : String(error)}`;
+        }
+        break;
     }
-
-    // Create a protobuf response message instead of using JSON
+    
+    // Create the response protobuf
     const responseProto = ClientUIActionResponse.create({
-      requestId,
+      requestId: request.requestId,
       success,
       message
     });

@@ -279,6 +279,35 @@ class CustomLLMBridge(LLM):
                         payload['session_id'] = f"no_ref_session_{uuid.uuid4().hex[:8]}"
                         logger.warning(f"CustomLLMBridge: No RoxAgent reference, created minimal context: {minimal_context}")
 
+                    # Add chat history to the payload if available
+                    if self._rox_agent_ref and hasattr(self._rox_agent_ref, '_latest_chat_history'):
+                        chat_history = self._rox_agent_ref._latest_chat_history
+                        if isinstance(chat_history, list):
+                            payload['chat_history'] = chat_history
+                            
+                            # Detailed test logging for chat history in CustomLLMBridge
+                            print("\n======== CUSTOM_LLM_BRIDGE TEST LOGGING ========")
+                            print(f"CustomLLMBridge: Sending chat history with {len(chat_history)} messages to backend API")
+                            for i, msg in enumerate(chat_history):
+                                print(f"Message #{i+1}:")
+                                print(f"  Role: {msg.get('role', 'unknown')}")
+                                print(f"  Content: {msg.get('content', '')[:50]}{'...' if len(msg.get('content', '')) > 50 else ''}")
+                            print("==============================================\n")
+                            
+                            logger.info(f"CustomLLMBridge: Added chat_history to payload with {len(chat_history)} messages")
+                        else:
+                            logger.warning(f"CustomLLMBridge: _latest_chat_history is not a list. Type: {type(chat_history)}")
+                            payload['chat_history'] = []  # Add empty chat history array to match InteractionRequest model
+                            print("\n======== CUSTOM_LLM_BRIDGE TEST LOGGING ========")
+                            print(f"CustomLLMBridge: ERROR - Chat history is not a list: {type(chat_history)}")
+                            print("==============================================\n")
+                    else:
+                        logger.debug("CustomLLMBridge: No chat history available to add to payload")
+                        payload['chat_history'] = []  # Add empty chat history array to match InteractionRequest model
+                        print("\n======== CUSTOM_LLM_BRIDGE TEST LOGGING ========")
+                        print("CustomLLMBridge: No chat history attribute found in RoxAgent")
+                        print("==============================================\n")
+                        
                     # Add diagnostic field to track the flow
                     payload['_debug_source'] = 'custom_llm_bridge'
                     payload['usertoken'] = self._user_token

@@ -662,12 +662,16 @@ async def agent_main_logic(agent_or_ctx):
             target_element_id="globalLoadingIndicator",
             parameters={"is_loading": "false"}
         )
-        await asyncio.sleep(1)
 
         logger.info("B2F Agent Logic: All test UI actions sent.")
 
+        # Keep the agent alive to handle RPC calls
+        logger.info("RoxAgent: Entering main loop to keep agent alive for RPCs...")
+        while True:
+            await asyncio.sleep(3600) # Sleep for a long time, effectively forever
+            
     except Exception as e:
-        logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
+        logger.error(f"B2F Agent Logic: Error in agent_main_logic: {e}", exc_info=True)
 
 
 async def entrypoint(ctx: JobContext):

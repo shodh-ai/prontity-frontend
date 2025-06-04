@@ -117,6 +117,31 @@ class AgentInteractionService: # Simple class without inheritance
                 if self.agent_instance:
                     self.agent_instance._latest_student_context = parsed_custom_data
                     logger.info(f"RPC: Updated agent_instance._latest_student_context with: {parsed_custom_data}")
+                    
+                    # Extract chat history from custom_data if available
+                    if isinstance(parsed_custom_data, dict) and 'chatHistory' in parsed_custom_data:
+                        chat_history = parsed_custom_data.get('chatHistory', [])
+                        
+                        # Detailed test logging for chat history
+                        print("======== CHAT HISTORY TEST LOGGING ========")
+                        print(f"RPC: Received chat history with {len(chat_history)} messages")
+                        for i, msg in enumerate(chat_history):
+                            print(f"Message #{i+1}:")
+                            print(f"  Role: {msg.get('role', 'unknown')}")
+                            print(f"  Content: {msg.get('content', '')[:50]}{'...' if len(msg.get('content', '')) > 50 else ''}")
+                        print("==========================================")
+                        
+                        # Ensure the agent instance has a chat history attribute
+                        if not hasattr(self.agent_instance, '_latest_chat_history'):
+                            self.agent_instance._latest_chat_history = []
+                        self.agent_instance._latest_chat_history = chat_history
+                        logger.info(f"RPC: Updated agent_instance._latest_chat_history with {len(chat_history)} messages")
+                    else:
+                        logger.debug("RPC: No chat history found in custom_data")
+                        print("======== CHAT HISTORY TEST LOGGING ========")
+                        print("RPC: No chat history found in custom_data")
+                        print("Key 'chatHistory' not found in:", list(parsed_custom_data.keys()) if isinstance(parsed_custom_data, dict) else f"Not a dict: {type(parsed_custom_data)}")
+                        print("==========================================")
 
                     # Handle session ID (prioritize session_id over sessionId)
                     if isinstance(parsed_custom_data, dict) and 'session_id' in parsed_custom_data:

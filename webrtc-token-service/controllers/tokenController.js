@@ -93,6 +93,60 @@ exports.generateToken = async (req, res, next) => {
 };
 
 /**
+ * Generate a LiveKit access token from query parameters (for development use)
+ * @param {Object} req - Express request object with query parameters
+ * @param {Object} res - Express response object
+ */
+exports.generateTokenFromQuery = async (req, res, next) => {
+  try {
+    // Extract room and username from query parameters
+    const { room, username } = req.query;
+    
+    if (!room || !username) {
+      return res.status(400).json({ error: 'Missing required query parameters: room and username' });
+    }
+
+    // Environment validation
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    const wsUrl = process.env.LIVEKIT_URL;
+
+    if (!apiKey || !apiSecret || !wsUrl) {
+      console.error("LiveKit API Key, Secret, or Host not configured in environment variables.");
+      return res.status(500).json({ error: 'Server misconfigured - LiveKit credentials missing' });
+    }
+
+    console.log(`Generating LiveKit token for room: ${room}, username: ${username}`);
+
+    // Create a new access token
+    const at = new AccessToken(apiKey, apiSecret, {
+      identity: username
+    });
+
+    // Create token with room access
+    at.addGrant({ 
+      roomJoin: true, 
+      room: room,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true
+    });
+
+    // Generate the token
+    const token = at.toJwt();
+
+    // Return the token
+    return res.status(200).json({
+      token,
+      wsUrl
+    });
+  } catch (error) {
+    console.error(`Error generating token from query: ${error.message}`);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+/**
  * Verify a LiveKit access token (optional functionality)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object

@@ -23,7 +23,7 @@ import {
   AgentResponse, // Existing F2B
   // Add these for B2F
   AgentToClientUIActionRequest,
-  NotifyPageLoadRequest,
+  NotifyPageLoadRequest, // For F2B Page Load Notification
   ClientUIActionResponse,
   ClientUIActionType,
 } from "@/generated/protos/interaction";
@@ -61,6 +61,7 @@ export default function RoxPage() {
   const [error, setError] = useState<string | null>(null);
   const [userInput, setUserInput] = useState("");
   const [rpcCallStatus, setRpcCallStatus] = useState<string>("");
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'agent', content: string }[]>([]);
   const roomRef = useRef<Room | null>(null);
   const [isStudentStatusDisplayOpen, setIsStudentStatusDisplayOpen] =
     useState(false);
@@ -400,9 +401,11 @@ export default function RoxPage() {
 
                 sessionId: (roomInstance as any).sid || roomInstance.name, // Attempt to get session ID, fallback to room name
 
-                chatHistory: JSON.stringify([]), // Empty chat history for initial load, or load from storage
+                chatHistory: JSON.stringify(chatMessages), // Send current chat history
+
 
                 transcript: "",
+
               });
 
               const serializedRequest =
@@ -606,6 +609,14 @@ export default function RoxPage() {
                   );
                 }
               }
+              // Handle agent's text response from ChatChunk
+              if (message?.delta?.content && message?.delta?.role === 'assistant') {
+                const agentText = message.delta.content;
+                if (agentText.trim()) { // Avoid adding empty messages
+                  setChatMessages(prev => [...prev, { role: 'agent', content: agentText }]);
+                }
+              }
+
               // Fallback: Check for simpler action/payload structure directly if CustomLLMBridge might send it this way.
               // This is based on rox_agent.py returning dom_actions directly in its JSON response.
               // CustomLLMBridge might pick this up and send it without the delta/metadata wrapper in some configurations.
@@ -682,11 +693,55 @@ export default function RoxPage() {
     };
   }, [token]); // Effect dependencies
 
-  const handleSendMessageToAgent = () => {
-    if (userInput.trim()) {
-      console.log("Sending to agent:", userInput);
-      // TODO: Add Socket.IO or LiveKit agent communication logic here
-      setUserInput(""); // Clear input after sending
+  const handleSendMessageToAgent = async () => {
+    if (userInput.trim() && liveKitRpcAdapterRef.current && roomRef.current) {
+      const currentMessage = userInput.trim();
+      const currentUserId = userName; // Or from a more robust auth state
+      const currentSessionId = (roomRef.current as any).sid || roomName;
+
+      // Optimistically update UI with user's message
+      setChatMessages(prev => [...prev, { role: 'user', content: currentMessage }]);
+      setUserInput(""); // Clear input immediately
+
+      const payload = {
+        message: currentMessage,
+        chatHistory: chatMessages, // Send history *before* adding the current user message
+        userId: currentUserId,
+        sessionId: currentSessionId,
+      };
+
+      try {
+        const requestMessage = FrontendButtonClickRequest.create({
+          buttonId: "send_chat_message", // Specific ID for chat messages
+          customData: JSON.stringify(payload),
+        });
+        const serializedRequest = FrontendButtonClickRequest.encode(requestMessage).finish();
+
+        console.log(
+          "Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'HandleFrontendButton' for chat with request:",
+          requestMessage
+        );
+
+        // No need to await response for chat if it comes via DataReceived, but good to log if it's an ack
+        const serializedResponse = await liveKitRpcAdapterRef.current.request(
+          "rox.interaction.AgentInteraction",
+          "HandleFrontendButton",
+          serializedRequest
+        );
+        const responseMessage = AgentResponse.decode(serializedResponse);
+        console.log("RPC Response from HandleFrontendButton (chat send ack):", responseMessage);
+        // Agent's actual chat reply will come via RoomEvent.DataReceived
+
+      } catch (e) {
+        const errorMessage = `Error sending chat message via RPC: ${
+          e instanceof Error ? e.message : String(e)
+        }`;
+        console.error(errorMessage, e);
+        // Optionally, add error message to chat or revert optimistic update
+        setChatMessages(prev => [...prev, { role: 'agent', content: `Error: Could not send message. ${errorMessage}` }]);
+      }
+    } else {
+      console.warn("Cannot send message: No input, or RPC adapter/room not ready.");
     }
   };
 
@@ -788,7 +843,21 @@ export default function RoxPage() {
             Hello, I am Rox, your AI Assistant!
           </p>
 
-          {/* Input Area */}
+          {/* Chat Display Area */}
+          <div className="w-full max-w-3xl h-64 overflow-y-auto mb-4 p-4 border border-gray-300 rounded-lg bg-white/80 flex flex-col space-y-2">
+            {chatMessages.map((msg, index) => (
+              <div
+                key={index}
+                className={`p-2 rounded-lg max-w-[70%] ${
+                  msg.role === 'user' ? 'bg-blue-500 text-white self-end' : 'bg-gray-200 text-gray-800 self-start'
+                }`}
+              >
+                {msg.content}
+              </div>
+            ))}
+          </div>
+
+          {/* Input Area */}_COMMENT_END_
           <div
             className="w-full bg-white border border-gray-300 rounded-xl p-1 flex items-center shadow-xl relative"
             style={{ minHeight: "56px" }}

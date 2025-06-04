@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-// First import group consolidated into the main import below
 import Image from "next/image";
 import {
   Room,
@@ -398,13 +397,15 @@ export default function RoxPage() {
 
                 userId: userName, // userName is 'TestUser' from component scope
 
-                currentPage: "P2_WritingPractice", // Specific to writing practice page
+                currentPage: "RoxPage", // Specific to writing practice page
 
                 sessionId: (roomInstance as any).sid || roomInstance.name, // Attempt to get session ID, fallback to room name
 
                 chatHistory: JSON.stringify(chatMessages), // Send current chat history
 
-                transcript: "client_loaded_rox_page", // Updated to rox_page
+
+                transcript: "",
+
               });
 
               const serializedRequest =

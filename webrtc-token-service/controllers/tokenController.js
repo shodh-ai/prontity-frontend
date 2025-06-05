@@ -14,7 +14,6 @@ exports.generateToken = async (req, res, next) => {
     // Parameters from request body (optional overrides)
     const { room_name: req_room_name, participant_identity: req_participant_identity, User_id: userId } = req.body;
 
-    console.log(`[tokenController] Received User_id from req.body: ${userId}, type: ${typeof userId}`);
 
     // Input validation (application_user_id is guaranteed by sessionAuth if it reaches here)
     // No need for: if (!application_user_id) { ... }
@@ -36,8 +35,6 @@ exports.generateToken = async (req, res, next) => {
       return res.status(500).json({ error: 'Server misconfigured - LiveKit credentials missing' });
     }
 
-    console.log(`Generating LiveKit token for application_user_id: ${application_user_id}, participant_identity: ${participant_identity}, name: ${participant_name}, room: ${room_name}`);
-
     // --- THIS IS THE KEY MODIFICATION AREA ---
     const metadataPayload = {
       user_id: application_user_id, // Your application's user ID
@@ -47,10 +44,7 @@ exports.generateToken = async (req, res, next) => {
       // You can add other relevant, non-sensitive info here
     };
     const metadataString = JSON.stringify(metadataPayload);
-    console.log(`[tokenController] Generated metadataString: ${metadataString}`);
     // --- END KEY MODIFICATION AREA ---
-
-    console.log("Metadata String:", metadataString);
 
     // Create token with appropriate permissions
     const at = new AccessToken(apiKey, apiSecret, {
@@ -75,8 +69,6 @@ exports.generateToken = async (req, res, next) => {
 
     // Generate and return token
     const token = await at.toJwt();
-    
-    console.log(`Token generated successfully for application_user_id: ${application_user_id}, participant_identity: ${participant_identity}`);
     
     // Return token and WebSocket URL
     return res.status(200).json({

@@ -96,6 +96,8 @@ export class LiveKitRpcAdapter implements Rpc {
 interface LiveKitSessionProps {
   roomName: string;
   userName: string;
+  livekitAccessToken: string;
+  livekitServerUrl: string;
   questionText?: string;
   sessionTitle?: string;
   onLeave?: () => void;
@@ -113,6 +115,8 @@ interface LiveKitSessionProps {
 export default function LiveKitSession({
   roomName,
   userName,
+  livekitAccessToken,
+  livekitServerUrl,
   questionText,
   sessionTitle = "LiveKit Session",
   onLeave,
@@ -131,7 +135,6 @@ export default function LiveKitSession({
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");
   const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
 
-  const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
   const [videoEnabled, setVideoEnabled] = useState<boolean>(!hideVideo);
@@ -218,45 +221,39 @@ export default function LiveKitSession({
     };
 
     const connectToRoom = async () => {
-      if (token) return; 
+      // Check if already connected/connecting or if essential props are missing
+      if (roomInstance.state !== 'disconnected' || !livekitAccessToken || !livekitServerUrl) {
+        console.log('Connection prerequisites not met, already connected/connecting, or essential props missing.', {
+          roomState: roomInstance.state,
+          hasAccessToken: !!livekitAccessToken,
+          hasServerUrl: !!livekitServerUrl,
+        });
+        return;
+      }
 
       try {
-        console.log(`Fetching token for room: ${roomName}, user: ${userName}`);
-        const tokenUrl = getTokenEndpointUrl(roomName, userName);
-        console.log('Attempting to fetch token from URL:', tokenUrl);
-        const fetchOptions: RequestInit = { headers: {} };
-        if (tokenServiceConfig.includeApiKeyInClient && tokenServiceConfig.apiKey) {
-          (fetchOptions.headers as Record<string, string>)['x-api-key'] = tokenServiceConfig.apiKey;
-        }
-        const resp = await fetch(tokenUrl, fetchOptions);
-        if (!resp.ok) throw new Error(`Failed to get token: ${resp.status} ${resp.statusText}`);
-        const data = await resp.json();
-
-        if (!mounted) return;
+        console.log(`Attempting to connect to LiveKit room: ${roomName} at ${livekitServerUrl} using provided token.`);
         
-        if (data.token) {
-          setToken(data.token);
-          console.log('Token received, connecting to LiveKit room...');
-          
-          setupRoomEvents(); // Setup event listeners before connecting
+        setupRoomEvents(); // Setup event listeners before connecting
 
-          await roomInstance.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL || data.wsUrl, data.token);
-          console.log('Successfully connected to LiveKit room.');
-          // RPC client setup is now triggered by RoomEvent.Connected
+        // Use livekitServerUrl and livekitAccessToken from props
+        await roomInstance.connect(livekitServerUrl, livekitAccessToken);
+        console.log('Successfully connected to LiveKit room.');
+        // RPC client setup is now triggered by RoomEvent.Connected
 
-          if (onRoomCreated) {
-            onRoomCreated(roomInstance);
-          }
-          fetch(`/api/agent?room=${roomName}`).catch(e => console.error('Error starting AI agent:', e));
-        } else {
-          console.error('Failed to get token from API (no token in response)');
+        // Add this back if needed:
+        fetch(`/api/agent?room=${roomName}`).catch(e => console.error('Error starting AI agent:', e));
+
+        if (onRoomCreated) {
+          onRoomCreated(roomInstance);
         }
-      } catch (e) {
-        console.error('Error in connectToRoom process:', e);
+      } catch (error) {
+        console.error('Failed to connect to LiveKit room:', error);
+        // Potentially update UI or state to reflect connection failure
       }
     };
-    
-    if ((audioInitialized || hideAudio) && !token) {
+
+    if ((audioInitialized || hideAudio)) {
         connectToRoom();
     }
     
@@ -266,7 +263,7 @@ export default function LiveKitSession({
       roomInstance.disconnect().then(() => console.log('Disconnected from LiveKit room on cleanup.'));
       agentServiceClientRef.current = null; // Clear ref on unmount
     };
-  }, [roomInstance, roomName, userName, audioInitialized, hideAudio, token, onRoomCreated, micHeartbeat, enableMicrophone]);
+  }, [roomInstance, roomName, userName, audioInitialized, hideAudio, livekitAccessToken, livekitServerUrl, onRoomCreated, micHeartbeat, enableMicrophone]);
 
 
   const handleRpcButtonClick = async () => {
@@ -666,21 +663,28 @@ export default function LiveKitSession({
           }
       }, [hideAudio, audioInitialized]);
   }
-  if (token === '' && (audioInitialized || hideAudio) ) {
-     return <div className="figma-room-container"><div className="figma-content">Connecting to session...</div></div>;
+  if (!livekitAccessToken) {
+    // Waiting for backend to provide token and URL
+    return <div className="figma-room-container"><div className="figma-content">Fetching session details...</div></div>;
   }
-  if (!token && !audioInitialized && !hideAudio) {
-    return <div className="figma-room-container"><div className="figma-content">Initializing audio and connecting...</div></div>;
+
+  // Token is available, now check room connection state and audio
+  if (roomInstance.state !== 'connected') {
+    // Still connecting to LiveKit or in an intermediate state
+    return <div className="figma-room-container"><div className="figma-content">Connecting to session... (State: {roomInstance.state})</div></div>;
   }
-  if (!token || (!audioInitialized && !hideAudio) || roomInstance.state !== 'connected') {
-      return <div className="figma-room-container"><div className="figma-content">Loading session... (State: {roomInstance.state})</div></div>;
+
+  // At this point, livekitAccessToken is available AND roomInstance.state should be 'connected'.
+  // If audio is required but not yet initialized, show a message.
+  if (!hideAudio && !audioInitialized) {
+     return <div className="figma-room-container"><div className="figma-content">Initializing audio...</div></div>;
   }
 
 
   return (
     <RoomContext.Provider value={roomInstance}>
       <LiveKitSessionUI
-        token={token}
+        token={livekitAccessToken}
         pageType={pageType}
         sessionTitle={sessionTitle}
         questionText={questionText}

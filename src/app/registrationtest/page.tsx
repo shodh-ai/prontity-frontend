@@ -12,8 +12,8 @@
 // // src/app/registrationtest/page.tsx
 "use client"; // if Q uses any browser APIs or state
 
-import { Q } from "./screens/Q";
+import { RegistrationForm } from "../../components/RegistrationForm";
 
 export default function RegistrationTestPage() {
-  return <Q />;
+  return <RegistrationForm />;
 }

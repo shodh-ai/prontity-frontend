@@ -1,1 +1,0 @@
-export { Q } from "./Q";

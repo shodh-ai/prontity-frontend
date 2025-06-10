@@ -1,0 +1,149 @@
+.q1Child {
+  	position: absolute;
+  	top: -359px;
+  	left: 1115px;
+  	border-radius: 50%;
+  	background-color: #566fe9;
+  	width: 753px;
+  	height: 753px;
+}
+.q1Item {
+  	position: absolute;
+  	top: 572px;
+  	left: -144px;
+  	border-radius: 50%;
+  	background-color: #336de6;
+  	width: 353px;
+  	height: 353px;
+}
+.q1Inner {
+  	position: absolute;
+  	top: 0px;
+  	left: 0px;
+  	backdrop-filter: blur(400px);
+  	background-color: rgba(255, 255, 255, 0.6);
+  	width: 1440px;
+  	height: 820px;
+}
+.unionIcon {
+  	position: relative;
+  	border-radius: 12px;
+  	width: 1392px;
+  	height: 746px;
+}
+.groupChild {
+  	position: absolute;
+  	top: 13.5px;
+  	left: 13.5px;
+  	filter: blur(100px);
+  	border-radius: 50%;
+  	background-color: #566fe9;
+  	width: 63px;
+  	height: 63px;
+}
+.screenshot20250609At247 {
+  	position: absolute;
+  	top: 0px;
+  	left: 0px;
+  	border-radius: 1000px;
+  	width: 90px;
+  	height: 90px;
+  	object-fit: cover;
+}
+.ellipseParent {
+  	position: absolute;
+  	top: 660px;
+  	left: 675px;
+  	width: 90px;
+  	height: 90px;
+}
+.hiThere {
+  	margin: 0;
+}
+.hiThereImContainer {
+  	align-self: stretch;
+  	position: relative;
+  	line-height: 170%;
+  	font-weight: 600;
+}
+.name {
+  	position: relative;
+  	opacity: 0.4;
+}
+.frameChild {
+  	width: 32px;
+  	border-radius: 4px;
+  	height: 32px;
+}
+.nameParent {
+  	width: 500px;
+  	border-radius: 6px;
+  	border: 1px solid rgba(86, 111, 233, 0.2);
+  	box-sizing: border-box;
+  	height: 48px;
+  	display: flex;
+  	flex-direction: row;
+  	align-items: center;
+  	justify-content: space-between;
+  	padding: 20px 8px 20px 16px;
+  	gap: 0px;
+}
+.hiThereImRoxYourPersoParent {
+  	position: absolute;
+  	top: 308px;
+  	left: calc(50% - 250px);
+  	display: flex;
+  	flex-direction: column;
+  	align-items: flex-start;
+  	justify-content: flex-start;
+  	gap: 12px;
+}
+.frameIcon {
+  	width: 24px;
+  	position: relative;
+  	max-height: 100%;
+  	overflow: hidden;
+  	flex-shrink: 0;
+}
+.frameItem {
+  	width: 90px;
+  	position: relative;
+  	border-radius: 4px;
+  	background-color: #566fe9;
+  	height: 10px;
+}
+.frameInner {
+  	width: 90px;
+  	position: relative;
+  	border-radius: 4px;
+  	background-color: rgba(86, 111, 233, 0.15);
+  	height: 10px;
+}
+.rectangleParent {
+  	display: flex;
+  	flex-direction: row;
+  	align-items: center;
+  	justify-content: flex-start;
+  	gap: 4px;
+}
+.frameParent {
+  	position: absolute;
+  	top: 52px;
+  	left: calc(50% - 250px);
+  	display: flex;
+  	flex-direction: row;
+  	align-items: center;
+  	justify-content: center;
+  	gap: 10px;
+}
+.q1 {
+  	width: 100%;
+  	position: relative;
+  	background-color: #fff;
+  	height: 820px;
+  	overflow: hidden;
+  	text-align: left;
+  	font-size: 14px;
+  	color: #000;
+  	font-family: 'Plus Jakarta Sans';
+}

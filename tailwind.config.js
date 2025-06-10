@@ -1,3 +1,4 @@
+/** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
     "./src/**/*.{html,js,ts,jsx,tsx}",
@@ -8,6 +9,7 @@ module.exports = {
     extend: {
       fontFamily: {
         "label-large": "var(--label-large-font-family)",
+        "label-extra-large": "var(--label-extra-large-font-family)",
         sans: [
           "ui-sans-serif",
           "system-ui",
@@ -73,7 +75,13 @@ module.exports = {
         "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
-    container: { center: true, padding: "2rem", screens: { "2xl": "1400px" } },
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
   },
   plugins: [],
   darkMode: ["class"],

@@ -11,6 +11,7 @@ import {
 } from "@/types/command";
 import Vara from "vara";
 import rough from "roughjs";
+import Konva from "konva";
 
 export default function Home() {
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
@@ -27,75 +28,68 @@ export default function Home() {
     loadLessonData();
   }, []);
 
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const layerRef = useRef<Konva.Layer | null>(null);
+
   useEffect(() => {
+    if (!lessonData) return;
+
     let isCancelled = false;
 
-    const cleanupCanvas = () => {
+    // Initialize Konva Stage and Layer
+    const stage = new Konva.Stage({
+      container: "canvas",
+      width: lessonData.canvasDimensions.width,
+      height: lessonData.canvasDimensions.height,
+    });
+    stageRef.current = stage;
+
+    const layer = new Konva.Layer();
+    layerRef.current = layer;
+    stage.add(layer);
+
+    const runLessonAsync = async () => {
+      const elementMap = new Map();
+      for (const step of lessonData.steps) {
+        if (isCancelled) return;
+        try {
+          switch (step.command) {
+            case "write":
+              await handleWrite(step as WriteCommand, elementMap);
+              break;
+            case "drawShape":
+              await handleDrawShape(step as DrawShapeCommand, elementMap);
+              break;
+            case "annotate":
+              await handleAnnotate(step as AnnotateCommand, elementMap);
+              break;
+            case "wait":
+              await new Promise((resolve) =>
+                setTimeout(resolve, (step as WaitCommand).payload.duration)
+              );
+              break;
+            default:
+              break;
+          }
+        } catch (error) {
+          console.error(`Error processing step:`, error);
+        }
+      }
+    };
+
+    runLessonAsync();
+
+    return () => {
+      isCancelled = true;
+      // Cleanup Vara containers
       const canvasElement = document.getElementById("canvas");
       if (canvasElement) {
         const varaContainers =
           canvasElement.querySelectorAll('div[id^="vara-"]');
         varaContainers.forEach((container) => container.remove());
       }
-      const svgElement = document.getElementById("drawing-svg");
-      if (svgElement) {
-        while (svgElement.firstChild) {
-          svgElement.removeChild(svgElement.firstChild);
-        }
-      }
-    };
-
-    const runLessonAsync = async () => {
-      if (!lessonData) {
-        return;
-      }
-
-      const elementMap = new Map();
-
-      for (const step of lessonData.steps) {
-        if (isCancelled) {
-          return;
-        }
-        try {
-          switch (step.command) {
-            case "write": {
-              const writeStep = step as WriteCommand;
-              await handleWrite(writeStep, elementMap);
-              break;
-            }
-            case "drawShape": {
-              const drawStep = step as DrawShapeCommand;
-              await handleDrawShape(drawStep, elementMap);
-              break;
-            }
-            case "annotate": {
-              const annotateStep = step as AnnotateCommand;
-              await handleAnnotate(annotateStep, elementMap);
-              break;
-            }
-            case "wait": {
-              const waitStep = step as WaitCommand;
-              const duration = waitStep.payload.duration;
-              await new Promise((resolve) => setTimeout(resolve, duration));
-              break;
-            }
-            default: {
-              const exhaustiveCheck: never = step;
-            }
-          }
-        } catch (error) {
-          const stepId = "id" in step ? step.id : "unknown";
-          console.error(`Error processing step ${stepId}:`, error);
-        }
-      }
-    };
-
-    cleanupCanvas();
-    runLessonAsync();
-
-    return () => {
-      isCancelled = true;
-      cleanupCanvas();
+      // Destroy Konva stage
+      stageRef.current?.destroy();
     };
   }, [lessonData]);
 
@@ -168,42 +162,40 @@ export default function Home() {
     step: DrawShapeCommand,
     elementMap: Map<string, any>
   ) {
-    const svgElement = document.getElementById("drawing-svg");
-    if (!svgElement) {
-      console.error("SVG element not found!");
-      return Promise.resolve();
+    if (!layerRef.current) {
+      console.error("Konva Layer not initialized!");
+      return;
     }
 
     try {
-      const rc = rough.svg(svgElement as unknown as SVGSVGElement);
-      let shape;
+      const generator = rough.generator();
+      let drawable;
 
       switch (step.payload.shapeType) {
         case "line":
-          shape = rc.line(
+          drawable = generator.line(
             step.payload.points[0].x,
             step.payload.points[0].y,
             step.payload.points[1].x,
             step.payload.points[1].y,
-            {
-              stroke: step.payload.roughOptions.stroke || "#000",
-              strokeWidth: step.payload.roughOptions.strokeWidth || 2,
-              roughness: step.payload.roughOptions.roughness || 1.5,
-            }
+            step.payload.roughOptions
           );
           break;
-
         default:
-          return Promise.resolve();
+          return;
       }
 
-      svgElement.appendChild(shape);
-      elementMap.set(step.id, shape);
+      const paths = generator.toPaths(drawable);
+      const path = new Konva.Path({
+        data: paths[0].d,
+        stroke: step.payload.roughOptions.stroke || "#000",
+        strokeWidth: step.payload.roughOptions.strokeWidth || 2,
+      });
 
-      return Promise.resolve();
+      layerRef.current.add(path);
+      elementMap.set(step.id, path);
     } catch (error) {
       console.error("Error creating shape:", error);
-      return Promise.reject(error);
     }
   }
 
@@ -211,58 +203,67 @@ export default function Home() {
     step: AnnotateCommand,
     elementMap: Map<string, any>
   ) {
-    const svgElement = document.getElementById("drawing-svg");
-    if (!svgElement) {
-      console.error("SVG element not found!");
-      return Promise.resolve();
+    if (!layerRef.current) {
+      console.error("Konva Layer not initialized!");
+      return;
     }
 
-    const targetId = step.payload.targetId;
-    const targetElement = elementMap.get(targetId);
+    const targetShape = elementMap.get(step.payload.targetId);
+    const targetVara = document.querySelector(`#vara-${step.payload.targetId}`);
 
-    if (!targetElement) {
+    if (!targetShape && !targetVara) {
       console.error(
-        `Target element with id ${targetId} not found in elementMap!`
+        `Target element with id ${step.payload.targetId} not found!`
       );
-      return Promise.resolve();
+      return;
     }
 
     try {
-      const canvasElement = document.getElementById("canvas");
-      const containerSelector = `#vara-${targetId}`;
-      const containerElement = document.querySelector(containerSelector);
+      let x, y, radius;
 
-      if (!canvasElement || !containerElement) {
-        console.error(`Cannot find container for ${targetId}`);
-        return Promise.resolve();
+      if (targetShape) {
+        // Annotating a Konva shape
+        const box = targetShape.getClientRect();
+        x = box.x + box.width / 2;
+        y = box.y + box.height / 2;
+        radius = Math.max(box.width, box.height) * 0.7;
+      } else {
+        // Annotating a Vara text element
+        const canvasElement = document.getElementById("canvas");
+        if (!canvasElement || !targetVara) return;
+        const containerBox = targetVara.getBoundingClientRect();
+        const canvasBox = canvasElement.getBoundingClientRect();
+        x = containerBox.left - canvasBox.left + containerBox.width / 2;
+        y = containerBox.top - canvasBox.top + containerBox.height / 2;
+        radius = Math.max(containerBox.width, containerBox.height) * 0.7;
       }
 
-      const containerBox = containerElement.getBoundingClientRect();
-      const canvasBox = canvasElement.getBoundingClientRect();
-
-      const x = containerBox.left - canvasBox.left + containerBox.width / 2;
-      const y = containerBox.top - canvasBox.top + containerBox.height / 2;
-      const radius = Math.max(containerBox.width, containerBox.height) * 0.7;
-
-      const rc = rough.svg(svgElement as unknown as SVGSVGElement);
-      let annotation;
+      const generator = rough.generator();
+      let drawable;
 
       if (step.payload.annotationType === "circle") {
-        annotation = rc.circle(x, y, radius * 2, {
-          stroke: step.payload.roughOptions.stroke || "#ff0000",
-          strokeWidth: step.payload.roughOptions.strokeWidth || 2,
-          roughness: step.payload.roughOptions.roughness || 1.5,
-          fill: "none",
-        });
-
-        svgElement.appendChild(annotation);
-        elementMap.set(step.id, annotation);
+        drawable = generator.circle(
+          x,
+          y,
+          radius * 2,
+          step.payload.roughOptions
+        );
+      } else {
+        return;
       }
+
+      const paths = generator.toPaths(drawable);
+      const annotation = new Konva.Path({
+        data: paths[0].d,
+        stroke: step.payload.roughOptions.stroke || "#ff0000",
+        strokeWidth: step.payload.roughOptions.strokeWidth || 2,
+      });
+
+      layerRef.current.add(annotation);
+      elementMap.set(step.id, annotation);
     } catch (error) {
       console.error("Error creating annotation:", error);
     }
-
-    return Promise.resolve();
   }
 
   return (
@@ -275,12 +276,6 @@ export default function Home() {
           height: `${lessonData?.canvasDimensions.height || 750}px`,
         }}
       >
-        <svg
-          id="drawing-svg"
-          className="absolute top-0 left-0 w-full h-full z-10"
-          width={lessonData?.canvasDimensions.width || 1000}
-          height={lessonData?.canvasDimensions.height || 750}
-        ></svg>
         <div className="absolute top-0 left-0 w-full h-full z-20"></div>
       </div>
     </div>

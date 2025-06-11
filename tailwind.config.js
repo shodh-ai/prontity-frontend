@@ -10,6 +10,7 @@ module.exports = {
       fontFamily: {
         "label-large": "var(--label-large-font-family)",
         "label-extra-large": "var(--label-extra-large-font-family)",
+        "paragraph-extra-large": "var(--paragraph-extra-large-font-family)",
         sans: [
           "ui-sans-serif",
           "system-ui",

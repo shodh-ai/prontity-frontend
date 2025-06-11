@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     
     try {
       // Let's use a more widely available model that's more reliable
-      const modelName = 'gemini-1.5-flash'; // More stable than 2.0-flash-exp
+      const modelName = 'gemini-2.0-flash'; // More stable than 2.0-flash-exp
       console.log('Using model:', modelName);
       
       const model = genAI.getGenerativeModel({

@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Get the model
-    const modelName = 'gemini-1.5-flash';
+    const modelName = 'gemini-2.0-flash';
     const model = genAI.getGenerativeModel({ model: modelName });
 
     console.log(`Generating image with prompt: ${prompt}`);

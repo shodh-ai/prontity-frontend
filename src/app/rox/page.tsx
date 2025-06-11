@@ -66,6 +66,13 @@ export default function RoxPage() {
     useState(false);
   const docsIconRef = useRef<HTMLImageElement>(null);
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
+  const connectionAttemptedRef = useRef<boolean>(false);
+  const timeoutIdsRef = useRef<number[]>([]);
+  const tokenUpdateTimeRef = useRef<number>(0);
+  const lastRoomNameRef = useRef<string | null>(null);
+  
+  // Constants
+  const DEBOUNCE_TIME = 1000; // 1 second debounce for token/room updates
 
   // State for agent-controlled UI elements
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState(
@@ -73,7 +80,7 @@ export default function RoxPage() {
   );
   const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
 
-  const roomName = "Roxpage"; // Or dynamically set if needed
+  const [roomName, setRoomName] = useState("Roxpage"); // Make it a state variable to update from backend response
   const userName = "TestUser"; // Or dynamically set if needed
 
   const handlePerformUIAction = async (
@@ -218,12 +225,20 @@ export default function RoxPage() {
   };
 
   useEffect(() => {
+    // Implement debounce for token fetch operations
+    const now = Date.now();
+    if (now - tokenUpdateTimeRef.current < DEBOUNCE_TIME) {
+      console.log(`[rox/page.tsx] Debouncing token fetch (${now - tokenUpdateTimeRef.current}ms since last update)`);
+      return;
+    }
+    
     const fetchToken = async () => {
       try {
-        const tokenUrl = `${tokenServiceConfig.url}/api/token`; // Base endpoint for POST
+        // Use pronity-backend's startAiSessionController instead of direct token service
+        const pronityBackendUrl = "http://localhost:8000/api/start-ai-session"; // Same endpoint used in new-session page
         console.log(
-          "[rox/page.tsx] Attempting to POST to token URL:",
-          tokenUrl
+          "[rox/page.tsx] Attempting to POST to pronity-backend URL:",
+          pronityBackendUrl
         );
 
         // IMPORTANT: Replace 'YOUR_PRONITY_SESSION_TOKEN' with the actual session token
@@ -266,22 +281,98 @@ export default function RoxPage() {
             Authorization: `Bearer ${pronitySessionToken}`,
           },
           body: JSON.stringify({
-            room_name: roomName, // Backend expects 'room_name'
-            participant_identity: userName, // Backend expects 'participant_identity'
-            User_id: User_id,
+            // Include session type and basic info
+            // Server should already know most details from the JWT token
+            session_type: "rox",
+            // Include any additional info the server might need
+            metadata: {
+              user_id: User_id,
+              participant_identity: userName
+            }
           }),
         };
-        const resp = await fetch(tokenUrl, fetchOptions);
-        if (!resp.ok) throw new Error(`Token service error: ${resp.status}`);
+        const resp = await fetch(pronityBackendUrl, fetchOptions);
+        if (!resp.ok) throw new Error(`Pronity backend error: ${resp.status}`);
         const data = await resp.json();
-        if (data.token) setToken(data.token);
-        else throw new Error("No token in response");
+        
+        // Response from startAiSessionController should contain both roomName and token
+        if (data.success && data.studentToken) {
+          // Check if token has changed
+          const tokenChanged = data.studentToken !== token;
+          
+          if (tokenChanged) {
+            console.log('[rox/page.tsx] Token has changed, resetting connection state');
+            
+            // Properly clean up existing connection first
+            if (roomRef.current) {
+              try {
+                console.log('[rox/page.tsx] Disconnecting existing room before reconnecting with new token');
+                roomRef.current.disconnect();
+                // Reset the room state
+                setRoom(null);
+                roomRef.current = null;
+              } catch (disconnectError) {
+                console.error('[rox/page.tsx] Error disconnecting room:', disconnectError);
+              }
+            }
+            
+            // Clear all timeouts
+            clearAllTimeouts();
+            
+            // Reset connection attempt flag to allow reconnection
+            connectionAttemptedRef.current = false;
+            
+            // Update the token
+            setToken(data.studentToken);
+          } else {
+            console.log('[rox/page.tsx] Token is unchanged');
+          }
+          
+          // Update the roomName state with the isolated room name from backend
+          if (data.roomName && data.roomName !== roomName) {
+            console.log(`[rox/page.tsx] Setting room name to: ${data.roomName} (was: ${roomName})`);
+            
+            // Update the last known room name to avoid unnecessary reconnection
+            lastRoomNameRef.current = data.roomName;
+            
+            setRoomName(data.roomName);
+          }
+
+          // Also store the livekitUrl if provided
+          if (data.livekitUrl) {
+            console.log(`[rox/page.tsx] Using LiveKit URL from response: ${data.livekitUrl}`);
+            // If you have a state for this, you could set it here
+          }
+        } else {
+          throw new Error("Invalid response format from pronity-backend");
+        }
       } catch (err) {
         setError((err as Error).message);
       }
     };
+    // Start token fetch process
+    // Record the token update time *before* attempting fetch for self-debounce
+    tokenUpdateTimeRef.current = Date.now();
+    // Start token fetch process
     fetchToken();
-  }, [roomName, userName]);
+    
+    // Cleanup function to handle component unmount
+    return () => {
+      console.log('[rox/page.tsx] Component cleanup - clearing timeouts and disconnecting');
+      clearAllTimeouts();
+      
+      // Disconnect LiveKit room if connected
+      if (roomRef.current) {
+        try {
+          console.log('[rox/page.tsx] Disconnecting room during cleanup');
+          roomRef.current.disconnect();
+          roomRef.current = null;
+        } catch (cleanupError) {
+          console.error('[rox/page.tsx] Error during room cleanup:', cleanupError);
+        }
+      }
+    };
+  }, [userName]);
 
   const handleTestRpcCall = async () => {
     if (!liveKitRpcAdapterRef.current) {
@@ -327,10 +418,34 @@ export default function RoxPage() {
     }
   };
 
+  // Add refs for connection management
+  // Refs and constants are already declared at the top of the component
+  
+  // Helper function to clear all timeouts
+  const clearAllTimeouts = () => {
+    timeoutIdsRef.current.forEach(id => clearTimeout(id));
+    timeoutIdsRef.current = [];
+  };
+
   useEffect(() => {
-    if (!token || room) return; // Don't connect if no token or already connected/connecting
+    // Return early if no token, already have a room, or already attempted connection
+    if (!token || room || connectionAttemptedRef.current) return;
+    
+    // Skip if roomName changed but we have an active connection
+    if (roomRef.current && lastRoomNameRef.current && roomName !== lastRoomNameRef.current) {
+      console.log(`[rox/page.tsx] Room name changed from ${lastRoomNameRef.current} to ${roomName}, but keeping existing connection`);
+      // Update the ref but don't reconnect
+      lastRoomNameRef.current = roomName;
+      return;
+    }
+    
+    // Update last room name
+    lastRoomNameRef.current = roomName;
 
     const connect = async () => {
+      console.log(`[rox/page.tsx] Connecting to room: ${roomName}`);
+      // Mark that we've attempted connection
+      connectionAttemptedRef.current = true;
       const newRoomInstance = new Room();
 
       newRoomInstance.on(RoomEvent.Connected, () => {
@@ -382,26 +497,42 @@ export default function RoxPage() {
           const sendPageLoadNotificationToAgent = async (
             roomInstance: Room
           ) => {
+            // Enhanced validation of connection state
+            if (!roomInstance) {
+              console.error(
+                "[RoxPage] Room instance is null or undefined. Cannot send PageLoad notification."
+              );
+              return;
+            }
+            
+            if (roomInstance.state !== 'connected') {
+              console.error(
+                `[RoxPage] Room is not in connected state (current: ${roomInstance.state}). Cannot send PageLoad notification.`
+              );
+              return;
+            }
+
+            if (!roomInstance.localParticipant) {
+              console.error(
+                "[RoxPage] LocalParticipant not available. Cannot send PageLoad notification."
+              );
+              return;
+            }
+            
             if (!liveKitRpcAdapterRef.current) {
               console.error(
-                "[WritingPracticeTestPage] LiveKitRpcAdapter not available. Cannot send PageLoad notification."
+                "[RoxPage] LiveKitRpcAdapter not available. Cannot send PageLoad notification."
               );
-
               return;
             }
 
             try {
               const pageLoadData = NotifyPageLoadRequest.create({
-                taskStage: "ROX_WELCOME_INIT", // Specific to writing practice page
-
-                userId: userName, // userName is 'TestUser' from component scope
-
-                currentPage: "RoxPage", // Specific to writing practice page
-
-                sessionId: (roomInstance as any).sid || roomInstance.name, // Attempt to get session ID, fallback to room name
-
-                chatHistory: JSON.stringify([]), // Empty chat history for initial load, or load from storage
-
+                taskStage: "ROX_WELCOME_INIT",
+                userId: userName,
+                currentPage: "RoxPage",
+                sessionId: (roomInstance as any).sid || roomInstance.name,
+                chatHistory: JSON.stringify([]),
                 transcript: "",
               });
 
@@ -409,41 +540,68 @@ export default function RoxPage() {
                 NotifyPageLoadRequest.encode(pageLoadData).finish();
 
               console.log(
-                "[WritingPracticeTestPage] Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'NotifyPageLoad' with request:",
-                pageLoadData
+                `[RoxPage] Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'NotifyPageLoad' with request:`,
+                {
+                  taskStage: pageLoadData.taskStage,
+                  userId: pageLoadData.userId,
+                  sessionId: pageLoadData.sessionId,
+                  roomState: roomInstance.state
+                }
               );
 
-              const serializedResponse =
-                await liveKitRpcAdapterRef.current.request(
-                  "rox.interaction.AgentInteraction",
-
-                  "NotifyPageLoad",
-
-                  serializedRequest
+              try {
+                const serializedResponse =
+                  await liveKitRpcAdapterRef.current.request(
+                    "rox.interaction.AgentInteraction",
+                    "NotifyPageLoad",
+                    serializedRequest
+                  );
+                
+                const responseMessage = AgentResponse.decode(serializedResponse);
+                
+                console.log(
+                  `[RoxPage] RPC Response from NotifyPageLoad received successfully:`,
+                  {
+                    statusMessage: responseMessage.statusMessage?.substring(0, 100),
+                    hasDataPayload: responseMessage.dataPayload ? true : false,
+                    success: true
+                  }
                 );
-
-              const responseMessage = AgentResponse.decode(serializedResponse);
-
-              console.log(
-                "[WritingPracticeTestPage] RPC Response from NotifyPageLoad:",
-                responseMessage
-              );
-
-              // Optionally, update UI or state based on responseMessage
+                
+                return responseMessage;
+              } catch (rpcError) {
+                // Specifically handling RPC failures
+                console.error(
+                  `[RoxPage] RPC connection error in NotifyPageLoad: ${rpcError instanceof Error ? rpcError.message : String(rpcError)}`
+                );
+                throw rpcError; // Re-throw for the caller to handle
+              }
             } catch (e) {
+              // General error handling
               console.error(
-                `[WritingPracticeTestPage] Error calling NotifyPageLoad RPC: ${
+                `[RoxPage] Error preparing or calling NotifyPageLoad RPC: ${
                   e instanceof Error ? e.message : String(e)
                 }`,
                 e
               );
+              return null;
             }
           };
 
-          setTimeout(
-            () => sendPageLoadNotificationToAgent(newRoomInstance),
-            2000
-          ); // Added 2s delay
+          // Increase the delay and add connection check before sending notification
+          const notificationTimeoutId = setTimeout(() => {
+            // Check if the connection is still valid before sending
+            if (newRoomInstance && newRoomInstance.state === 'connected' && 
+                newRoomInstance.localParticipant && liveKitRpcAdapterRef.current) {
+              console.log('[RoxPage] Connection still valid, sending page load notification...');
+              sendPageLoadNotificationToAgent(newRoomInstance).catch(err => {
+                console.error('[RoxPage] Failed to send page load notification:', err);
+              });
+            } else {
+              console.warn('[RoxPage] Connection not stable, skipping page load notification');
+            }
+          }, 5000); // Increased from 3500ms to 5000ms
+          timeoutIdsRef.current.push(notificationTimeoutId as unknown as number);
           // Setup a listener for when participants join to identify the agent
           newRoomInstance.on(
             RoomEvent.ParticipantConnected,
@@ -677,10 +835,33 @@ export default function RoxPage() {
 
     return () => {
       console.log("Cleaning up LiveKit room connection");
-      roomRef.current?.disconnect();
-      roomRef.current = null; // Clear the ref on cleanup
+      // Clear all pending timeouts first
+      clearAllTimeouts();
+      
+      if (roomRef.current) {
+        try {
+          // Try to disconnect gracefully
+          roomRef.current.disconnect();
+        } catch (err) {
+          console.error("Error during room disconnect:", err);
+        } finally {
+          roomRef.current = null; // Clear the ref on cleanup regardless of errors
+        }
+      }
+      
+      // Don't reset connectionAttemptedRef here - let the token change handle that
     };
-  }, [token]); // Effect dependencies
+  }, [token, roomName]); // Effect dependencies include roomName to react to room changes
+  
+  // Reset connection attempt flag when token changes
+  useEffect(() => {
+    if (token) {
+      console.log("[rox/page.tsx] Token changed, resetting connection attempt flag");
+    } else {
+      // Token is null or undefined, reset connection flag to allow reconnect when token arrives
+      connectionAttemptedRef.current = false;
+    }
+  }, [token]);
 
   const handleSendMessageToAgent = () => {
     if (userInput.trim()) {
@@ -691,8 +872,33 @@ export default function RoxPage() {
   };
 
   const handleDisconnect = () => {
-    roomRef.current?.disconnect(); // Use ref for manual disconnect as well
-    // State will update via RoomEvent.Disconnected listener
+    console.log('[RoxPage] Manual disconnect initiated');
+    
+    // Clear all timeout IDs to prevent any pending operations
+    if (timeoutIdsRef.current.length > 0) {
+      console.log(`[RoxPage] Clearing ${timeoutIdsRef.current.length} pending timeouts`);
+      timeoutIdsRef.current.forEach((id) => clearTimeout(id));
+      timeoutIdsRef.current = [];
+    }
+
+    if (roomRef.current) {
+      console.log('[RoxPage] Disconnecting from LiveKit room:', roomRef.current.name);
+      roomRef.current.disconnect();
+      roomRef.current = null;
+    }
+
+    // Reset all connection-related refs
+    connectionAttemptedRef.current = false;
+    liveKitRpcAdapterRef.current = null;
+    
+    // Reset token update time to allow immediate reconnection if needed
+    tokenUpdateTimeRef.current = 0;
+    
+    // Set state to reflect disconnection (UI updates)
+    setIsConnected(false);
+    setRoom(null);
+    
+    console.log('[RoxPage] Disconnect complete, connection state reset');
   };
 
   const toggleStudentStatusDisplay = () => {

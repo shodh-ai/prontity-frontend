@@ -7,7 +7,7 @@ const nextConfig = {
     return config;
   },
   // Add any other Next.js config options below
-  reactStrictMode: true,
+  reactStrictMode: false,
 };
 
 module.exports = nextConfig;

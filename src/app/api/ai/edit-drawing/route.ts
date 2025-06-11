@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     console.log(`Sending prompt to Gemini: ${prompt}`);
     
     // Configure the model
-    const modelName = 'gemini-1.5-flash';
+    const modelName = 'gemini-2.0-flash';
     console.log('Using model:', modelName);
 
     try {

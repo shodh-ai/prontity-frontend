@@ -160,41 +160,45 @@ class AgentInteractionService: # Simple class without inheritance
                     alert_params = action_data_for_client_rpc.get('parameters', {})
                     alert_buttons_data = alert_params.get('buttons', [])
                     
-                    proto_alert_buttons = []
-                    for btn_data in alert_buttons_data:
-                        btn_action_data = btn_data.get('action', {})
-                        # btn_action_data['action_type'] is already interaction_pb2.UIAction.ActionType.DISMISS_ALERT
-                        # as set in action_data_for_client_rpc on line 150
-                        proto_btn_action = interaction_pb2.UIAction(
-                            action_type=btn_action_data.get('action_type') 
-                        )
-                        proto_alert_buttons.append(
-                            interaction_pb2.AlertButton(
-                                label=btn_data.get('label'),
-                                action=proto_btn_action
-                            )
-                        )
+                    alert_parameters_for_rpc = {}
+                    raw_alert_params = action_data_for_client_rpc.get('parameters', {})
 
-                    proto_alert = interaction_pb2.Alert(
-                        title=alert_params.get('title'),
-                        message=alert_params.get('message'),
-                        buttons=proto_alert_buttons
-                    )
+                    for key, value in raw_alert_params.items():
+                        if isinstance(value, (dict, list)):
+                            alert_parameters_for_rpc[key] = json.dumps(value)
+                        else:
+                            alert_parameters_for_rpc[key] = str(value)
+                    
+                    logger.info(f"RPC: Serialized alert parameters for AgentToClientUIActionRequest: {alert_parameters_for_rpc}")
 
                     payload = interaction_pb2.AgentToClientUIActionRequest(
                         request_id=str(uuid.uuid4()),
-                        action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
-                        alert=proto_alert
+                        action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT, # This is from action_data_for_client_rpc
+                        parameters=alert_parameters_for_rpc
                     )
                     payload_bytes = payload.SerializeToString()
 
-                    await self.agent_instance.rpc.send_request(
-                        service='AgentFrontendService',
-                        method='PerformUIAction',
-                        payload=payload_bytes,
-                        timeout_seconds=5,
+                    # This is where we might trigger a backend call or another UI action
+                    # For now, let's just log and maybe echo a response.
+                    # Example of sending a UI action back to the frontend:
+                    target_client_identity = invocation_data.caller_identity
+
+                    # CONSTRUCT THE DICTIONARY for the send_ui_action_to_frontend method
+                    action_data_for_agent = {
+                        "action_type_str": "SHOW_ALERT", # Example action, maps to ClientUIActionType enum
+                        "request_id": str(uuid.uuid4()),
+                        "parameters": {
+                            "title": "Backend Test", 
+                            "message": f"Button '{request.button_id}' clicked."
+                        }
+                    }
+
+                    # The actual call that is causing the error - NOW FIXED
+                    await self.agent_instance.send_ui_action_to_frontend(
+                        action_data=action_data_for_agent, 
+                        target_identity=target_client_identity
                     )
-                    logger.info(f"RPC: Successfully dispatched SHOW_ALERT to frontend for button '{request.button_id}'.")
+                    logger.info(f"RPC: Successfully called send_ui_action_to_frontend for {target_client_identity}")
                 except Exception as e:
                     logger.error(f"Error in HandleFrontendButton while sending UI action: {e}")
             except Exception as main_e: 
@@ -237,52 +241,121 @@ class AgentInteractionService: # Simple class without inheritance
         return base64_response
         
     async def _send_test_request_to_backend(self):
-        """Send a test request to the backend API and handle the streaming response."""
+        """Send a request to the backend API and handle the streaming response."""
         import aiohttp
         import os
+        import json # Ensure json is imported
+        import uuid # For request_id in UI actions
 
         if not self.agent_instance:
-            logger.error("Cannot send test request: agent_instance is not available")
+            logger.error("Cannot send request: agent_instance is not available")
             return
 
-        backend_url = os.environ.get("MY_CUSTOM_AGENT_URL", "http://localhost:8001/process_interaction")
+        base_backend_url = os.environ.get("MY_CUSTOM_AGENT_URL", "http://localhost:8001/process_interaction")
+        # Ensure we are targeting the streaming endpoint
+        if "/process_interaction_streaming" not in base_backend_url:
+            streaming_backend_url = base_backend_url.replace("/process_interaction", "/process_interaction_streaming")
+        else:
+            streaming_backend_url = base_backend_url
 
         try:
-            logger.info(f"Sending test request to backend API at {backend_url}")
+            logger.info(f"Sending request to backend streaming API at {streaming_backend_url}")
 
-            context = self.agent_instance._latest_student_context or {}
+            # Ensure _latest_student_context is a dictionary
+            raw_context = self.agent_instance._latest_student_context
+            if not isinstance(raw_context, dict):
+                logger.warning(f"_latest_student_context is not a dict (type: {type(raw_context)}). Initializing to empty dict for this request.")
+                current_interaction_context_data = {}
+            else:
+                current_interaction_context_data = raw_context.copy() # Work with a copy
+
             session_id = self.agent_instance._latest_session_id
+            
+            current_transcript = current_interaction_context_data.get("transcript_from_frontend", current_interaction_context_data.get("message", "No message provided"))
 
-            message = context.get("message", "No message provided")
-            # LangGraph backend expects a list of tuples for conversation history
-            conversation_history = [("human", message)]
+            if 'task_stage' not in current_interaction_context_data:
+                current_interaction_context_data['task_stage'] = 'unknown_via_rpc_stream_request'
+                logger.info(f"'task_stage' not found in context, adding default: {current_interaction_context_data['task_stage']}")
 
             payload = {
-                "conversation_history": conversation_history,
+                "usertoken": current_interaction_context_data.get("usertoken"),
                 "session_id": session_id,
+                "transcript": current_transcript,
+                "current_context": current_interaction_context_data,
+                "chat_history": current_interaction_context_data.get("chat_history", [])
             }
 
-            logger.info(f"Test request payload: {payload}")
+            logger.debug(f"Request payload for streaming: {json.dumps(payload, indent=2)}")
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(backend_url, json=payload) as response:
+            async with aiohttp.ClientSession() as http_session:
+                async with http_session.post(streaming_backend_url, json=payload) as response:
                     logger.info(f"Backend API response status: {response.status}")
                     if response.status == 200 and 'text/event-stream' in response.headers.get('Content-Type', ''):
-                        logger.info("Backend response is a stream. Consuming...")
-                        async for line in response.content:
-                            line_str = line.decode('utf-8').strip()
-                            if line_str:
-                                logger.info(f"STREAM DATA: {line_str}")
-                        logger.info("Finished consuming backend stream.")
+                        logger.info("Backend response is a stream. Parsing SSE...")
+                        event_name = None
+                        event_data_lines = []
+                        async for line_bytes in response.content:
+                            line = line_bytes.decode('utf-8').strip()
+                            if not line:
+                                if event_name and event_data_lines:
+                                    data_str = "\n".join(event_data_lines)
+                                    try:
+                                        data_json = json.loads(data_str)
+                                        
+                                        if event_name == "text_chunk":
+                                            text_to_send = data_json.get('text', '')
+                                            logger.info(f"SSE: Received text_chunk: {text_to_send[:100]}...")
+                                            # TODO: Send text_to_send to frontend via UI Action
+                                            # Example: 
+                                            # ui_action_payload = interaction_pb2.AgentToClientUIActionRequest(
+                                            #     request_id=str(uuid.uuid4()),
+                                            #     action_type=interaction_pb2.ClientUIActionType.APPEND_TEXT_TO_ELEMENT, # Define this type
+                                            #     parameters={"element_id": "chat_display", "text_to_append": text_to_send}
+                                            # )
+                                            # await self.agent_instance.send_ui_action_to_frontend(ui_action_payload)
+
+                                        elif event_name == "final_response":
+                                            logger.info(f"SSE: Received final_response: {json.dumps(data_json, indent=2)}")
+                                            # TODO: Process final_response (ui_actions, final text, etc.) and send to frontend
+                                            # backend_ui_actions = data_json.get("ui_actions", [])
+                                            # for action_dict in backend_ui_actions:
+                                            #     # Convert action_dict to protobuf AgentToClientUIActionRequest & send
+                                            #     pass
+                                            # final_text = data_json.get("response")
+                                            # if final_text:
+                                            #     # Send final_text as a UI action
+                                            #     pass
+
+                                        elif event_name == "error_response":
+                                            logger.error(f"SSE: Received error_response: {data_json}")
+                                            # TODO: Send error alert to frontend
+
+                                        elif event_name == "stream_end":
+                                            logger.info(f"SSE: Stream ended by backend.")
+                                        
+                                        else:
+                                            logger.warning(f"SSE: Received unknown event type '{event_name}' with data: {data_json}")
+
+                                    except json.JSONDecodeError:
+                                        logger.error(f"SSE: Failed to parse JSON data for event '{event_name}': {data_str}")
+                                
+                                event_name = None
+                                event_data_lines = []
+                                continue
+
+                            if line.startswith("event:"):
+                                event_name = line.split(":", 1)[1].strip()
+                            elif line.startswith("data:"):
+                                event_data_lines.append(line.split(":", 1)[1].strip())
+                        logger.info("Finished consuming backend SSE stream.")
                     else:
                         response_text = await response.text()
                         logger.error(f"Backend API returned non-streaming or error response: Status={response.status}, Body={response_text}")
 
         except aiohttp.ClientConnectorError as e:
-            logger.error(f"Connection error sending test request to backend: {e}")
+            logger.error(f"Connection error sending request to backend: {e}")
         except Exception as e:
             logger.error(f"An unexpected error occurred in _send_test_request_to_backend: {e}", exc_info=True)
-
     async def NotifyPageLoad(self, invocation_data: RpcInvocationData) -> str:
         logger.info(f"RPC NotifyPageLoad: Received call from participant: {invocation_data.caller_identity}")
 

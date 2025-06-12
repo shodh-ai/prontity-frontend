@@ -132,21 +132,18 @@ class RoxAgent(Agent):
         logger.info(f"RoxAgent.__init__ called for page_path: {page_path}. Attributes: {dir(self)}")
 
 
-    async def send_ui_action_to_frontend(self, action_data: dict):
+    async def send_ui_action_to_frontend(self, action_data: dict, target_identity: Optional[str] = None):
         """
         Sends a structured UI action to the frontend using room.rpc.send_request.
-        This method is kept from File 1 and uses raw protobuf bytes.
         """
-        if not self._room: # Use self._room consistently
-            logger.error("RoxAgent.send_ui_action_to_frontend: Room (self._room) not available.")
+        if not self._room:
+            logger.error("RoxAgent.send_ui_action_to_frontend: Room not available.")
             return
 
         try:
             action_type_str = action_data.get("action_type_str")
-            parameters = action_data.get("parameters", {})
-
             if not action_type_str:
-                logger.warning("RoxAgent.send_ui_action_to_frontend: 'action_type_str' missing.")
+                logger.warning("send_ui_action_to_frontend: 'action_type_str' missing.")
                 return
 
             try:
@@ -155,18 +152,35 @@ class RoxAgent(Agent):
                 logger.error(f"Invalid action_type_str '{action_type_str}'.")
                 return
 
-            request_id = str(uuid.uuid4())
-            action_request_proto_args = {
-                "request_id": request_id, # Corrected from requestId
-                "action_type": action_type_enum,
-            }
+            # Determine the target identity for the RPC call
+            final_target_identity = target_identity
+            if not final_target_identity:
+                final_target_identity = self._fallback_target_client_identity
 
-            if "targetElementId" in parameters:
-                 action_request_proto_args["target_element_id"] = parameters.pop("targetElementId") # Corrected field name
+            if not final_target_identity:
+                logger.error("No target identity available to send UI action.")
+                return
 
-            # Specific payload handling from File 1's send_ui_action_to_frontend
-            if action_type_enum == interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES:
-                st_ranges_data = action_data.get("strikethrough_ranges_data", [])
+            # Create the protobuf message for the request
+            action_request = interaction_pb2.AgentToClientUIActionRequest(
+                request_id=action_data.get("request_id", str(uuid.uuid4())),
+                action_type=action_type_enum
+            )
+
+            # The 'parameters' field in protobuf is a map of string to string.
+            # We need to iterate through the input dict and convert all values to strings.
+            params_dict = action_data.get("parameters", {})
+            for key, value in params_dict.items():
+                action_request.parameters[key] = str(value)
+            
+            logger.info(f"Sending UI action '{action_type_str}' to identity '{final_target_identity}'.")
+            
+            await self.ctx.rpc.send_request(
+                identities=[final_target_identity],
+                payload=action_request.SerializeToString(),
+                topic="ui_action_requests"
+            )
+
         except Exception as e:
             logger.error(f"RoxAgent.send_ui_action_to_frontend: Error processing UI action: {e}", exc_info=True)
 
@@ -442,9 +456,13 @@ async def agent_main_logic(agent_or_ctx):
         agent_identity = room.local_participant.identity
         logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'")
     
-
-
-
+    # The original implementation seems to broadcast. If a target is needed,
+    # this logic needs to be updated. For now, it sends to all participants.
+    # Let's check if we have a fallback target identity.
+    if not target_client_identity:
+        if not agent_instance._fallback_target_client_identity:
+            agent_instance._fallback_target_client_identity = target_client_identity
+    logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'")
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint for the agent job."""

@@ -71,6 +71,7 @@ export default function RoxPage() {
   const tokenUpdateTimeRef = useRef<number>(0);
   const lastRoomNameRef = useRef<string | null>(null);
   
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'agent', content: string }[]>([]);
   // Constants
   const DEBOUNCE_TIME = 1000; // 1 second debounce for token/room updates
 
@@ -446,7 +447,11 @@ export default function RoxPage() {
       console.log(`[rox/page.tsx] Connecting to room: ${roomName}`);
       // Mark that we've attempted connection
       connectionAttemptedRef.current = true;
-      const newRoomInstance = new Room();
+      // Create Room with proper configuration
+      const newRoomInstance = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+      });
 
       newRoomInstance.on(RoomEvent.Connected, () => {
         console.log("Connected to LiveKit room:", newRoomInstance.name);
@@ -458,9 +463,11 @@ export default function RoxPage() {
         if (newRoomInstance.localParticipant) {
           // Initialize RPC adapter with a fallback identity first - we'll update it when we detect the agent
           const fallbackAgentIdentity = "rox-custom-llm-agent"; // Fallback identity
+          // Initialize RPC adapter with a longer timeout of 30 seconds to prevent RPC timeouts
           liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(
             newRoomInstance.localParticipant,
-            fallbackAgentIdentity
+            fallbackAgentIdentity,
+            30000 // 30 seconds timeout for RPC calls
           );
           console.log(
             "LiveKitRpcAdapter initialized with fallback identity. Will update when agent is detected."
@@ -532,7 +539,7 @@ export default function RoxPage() {
                 userId: userName,
                 currentPage: "RoxPage",
                 sessionId: (roomInstance as any).sid || roomInstance.name,
-                chatHistory: JSON.stringify([]),
+                chatHistory: JSON.stringify(chatMessages), // Send current chat history
                 transcript: "",
               });
 
@@ -589,19 +596,12 @@ export default function RoxPage() {
           };
 
           // Increase the delay and add connection check before sending notification
-          const notificationTimeoutId = setTimeout(() => {
-            // Check if the connection is still valid before sending
-            if (newRoomInstance && newRoomInstance.state === 'connected' && 
-                newRoomInstance.localParticipant && liveKitRpcAdapterRef.current) {
-              console.log('[RoxPage] Connection still valid, sending page load notification...');
-              sendPageLoadNotificationToAgent(newRoomInstance).catch(err => {
-                console.error('[RoxPage] Failed to send page load notification:', err);
-              });
-            } else {
-              console.warn('[RoxPage] Connection not stable, skipping page load notification');
-            }
-          }, 5000); // Increased from 3500ms to 5000ms
-          timeoutIdsRef.current.push(notificationTimeoutId as unknown as number);
+          setTimeout(
+
+            () => sendPageLoadNotificationToAgent(newRoomInstance),
+
+            2000 // Check if the connection is still valid before sending
+          );
           // Setup a listener for when participants join to identify the agent
           newRoomInstance.on(
             RoomEvent.ParticipantConnected,
@@ -745,7 +745,7 @@ export default function RoxPage() {
                         console.log(
                           "Agent requested to toggle StudentStatusDisplay via #statusViewButton selector from metadata"
                         );
-                        toggleStudentStatusDisplay();
+                        setIsStudentStatusDisplayOpen(!isStudentStatusDisplayOpen);
                       } else if (
                         actionItem.action === "click" &&
                         actionItem.payload?.selector
@@ -764,38 +764,46 @@ export default function RoxPage() {
                   );
                 }
               }
-              // Fallback: Check for simpler action/payload structure directly if CustomLLMBridge might send it this way.
-              // This is based on rox_agent.py returning dom_actions directly in its JSON response.
-              // CustomLLMBridge might pick this up and send it without the delta/metadata wrapper in some configurations.
-              else if (
-                message?.dom_actions &&
-                Array.isArray(message.dom_actions)
-              ) {
-                message.dom_actions.forEach((actionItem: any) => {
-                  console.log(
-                    "Processing DOM action from direct message property:",
-                    actionItem
-                  );
-                  if (
-                    actionItem.action === "click" &&
-                    actionItem.payload?.selector === "#statusViewButton"
-                  ) {
+                            // Handle agent's text response from ChatChunk
+
+                            if (message?.delta?.content && message?.delta?.role === 'assistant') {
+                              const agentText = message.delta.content;
+                              if (agentText.trim()) { // Avoid adding empty messages
+                                setChatMessages(prev => [...prev, { role: 'agent', content: agentText }]);
+                              }
+                            }
+                            // Fallback: Check for simpler action/payload structure directly if CustomLLMBridge might send it this way.
+                            // This is based on rox_agent.py returning dom_actions directly in its JSON response.
+                            // CustomLLMBridge might pick this up and send it without the delta/metadata wrapper in some configurations.
+                            if (
+                              message?.dom_actions &&
+                              Array.isArray(message.dom_actions)
+                            ) {
+                              message.dom_actions.forEach((actionItem: any) => {
+                                console.log(
+                                  "Processing DOM action from direct message property:",
+                                  actionItem
+                                );
+                                if (
+                                  actionItem.action === "click" &&
+                                  actionItem.payload?.selector === "#statusViewButton"
+                                ) {
                     console.log(
                       "Agent requested to toggle StudentStatusDisplay via #statusViewButton selector from direct message property"
                     );
-                    toggleStudentStatusDisplay();
+                    setIsStudentStatusDisplayOpen(!isStudentStatusDisplayOpen);
                   }
                 });
               }
               // Further fallback for direct action/payload if it's a single action not in an array
-              else if (
+              if (
                 message?.action === "click" &&
                 message?.payload?.selector === "#statusViewButton"
               ) {
                 console.log(
                   "Agent requested to toggle StudentStatusDisplay via #statusViewButton selector from single direct action"
                 );
-                toggleStudentStatusDisplay();
+                setIsStudentStatusDisplayOpen(!isStudentStatusDisplayOpen);
               }
             } catch (e) {
               console.error("Failed to parse data packet:", e);
@@ -814,11 +822,17 @@ export default function RoxPage() {
       });
 
       try {
+        // Connect to LiveKit with optimized connection options
+        // Using mostly default options but increasing TCP ICE candidate pool size
         await newRoomInstance.connect(
           process.env.NEXT_PUBLIC_LIVEKIT_URL || "",
           token,
           {
             autoSubscribe: true, // Automatically subscribe to all tracks
+            rtcConfig: {
+              iceTransportPolicy: 'all',
+              iceCandidatePoolSize: 10, // Larger ICE candidate pool for better connectivity
+            },
           }
         );
       } catch (err) {
@@ -863,13 +877,105 @@ export default function RoxPage() {
     }
   }, [token]);
 
-  const handleSendMessageToAgent = () => {
-    if (userInput.trim()) {
-      console.log("Sending to agent:", userInput);
-      // TODO: Add Socket.IO or LiveKit agent communication logic here
-      setUserInput(""); // Clear input after sending
+  const handleSendMessageToAgent = async () => {
+
+    if (userInput.trim() && liveKitRpcAdapterRef.current && roomRef.current) {
+
+      const currentMessage = userInput.trim();
+
+      const currentUserId = userName; // Or from a more robust auth state
+
+      const currentSessionId = (roomRef.current as any).sid || roomName;
+
+
+
+      // Optimistically update UI with user's message
+
+      setChatMessages(prev => [...prev, { role: 'user', content: currentMessage }]);
+
+      setUserInput(""); // Clear input immediately
+
+
+
+      const payload = {
+
+        message: currentMessage,
+
+        chatHistory: chatMessages, // Send history *before* adding the current user message
+
+        userId: currentUserId,
+
+        sessionId: currentSessionId,
+
+      };
+
+
+
+      try {
+
+        const requestMessage = FrontendButtonClickRequest.create({
+
+          buttonId: "send_chat_message", // Specific ID for chat messages
+
+          customData: JSON.stringify(payload),
+
+        });
+
+        const serializedRequest = FrontendButtonClickRequest.encode(requestMessage).finish();
+
+
+
+        console.log(
+
+          "Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'HandleFrontendButton' for chat with request:",
+
+          requestMessage
+
+        );
+
+
+
+        // No need to await response for chat if it comes via DataReceived, but good to log if it's an ack
+
+        const serializedResponse = await liveKitRpcAdapterRef.current.request(
+
+          "rox.interaction.AgentInteraction",
+
+          "HandleFrontendButton",
+
+          serializedRequest
+
+        );
+
+        const responseMessage = AgentResponse.decode(serializedResponse);
+
+        console.log("RPC Response from HandleFrontendButton (chat send ack):", responseMessage);
+
+        // Agent's actual chat reply will come via RoomEvent.DataReceived
+
+
+
+      } catch (e) {
+
+        const errorMessage = `Error sending chat message via RPC: ${
+
+          e instanceof Error ? e.message : String(e)
+
+        }`;
+
+        console.error(errorMessage, e);
+
+        // Optionally, add error message to chat or revert optimistic update
+
+        setChatMessages(prev => [...prev, { role: 'agent', content: `Error: Could not send message. ${errorMessage}` }]);
+
+      }
+
+    } else {
+
+      console.warn("Cannot send message: No input, or RPC adapter/room not ready.");
     }
-  };
+  }; // Closes handleSendMessageToAgent
 
   const handleDisconnect = () => {
     console.log('[RoxPage] Manual disconnect initiated');
@@ -1046,9 +1152,9 @@ export default function RoxPage() {
         <StudentStatusDisplay
           isOpen={isStudentStatusDisplayOpen}
           anchorElement={docsIconRef.current}
-          onClose={toggleStudentStatusDisplay}
+          onClose={() => setIsStudentStatusDisplayOpen(false)}
         />
       </main>
     </div>
   );
-}
+};

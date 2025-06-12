@@ -5,7 +5,8 @@ import uuid
 import time
 import asyncio
 from livekit.rtc.rpc import RpcInvocationData # For RPC invocation data
-from generated.protos import interaction_pb2 # Your generated protobuf types
+import json
+from generated.protos import interaction_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -138,33 +139,64 @@ class AgentInteractionService: # Simple class without inheritance
                 else:
                     logger.warning("RPC: agent_instance is None, cannot update context or session ID.")
                 
-                # ***** MOVED ALERT LOGIC STARTS HERE *****
-                if self.agent_instance and hasattr(self.agent_instance, 'send_ui_action_to_frontend') and request.button_id == "test_rpc_button": 
-                    action_data_for_client_rpc = {
-                        "action_type_str": "SHOW_ALERT", 
-                        "parameters": { 
-                            "title": "Button Clicked",
-                            "message": f"Button '{request.button_id}' was clicked by {invocation_data.caller_identity}. Context updated.",
-                            "buttons": [
-                                {
-                                    "label": "OK",
-                                    "action": {"action_type": "DISMISS_ALERT"} 
-                                }
-                            ]
-                        }
+                # Prepare UI action data for client-side RPC
+                action_data_for_client_rpc = {
+                    "action_type_str": "SHOW_ALERT", 
+                    "parameters": { 
+                        "title": "Button Clicked",
+                        "message": f"Button '{request.button_id}' was clicked by {invocation_data.caller_identity}. Context updated.",
+                        "buttons": [
+                            {
+                                "label": "OK",
+                                "action": {"action_type": interaction_pb2.UIAction.ActionType.DISMISS_ALERT} 
+                            }
+                        ]
                     }
-                    logger.info(f"RPC: Preparing UI action (alert) data for client-side RPC: {action_data_for_client_rpc['parameters']}")
-                    logger.info(f"RPC DEBUG: Type of self.agent_instance: {type(self.agent_instance)}")
+                }
+                logger.info(f"RPC: Preparing UI action (alert) data for client-side RPC: {action_data_for_client_rpc['parameters']}")
+                logger.info(f"RPC DEBUG: Type of self.agent_instance: {type(self.agent_instance)}")
+                
+                try:
+                    alert_params = action_data_for_client_rpc.get('parameters', {})
+                    alert_buttons_data = alert_params.get('buttons', [])
                     
-                    if callable(getattr(self.agent_instance, 'send_ui_action_to_frontend')):
-                        await self.agent_instance.send_ui_action_to_frontend(action_data_for_client_rpc)
-                        logger.info(f"RPC: Successfully dispatched SHOW_ALERT to frontend for button '{request.button_id}'.")
-                    else: 
-                        logger.error("RPC Error: agent_instance.send_ui_action_to_frontend is not callable (inner check).")
-                elif not (self.agent_instance and hasattr(self.agent_instance, 'send_ui_action_to_frontend')):
-                     logger.warning(f"RPC: Cannot send alert for '{request.button_id}'. Agent instance or send_ui_action_to_frontend not available. Agent: {bool(self.agent_instance)}")
-                # ***** MOVED ALERT LOGIC ENDS HERE *****
+                    proto_alert_buttons = []
+                    for btn_data in alert_buttons_data:
+                        btn_action_data = btn_data.get('action', {})
+                        # btn_action_data['action_type'] is already interaction_pb2.UIAction.ActionType.DISMISS_ALERT
+                        # as set in action_data_for_client_rpc on line 150
+                        proto_btn_action = interaction_pb2.UIAction(
+                            action_type=btn_action_data.get('action_type') 
+                        )
+                        proto_alert_buttons.append(
+                            interaction_pb2.AlertButton(
+                                label=btn_data.get('label'),
+                                action=proto_btn_action
+                            )
+                        )
 
+                    proto_alert = interaction_pb2.Alert(
+                        title=alert_params.get('title'),
+                        message=alert_params.get('message'),
+                        buttons=proto_alert_buttons
+                    )
+
+                    payload = interaction_pb2.AgentToClientUIActionRequest(
+                        request_id=str(uuid.uuid4()),
+                        action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
+                        alert=proto_alert
+                    )
+                    payload_bytes = payload.SerializeToString()
+
+                    await self.agent_instance.rpc.send_request(
+                        service='AgentFrontendService',
+                        method='PerformUIAction',
+                        payload=payload_bytes,
+                        timeout_seconds=5,
+                    )
+                    logger.info(f"RPC: Successfully dispatched SHOW_ALERT to frontend for button '{request.button_id}'.")
+                except Exception as e:
+                    logger.error(f"Error in HandleFrontendButton while sending UI action: {e}")
             except Exception as main_e: 
                 logger.error(f"RPC: Error processing custom_data or sending alert: {main_e}", exc_info=True)
         elif not self.agent_instance:
@@ -205,96 +237,51 @@ class AgentInteractionService: # Simple class without inheritance
         return base64_response
         
     async def _send_test_request_to_backend(self):
-        """Send a test request to the backend API and then manually process the UI actions."""
+        """Send a test request to the backend API and handle the streaming response."""
         import aiohttp
         import os
-        import json
-        import uuid
-        from livekit.agents.llm import ChatChunk, ChoiceDelta, FunctionToolCall
-        
+
         if not self.agent_instance:
             logger.error("Cannot send test request: agent_instance is not available")
-            return False
-            
-        # Get the backend URL from environment or use a default
-        backend_url = os.environ.get("MY_CUSTOM_AGENT_URL", "http://localhost:5005/process_interaction")
-        
+            return
+
+        backend_url = os.environ.get("MY_CUSTOM_AGENT_URL", "http://localhost:8001/process_interaction")
+
         try:
             logger.info(f"Sending test request to backend API at {backend_url}")
-            
-            # Prepare payload with the context from agent instance
-            # Make a copy of the context to avoid modifying the original
-            context = dict(self.agent_instance._latest_student_context)
-            
-            # Add task_stage to the context object (not at top level)
-            context["task_stage"] = "testing_specific_context_from_button"  # Special task_stage to trigger UI action test
-            
+
+            context = self.agent_instance._latest_student_context or {}
+            session_id = self.agent_instance._latest_session_id
+
+            message = context.get("message", "No message provided")
+            # LangGraph backend expects a list of tuples for conversation history
+            conversation_history = [("human", message)]
+
             payload = {
-                "transcript": "This is a test request from RPC handler",
-                "current_context": context,
-                "session_id": self.agent_instance._latest_session_id
+                "conversation_history": conversation_history,
+                "session_id": session_id,
             }
-            
+
             logger.info(f"Test request payload: {payload}")
-            
-            # Send the request
+
             async with aiohttp.ClientSession() as session:
                 async with session.post(backend_url, json=payload) as response:
-                    status = response.status
-                    response_text = await response.text()
-                    
-                    logger.info(f"Backend API test response: Status={status}, Response={response_text[:100]}...")
-                    
-                    # NEW CODE: Process the response to extract DOM actions
-                    if status == 200:
-                        try:
-                            # Parse the JSON response
-                            result = json.loads(response_text)
-                            
-                            # Extract DOM actions if present
-                            dom_actions = None
-                            if "dom_actions" in result:
-                                dom_actions = result["dom_actions"]
-                                logger.info(f"Extracted DOM actions from response: {dom_actions}")
-                            
-                            # If we have DOM actions, create a tool call and manually trigger on_llm_response_done
-                            if dom_actions:
-                                # Create a special tool call for dom_actions
-                                dom_actions_str = json.dumps(dom_actions)
-                                tool_call = FunctionToolCall(
-                                    type='function',
-                                    name='_internal_dom_actions',
-                                    arguments=dom_actions_str,
-                                    call_id='dom_actions_tool_call'
-                                )
-                                
-                                # Create a ChatChunk with the tool call
-                                chat_chunk = ChatChunk(
-                                    id=str(uuid.uuid4()),
-                                    delta=ChoiceDelta(
-                                        role='assistant',
-                                        content=result.get("response_for_tts", ""),
-                                        tool_calls=[tool_call]
-                                    )
-                                )
-                                
-                                logger.info(f"Created ChatChunk with DOM actions tool call: {tool_call}")
-                                
-                                # Manually call on_llm_response_done to process the DOM actions
-                                if hasattr(self.agent_instance, 'on_llm_response_done'):
-                                    logger.info("Manually calling on_llm_response_done with DOM actions")
-                                    asyncio.create_task(self.agent_instance.on_llm_response_done([chat_chunk]))
-                                else:
-                                    logger.error("Agent instance does not have on_llm_response_done method")
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Failed to parse JSON response: {e}")
-                        except Exception as e:
-                            logger.error(f"Error processing response: {e}", exc_info=True)
-            
-            return True
+                    logger.info(f"Backend API response status: {response.status}")
+                    if response.status == 200 and 'text/event-stream' in response.headers.get('Content-Type', ''):
+                        logger.info("Backend response is a stream. Consuming...")
+                        async for line in response.content:
+                            line_str = line.decode('utf-8').strip()
+                            if line_str:
+                                logger.info(f"STREAM DATA: {line_str}")
+                        logger.info("Finished consuming backend stream.")
+                    else:
+                        response_text = await response.text()
+                        logger.error(f"Backend API returned non-streaming or error response: Status={response.status}, Body={response_text}")
+
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"Connection error sending test request to backend: {e}")
         except Exception as e:
-            logger.error(f"Error sending test request to backend: {e}", exc_info=True)
-            return False
+            logger.error(f"An unexpected error occurred in _send_test_request_to_backend: {e}", exc_info=True)
 
     async def NotifyPageLoad(self, invocation_data: RpcInvocationData) -> str:
         logger.info(f"RPC NotifyPageLoad: Received call from participant: {invocation_data.caller_identity}")
@@ -352,8 +339,9 @@ class AgentInteractionService: # Simple class without inheritance
                 try:
                     timer_duration = 10  # seconds
                     ui_action_request = interaction_pb2.AgentToClientUIActionRequest(
+                        request_id=str(uuid.uuid4()),
                         action_type=interaction_pb2.ClientUIActionType.START_TIMER,
-                        start_timer_payload=interaction_pb2.StartTimerPayload(duration_seconds=timer_duration)
+                        parameters={"duration_seconds": str(timer_duration)}
                     )
                     
                     if hasattr(self.agent_instance, 'send_action_to_participant'):

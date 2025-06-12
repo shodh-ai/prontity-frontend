@@ -20,6 +20,7 @@ import sys
 import logging
 import argparse
 import asyncio
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Optional, Dict, Any
@@ -166,38 +167,8 @@ class RoxAgent(Agent):
             # Specific payload handling from File 1's send_ui_action_to_frontend
             if action_type_enum == interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES:
                 st_ranges_data = action_data.get("strikethrough_ranges_data", [])
-                proto_ranges = [interaction_pb2.StrikeThroughRangeProto(**r) for r in st_ranges_data]
-                action_request_proto_args["strikethrough_ranges_payload"] = proto_ranges
-            elif action_type_enum == interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
-                hl_ranges_data = action_data.get("highlight_ranges_data", [])
-                proto_ranges = [interaction_pb2.HighlightRangeProto(**r) for r in hl_ranges_data]
-                action_request_proto_args["highlight_ranges_payload"] = proto_ranges
-            
-            # Fallback to parametersJson if other specific payloads are not handled here
-            # This assumes AgentToClientUIActionRequest might have a parameters_json field
-            # If it only has map<string, string> parameters, this part might need adjustment
-            # or be removed if trigger_client_ui_action is always preferred.
-            if parameters:
-                 action_request_proto_args["parameters_json"] = json.dumps(parameters)
-
-
-            action_request_proto = interaction_pb2.AgentToClientUIActionRequest(**action_request_proto_args)
-            payload_bytes = action_request_proto.SerializeToString()
-            
-            service_name = "rox.interaction.ClientSideUI"
-            method_name = "PerformUIAction"
-
-            logger.info(f"RoxAgent: Sending UI action (via send_request): {action_type_str}, params: {json.dumps(parameters)}")
-            await self._room.rpc.send_request(
-                service=service_name,
-                method=method_name,
-                payload=payload_bytes,
-                timeout=10
-            )
-            logger.debug(f"Successfully sent RPC (via send_request) for UI action '{action_type_str}'.")
-
         except Exception as e:
-            logger.error(f"Error in send_ui_action_to_frontend: {e}", exc_info=True)
+            logger.error(f"RoxAgent.send_ui_action_to_frontend: Error processing UI action: {e}", exc_info=True)
 
     async def dispatch_frontend_rpc(self, rpc_call_data: dict):
         """Sends generic RPC-like call via data channel (from File 1)."""
@@ -432,237 +403,47 @@ async def agent_main_logic(agent_or_ctx):
     logger.info(f"B2F Agent Logic: Room '{room.name}' is available.")
 
     target_client_identity = None
-    # Find a client (prefer 'TestUser', then first non-agent remote participant)
-    logger.info("B2F Agent Logic: Attempting to find target client...")
-    
-    remote_participants_map = room.remote_participants
-    logger.info(f"B2F Agent Logic: Remote participants: {[p.identity for p in remote_participants_map.values()]}")
+    max_retries = 5
+    retry_delay_seconds = 3
 
-    # Get agent identity (for exclusion)
-    agent_identity = None
-    if room and room.local_participant:
+    for attempt in range(max_retries):
+        logger.info(f"B2F Agent Logic: Attempting to find target client (Attempt {attempt + 1}/{max_retries})...")
+        
+        remote_participants_map = room.remote_participants
+        logger.info(f"B2F Agent Logic: Remote participants: {[p.identity for p in remote_participants_map.values()]}")
+
+        agent_identity = None
+        if room and room.local_participant:
+            agent_identity = room.local_participant.identity
+            # logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'") # Logged once is enough
+
+        if "TestUser" in remote_participants_map:
+            target_client_identity = remote_participants_map["TestUser"].identity
+            logger.info(f"B2F Agent Logic: Found target client 'TestUser'.")
+            break 
+        else:
+            for p_info in remote_participants_map.values():
+                if agent_identity and p_info.identity != agent_identity: # Exclude self (agent)
+                    target_client_identity = p_info.identity
+                    logger.info(f"B2F Agent Logic: Found fallback target client: '{target_client_identity}' (SID: {p_info.sid}).")
+                    break 
+            if target_client_identity:
+                break 
+
+        if attempt < max_retries - 1:
+            logger.info(f"B2F Agent Logic: Target client not found. Retrying in {retry_delay_seconds} seconds...")
+            await asyncio.sleep(retry_delay_seconds)
+        else:
+            logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found after multiple attempts to send UI actions to.")
+            return
+    
+    # Ensure agent identity is logged at least once if not done in loop for verbosity reasons
+    if room and room.local_participant and not agent_identity:
         agent_identity = room.local_participant.identity
         logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'")
-
-    if "TestUser" in remote_participants_map:
-        target_client_identity = remote_participants_map["TestUser"].identity
-        logger.info(f"B2F Agent Logic: Found target client 'TestUser'.")
-    else:
-        for p_info in remote_participants_map.values():
-            if agent_identity and p_info.identity != agent_identity: # Exclude self (agent)
-                target_client_identity = p_info.identity
-                logger.info(f"B2F Agent Logic: Found fallback target client: '{target_client_identity}' (SID: {p_info.sid}).")
-                break # Take the first one found
-    
-    if not target_client_identity:
-        logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found to send UI actions to.")
-        return
     
 
-    # try:
-    #     # ==========================================
-    #     # ROX_COPY PAGE ACTIONS (from File 2)
-    #     # ==========================================
-        
-    #     logger.info(f"B2F Test: SHOW_ALERT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
-    #         parameters={"message": "Agent says hello via MERGED B2F RPC!"}
-    #     )
-    #     await asyncio.sleep(2)
 
-    #     logger.info(f"B2F Test: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
-    #         target_element_id="agentUpdatableTextRoxPage",
-    #         parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
-    #     )
-    #     await asyncio.sleep(2)
-
-    #     logger.info(f"B2F Test: START_TIMER to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.START_TIMER,
-    #         target_element_id="speakingTaskTimer",
-    #         parameters={"duration_seconds": 30, "timer_type": "prep"}
-    #     )
-    #     await asyncio.sleep(1)
-        
-    #     logger.info(f"B2F Test: PAUSE_TIMER (true) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
-    #         target_element_id="speakingTaskTimer", parameters={"pause": "true"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: PAUSE_TIMER (false) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
-    #         target_element_id="speakingTaskTimer", parameters={"pause": "false"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: UPDATE_PROGRESS_INDICATOR to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_PROGRESS_INDICATOR,
-    #         target_element_id="drillProgressIndicator",
-    #         parameters={"current_step": 3, "total_steps": 10, "message": "Processing speaking task..."}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: SHOW_ELEMENT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_ELEMENT,
-    #         target_element_id="roxLoadingIndicator", parameters={"show": "true"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: HIDE_ELEMENT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.HIDE_ELEMENT,
-    #         target_element_id="roxLoadingIndicator", parameters={"show": "false"} # Assuming "show": "false" is how hide works
-    #     )
-    #     await asyncio.sleep(1)
-        
-    #     # ==========================================
-    #     # NAVIGATE TO WRITINGPRACTICE PAGE (from File 2)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: NAVIGATE_TO_PAGE (writingpractice) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.NAVIGATE_TO_PAGE,
-    #         parameters={
-    #             "page_name": "writingpractice",
-    #             "data_for_page": json.dumps({ # Ensure data_for_page is a JSON string
-    #                 "user_id": "test123", "essay_id": "writing_sample_01",
-    #                 "mode": "feedback", "show_tutorial": False
-    #             })
-    #         }
-    #     )
-    #     await asyncio.sleep(3) # Allow time for navigation
-
-    #     # ==========================================
-    #     # WRITINGPRACTICE PAGE ACTIONS (from File 2)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: UPDATE_LIVE_TRANSCRIPT (chunked) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
-    #         target_element_id="liveTranscriptArea",
-    #         parameters={"new_chunk": "This is the first part ", "is_final_for_sentence": "false"}
-    #     )
-    #     await asyncio.sleep(0.5)
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
-    #         target_element_id="liveTranscriptArea",
-    #         parameters={"new_chunk": "of a live transcript.", "is_final_for_sentence": "true"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: DISPLAY_TRANSCRIPT_OR_TEXT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.DISPLAY_TRANSCRIPT_OR_TEXT,
-    #         target_element_id="feedbackContent",
-    #         parameters={"text_content": "Essay feedback: Good structure, needs grammar work."}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: DISPLAY_REMARKS_LIST to '{target_client_identity}'.")
-    #     remarks_data = [
-    #         {"id": "R1", "title": "Grammar", "details": "Subject-verb agreement.", "correction_suggestion": "Match verb to subject."},
-    #         {"id": "R2", "title": "Vocab", "details": "Limited range.", "correction_suggestion": "Use more academic terms."}
-    #     ]
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.DISPLAY_REMARKS_LIST,
-    #         target_element_id="feedbackRemarks",
-    #         parameters={"remarks": json.dumps(remarks_data)} # Ensure remarks is a JSON string
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     # ==========================================
-    #     # ACTIONS WITH DEDICATED PAYLOADS (from File 1)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: HIGHLIGHT_TEXT_RANGES to '{target_client_identity}'.")
-    #     sample_highlights = [{"id": "hl1", "start": 0, "end": 5, "type": "test_hl", "message": "Test highlight"}]
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES,
-    #         target_element_id="liveWritingEditor", # Example target
-    #         highlight_ranges_payload_data=sample_highlights
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: STRIKETHROUGH_TEXT_RANGES to '{target_client_identity}'.")
-    #     sample_strikethroughs = [{"id": "st1", "start": 6, "end": 10, "type": "test_st", "message": "Test strikethrough"}]
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES,
-    #         target_element_id="liveWritingEditor",
-    #         strikethrough_ranges_data=sample_strikethroughs
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: SUGGEST_TEXT_EDIT to '{target_client_identity}'.")
-    #     sample_text_edit = {"suggestion_id": "edit1", "start_pos": 11, "end_pos": 15, "original_text": "olld", "new_text": "new"}
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT,
-    #         target_element_id="liveWritingEditor",
-    #         suggest_text_edit_payload_data=sample_text_edit
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     # ==========================================
-    #     # MORE ACTIONS (from File 2, using generic parameters)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SET_BUTTON_PROPERTIES,
-    #         target_element_id="submitAnswerButton",
-    #         parameters={"label": "Submit Essay Now", "disabled": "false", "style_class": "primary-button"}
-    #     )
-    #     await asyncio.sleep(1)
-        
-    #     logger.info(f"B2F Test: ENABLE_BUTTON to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.ENABLE_BUTTON,
-    #         target_element_id="startRecordingButton"
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (true) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
-    #         target_element_id="globalLoadingIndicator",
-    #         parameters={"is_loading": "true", "message": "Processing..."}
-    #     )
-    #     await asyncio.sleep(2)
-    #     logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (false) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
-    #         target_element_id="globalLoadingIndicator",
-    #         parameters={"is_loading": "false"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info("B2F Agent Logic: All test UI actions sent.")
-
-    # except Exception as e:
-    #     logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
 
 
 async def entrypoint(ctx: JobContext):
@@ -684,7 +465,7 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"Runtime Config -- Page: {GLOBAL_PAGE_PATH}, TTS: {GLOBAL_MODEL}, Temp: {GLOBAL_TEMPERATURE}, Avatar: {GLOBAL_AVATAR_ENABLED}")
     
-    rox_agent_instance = RoxAgent(page_path=GLOBAL_PAGE_PATH)
+    rox_agent_instance = RoxAgent(page_path=ctx.room.name)
     rox_agent_instance._room = ctx.room # Explicitly set agent's room reference
 
     avatar_session = None
@@ -736,7 +517,7 @@ async def entrypoint(ctx: JobContext):
 
         # Populate participant_data with metadata
         if rox_agent_instance._room:
-            logger.info(f"PARTICIPANT_METADATA: Processing local and remote participants. Room SID: {rox_agent_instance._room.sid}, Name: {rox_agent_instance._room.name}")
+            logger.info(f"PARTICIPANT_METADATA: Processing local and remote participants. Room SID: {await rox_agent_instance._room.sid}, Name: {rox_agent_instance._room.name}")
             
             all_participants_to_process = []
             
@@ -852,7 +633,32 @@ if __name__ == "__main__":
     # Reconstruct sys.argv for LiveKit's CLI parser
     # This ensures LiveKit's own arguments are processed correctly
     # The first element of sys.argv is the script name, followed by unknown_args
-    sys.argv = [sys.argv[0]] + unknown_args 
+    # Check for a dynamic room name passed via environment variable.
+    # This allows an external process (like pronity-backend) to specify
+    # the room for the agent to join, overriding any defaults.
+    dynamic_room_name = os.getenv("LIVEKIT_ROOM_NAME")
+    livekit_args = unknown_args
+
+    # If the 'connect' command is being used and a dynamic room name is provided,
+    # we inject or override the --room argument for the LiveKit CLI.
+    if "connect" in livekit_args and dynamic_room_name:
+        logger.info(f"Found LIVEKIT_ROOM_NAME env var: {dynamic_room_name}. Overriding/setting --room.")
+        try:
+            # Find the index of the --room argument
+            room_arg_index = livekit_args.index("--room")
+            # Check if there is a value after --room to replace
+            if room_arg_index + 1 < len(livekit_args):
+                logger.info(f"Replacing existing --room value '{livekit_args[room_arg_index + 1]}' with '{dynamic_room_name}'.")
+                livekit_args[room_arg_index + 1] = dynamic_room_name
+            else:
+                # --room was the last argument, so append the new room name
+                livekit_args.append(dynamic_room_name)
+        except ValueError:
+            # --room argument was not found, so we add it.
+            logger.info("Adding --room argument to command.")
+            livekit_args.extend(["--room", dynamic_room_name])
+
+    sys.argv = [sys.argv[0]] + livekit_args 
 
     # Run the agent using LiveKit's CLI runner
     # This handles LiveKit-specific arguments like --url, --api-key, etc.

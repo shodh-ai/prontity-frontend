@@ -39,6 +39,13 @@ export interface AnnotateCommandPayload {
   roughOptions: RoughOptions;
 }
 
+export interface DrawSVGCommandPayload {
+  svgUrl: string;
+  description?: string;
+  position: Position;
+  desiredSize?: { width?: number; height?: number };
+}
+
 export interface WriteCommand {
   command: "write";
   id: string;
@@ -62,7 +69,18 @@ export interface AnnotateCommand {
   payload: AnnotateCommandPayload;
 }
 
-export type Command = WriteCommand | WaitCommand | DrawShapeCommand | AnnotateCommand;
+export interface DrawSVGCommand {
+  command: "drawSVG";
+  id: string;
+  payload: DrawSVGCommandPayload;
+}
+
+export type Command =
+  | WriteCommand
+  | WaitCommand
+  | DrawShapeCommand
+  | AnnotateCommand
+  | DrawSVGCommand;
 
 export default interface LessonData {
   lessonTitle: string;

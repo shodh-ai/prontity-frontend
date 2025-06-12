@@ -8,18 +8,12 @@
       "payload": {
         "text": "The Pythagorean Theorem",
         "position": { "x": 50, "y": 50 },
-        "varaOptions": {
-          "fontSize": 48,
-          "color": "#333333",
-          "duration": 2000
-        }
+        "varaOptions": { "fontSize": 48, "color": "#333333", "duration": 2000 }
       }
     },
     {
       "command": "wait",
-      "payload": {
-        "duration": 1000
-      }
+      "payload": { "duration": 1000 }
     },
     {
       "command": "drawShape",
@@ -109,11 +103,7 @@
       "payload": {
         "text": "a² + b² = c²",
         "position": { "x": 600, "y": 150 },
-        "varaOptions": {
-          "fontSize": 52,
-          "color": "#d9534f",
-          "duration": 2500
-        }
+        "varaOptions": { "fontSize": 52, "color": "#d9534f", "duration": 2500 }
       }
     },
     {
@@ -132,6 +122,29 @@
           "strokeWidth": 3,
           "roughness": 2.5
         }
+      }
+    },
+    {
+      "command": "wait",
+      "payload": { "duration": 1000 }
+    },
+    {
+      "command": "drawSVG",
+      "id": "ladder-example-svg",
+      "payload": {
+        "svgUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/build_circle/materialicons/48dp/2x/baseline_build_circle_black_48dp.png",
+        "description": "An SVG diagram showing a ladder against a wall, forming a right triangle.",
+        "position": { "x": 450, "y": 550 },
+        "desiredSize": { "width": 200 }
+      }
+    },
+    {
+      "command": "write",
+      "id": "example-explanation",
+      "payload": {
+        "text": "It's used to find unknown lengths in the real world!",
+        "position": { "x": 650, "y": 600 },
+        "varaOptions": { "fontSize": 24, "color": "#0275d8" }
       }
     }
   ]

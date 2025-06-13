@@ -14,11 +14,13 @@ import time   # For timestamps
 import json   # For handling JSON data
 from livekit import rtc # For B2F RPC type hints
 from generated.protos import interaction_pb2 # For B2F and F2B RPC messages
+from livekit.agents.ipc import proto as proto_agent  # For Agent-to-Client messages (e.g., RpcRequest, AgentToClientMessage)
 
 import os
 import sys
 import logging
 import argparse
+import asyncio
 import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
@@ -114,8 +116,10 @@ GLOBAL_AVATAR_ENABLED = tavus_module is not None and TAVUS_ENABLED
 
 class RoxAgent(Agent):
     """Rox AI assistant with UI interaction capabilities."""
-    def __init__(self, page_path="roxpage") -> None:
+    def __init__(self, job_ctx: JobContext, page_path="roxpage") -> None:
         super().__init__(instructions="You are Rox, an AI assistant for students using the learning platform. You help students understand their learning status and guide them through their learning journey.")
+        self._job_ctx: JobContext = job_ctx
+        self.agent_session: Optional[agents.AgentSession] = None # Will be set in entrypoint
         self.page_path = page_path
         self.latest_transcript_time = 0
 
@@ -131,73 +135,92 @@ class RoxAgent(Agent):
         logger.info(f"RoxAgent.__init__ called for page_path: {page_path}. Attributes: {dir(self)}")
 
 
-    async def send_ui_action_to_frontend(self, action_data: dict):
+    async def send_ui_action_to_frontend(self, action_data: dict, target_identity: Optional[str] = None, job_ctx_override: Optional[JobContext] = None):
+        """Send a UI action to the frontend via room data channel.
+        
+        Args:
+            action_data: Dictionary containing UI action data
+            target_identity: Target client identity (optional, falls back to room participants)
+            job_ctx_override: Optional JobContext for RPC communication
         """
-        Sends a structured UI action to the frontend using room.rpc.send_request.
-        This method is kept from File 1 and uses raw protobuf bytes.
-        """
-        if not self._room: # Use self._room consistently
-            logger.error("RoxAgent.send_ui_action_to_frontend: Room (self._room) not available.")
-            return
-
         try:
-            action_type_str = action_data.get("action_type_str")
+            # Check if room is available
+            if not self._room:
+                logger.error("Cannot send UI action: Room not available")
+                return
+                
+            # Use the provided job context or fall back to the instance's stored context
+            current_ctx = job_ctx_override or self._job_ctx
+            if not current_ctx:
+                logger.error("No JobContext available for RPC in send_ui_action_to_frontend")
+                return
+            
+            # Find target identity if not provided
+            final_target_identity = target_identity
+            if not final_target_identity and self._room and self._room.participants:
+                # Use first remote participant as fallback target
+                for p_identity in self._room.participants.keys():
+                    if p_identity != self._room.local_participant.identity:
+                        final_target_identity = p_identity
+                        break
+            
+            if not final_target_identity:
+                logger.error("Cannot send UI action: No target identity provided and no remote participants found")
+                return
+            
+            # Accept either "type" or "action_type_str" to determine the action type
+            action_type = action_data.get("type") or action_data.get("action_type_str")
             parameters = action_data.get("parameters", {})
-
-            if not action_type_str:
-                logger.warning("RoxAgent.send_ui_action_to_frontend: 'action_type_str' missing.")
-                return
-
-            try:
-                action_type_enum = interaction_pb2.ClientUIActionType.Value(action_type_str)
-            except ValueError:
-                logger.error(f"Invalid action_type_str '{action_type_str}'.")
-                return
-
-            request_id = str(uuid.uuid4())
-            action_request_proto_args = {
-                "request_id": request_id, # Corrected from requestId
-                "action_type": action_type_enum,
-            }
-
-            if "targetElementId" in parameters:
-                 action_request_proto_args["target_element_id"] = parameters.pop("targetElementId") # Corrected field name
-
-            # Specific payload handling from File 1's send_ui_action_to_frontend
-            if action_type_enum == interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES:
-                st_ranges_data = action_data.get("strikethrough_ranges_data", [])
-                proto_ranges = [interaction_pb2.StrikeThroughRangeProto(**r) for r in st_ranges_data]
-                action_request_proto_args["strikethrough_ranges_payload"] = proto_ranges
-            elif action_type_enum == interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
-                hl_ranges_data = action_data.get("highlight_ranges_data", [])
-                proto_ranges = [interaction_pb2.HighlightRangeProto(**r) for r in hl_ranges_data]
-                action_request_proto_args["highlight_ranges_payload"] = proto_ranges
             
-            # Fallback to parametersJson if other specific payloads are not handled here
-            # This assumes AgentToClientUIActionRequest might have a parameters_json field
-            # If it only has map<string, string> parameters, this part might need adjustment
-            # or be removed if trigger_client_ui_action is always preferred.
-            if parameters:
-                 action_request_proto_args["parameters_json"] = json.dumps(parameters)
-
-
-            action_request_proto = interaction_pb2.AgentToClientUIActionRequest(**action_request_proto_args)
-            payload_bytes = action_request_proto.SerializeToString()
-            
-            service_name = "rox.interaction.ClientSideUI"
-            method_name = "PerformUIAction"
-
-            logger.info(f"RoxAgent: Sending UI action (via send_request): {action_type_str}, params: {json.dumps(parameters)}")
-            await self._room.rpc.send_request(
-                service=service_name,
-                method=method_name,
-                payload=payload_bytes,
-                timeout=10
-            )
-            logger.debug(f"Successfully sent RPC (via send_request) for UI action '{action_type_str}'.")
-
+            if action_type == "SHOW_ALERT" or action_type == "alert":
+                logger.info(f"Preparing to send UI action 'SHOW_ALERT' to identity '{final_target_identity}' via room data channel.")
+                
+                # Extract alert parameters from either direct keys or from the parameters dict
+                alert_title = action_data.get("title", "")
+                alert_message = action_data.get("message", "")
+                alert_buttons = action_data.get("buttons", [])
+                
+                # If not found in top-level, check in parameters
+                if not alert_title and "title" in parameters:
+                    alert_title = parameters.get("title", "")
+                if not alert_message and "message" in parameters:
+                    alert_message = parameters.get("message", "")
+                if not alert_buttons and "buttons" in parameters:
+                    alert_buttons = parameters.get("buttons", [])
+                
+                # Create a simple JSON structure to send via data channel
+                json_payload = {
+                    "type": "agent_ui_action",
+                    "request_id": action_data.get("request_id", str(uuid.uuid4())),
+                    "method_name": "HandleAgentUIAction",
+                    "action_type": "SHOW_ALERT",
+                    "alert_title": alert_title,
+                    "alert_message": alert_message,
+                    "alert_buttons": alert_buttons,
+                    "source_identity": self._room.local_participant.identity
+                }
+                
+                # Serialize to JSON string then to bytes
+                json_str = json.dumps(json_payload)
+                serialized_payload = json_str.encode('utf-8')
+                
+                # Use the same topic naming convention
+                dispatch_topic = f"agent_dispatch:{self._room.local_participant.identity}"
+                
+                # Send the data
+                await self._room.local_participant.publish_data(
+                    payload=serialized_payload,
+                    topic=dispatch_topic, 
+                    destination_identities=[final_target_identity]
+                )
+                
+                logger.info(f"Successfully sent UI action to {final_target_identity} via room data channel. Topic: {dispatch_topic}")
+            else:
+                logger.error(f"Unsupported UI action type: {action_type}")
         except Exception as e:
-            logger.error(f"Error in send_ui_action_to_frontend: {e}", exc_info=True)
+            logger.error(f"RoxAgent.send_ui_action_to_frontend: Error processing UI action: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     async def dispatch_frontend_rpc(self, rpc_call_data: dict):
         """Sends generic RPC-like call via data channel (from File 1)."""
@@ -222,6 +245,22 @@ class RoxAgent(Agent):
         if audio_url: logger.debug(f"Audio URL: {audio_url}")
         else: logger.warning("No audio URL for reply.")
             
+    async def speak_text(self, text: str):
+        if not self.agent_session:
+            logger.error("RoxAgent.speak_text: AgentSession not available.")
+            return
+        if not text:
+            logger.warning("RoxAgent.speak_text: No text provided to speak.")
+            return
+        
+        try:
+            logger.info(f"RoxAgent.speak_text: Attempting to say via AgentSession: '{text[:100]}...' if len(text) > 100 else text)")
+            # add_to_chat_ctx=False prevents this spoken text from being re-added to the LLM context from this path
+            await self.agent_session.say(text, add_to_chat_ctx=False)
+            logger.info(f"RoxAgent.speak_text: Successfully called agent_session.say.")
+        except Exception as e:
+            logger.error(f"Error in RoxAgent.speak_text calling agent_session.say: {e}", exc_info=True)
+
     async def on_llm_response_done(self, chunks: list[ChatChunk]):
         """Called when LLM response is done, processes tool calls for UI actions (from File 1)."""
         logger.info(f"RoxAgent on_llm_response_done: Received {len(chunks)} chunks.")
@@ -432,241 +471,52 @@ async def agent_main_logic(agent_or_ctx):
     logger.info(f"B2F Agent Logic: Room '{room.name}' is available.")
 
     target_client_identity = None
-    # Find a client (prefer 'TestUser', then first non-agent remote participant)
-    logger.info("B2F Agent Logic: Attempting to find target client...")
-    
-    remote_participants_map = room.remote_participants
-    logger.info(f"B2F Agent Logic: Remote participants: {[p.identity for p in remote_participants_map.values()]}")
+    max_retries = 5
+    retry_delay_seconds = 3
 
-    # Get agent identity (for exclusion)
-    agent_identity = None
-    if room and room.local_participant:
+    for attempt in range(max_retries):
+        logger.info(f"B2F Agent Logic: Attempting to find target client (Attempt {attempt + 1}/{max_retries})...")
+        
+        remote_participants_map = room.remote_participants
+        logger.info(f"B2F Agent Logic: Remote participants: {[p.identity for p in remote_participants_map.values()]}")
+
+        agent_identity = None
+        if room and room.local_participant:
+            agent_identity = room.local_participant.identity
+            # logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'") # Logged once is enough
+
+        if "TestUser" in remote_participants_map:
+            target_client_identity = remote_participants_map["TestUser"].identity
+            logger.info(f"B2F Agent Logic: Found target client 'TestUser'.")
+            break 
+        else:
+            for p_info in remote_participants_map.values():
+                if agent_identity and p_info.identity != agent_identity: # Exclude self (agent)
+                    target_client_identity = p_info.identity
+                    logger.info(f"B2F Agent Logic: Found fallback target client: '{target_client_identity}' (SID: {p_info.sid}).")
+                    break 
+            if target_client_identity:
+                break 
+
+        if attempt < max_retries - 1:
+            logger.info(f"B2F Agent Logic: Target client not found. Retrying in {retry_delay_seconds} seconds...")
+            await asyncio.sleep(retry_delay_seconds)
+        else:
+            logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found after multiple attempts to send UI actions to.")
+            return
+    
+    # Ensure agent identity is logged at least once if not done in loop for verbosity reasons
+    if room and room.local_participant and not agent_identity:
         agent_identity = room.local_participant.identity
         logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'")
-
-    if "TestUser" in remote_participants_map:
-        target_client_identity = remote_participants_map["TestUser"].identity
-        logger.info(f"B2F Agent Logic: Found target client 'TestUser'.")
-    else:
-        for p_info in remote_participants_map.values():
-            if agent_identity and p_info.identity != agent_identity: # Exclude self (agent)
-                target_client_identity = p_info.identity
-                logger.info(f"B2F Agent Logic: Found fallback target client: '{target_client_identity}' (SID: {p_info.sid}).")
-                break # Take the first one found
     
+    # The original implementation seems to broadcast. If a target is needed,
+    # this logic needs to be updated. For now, it sends to all participants.
+    # Let's check if we have a fallback target identity.
     if not target_client_identity:
-        logger.warning("B2F Agent Logic: No suitable client 'TestUser' (or fallback) found to send UI actions to.")
-        return
-    
-
-    # try:
-    #     # ==========================================
-    #     # ROX_COPY PAGE ACTIONS (from File 2)
-    #     # ==========================================
-        
-    #     logger.info(f"B2F Test: SHOW_ALERT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_ALERT,
-    #         parameters={"message": "Agent says hello via MERGED B2F RPC!"}
-    #     )
-    #     await asyncio.sleep(2)
-
-    #     logger.info(f"B2F Test: UPDATE_TEXT_CONTENT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_TEXT_CONTENT,
-    #         target_element_id="agentUpdatableTextRoxPage",
-    #         parameters={"text": f"Agent updated this text at {asyncio.get_event_loop().time():.0f}"}
-    #     )
-    #     await asyncio.sleep(2)
-
-    #     logger.info(f"B2F Test: START_TIMER to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.START_TIMER,
-    #         target_element_id="speakingTaskTimer",
-    #         parameters={"duration_seconds": 30, "timer_type": "prep"}
-    #     )
-    #     await asyncio.sleep(1)
-        
-    #     logger.info(f"B2F Test: PAUSE_TIMER (true) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
-    #         target_element_id="speakingTaskTimer", parameters={"pause": "true"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: PAUSE_TIMER (false) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.PAUSE_TIMER,
-    #         target_element_id="speakingTaskTimer", parameters={"pause": "false"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: UPDATE_PROGRESS_INDICATOR to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_PROGRESS_INDICATOR,
-    #         target_element_id="drillProgressIndicator",
-    #         parameters={"current_step": 3, "total_steps": 10, "message": "Processing speaking task..."}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: SHOW_ELEMENT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_ELEMENT,
-    #         target_element_id="roxLoadingIndicator", parameters={"show": "true"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: HIDE_ELEMENT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.HIDE_ELEMENT,
-    #         target_element_id="roxLoadingIndicator", parameters={"show": "false"} # Assuming "show": "false" is how hide works
-    #     )
-    #     await asyncio.sleep(1)
-        
-    #     # ==========================================
-    #     # NAVIGATE TO WRITINGPRACTICE PAGE (from File 2)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: NAVIGATE_TO_PAGE (writingpractice) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.NAVIGATE_TO_PAGE,
-    #         parameters={
-    #             "page_name": "writingpractice",
-    #             "data_for_page": json.dumps({ # Ensure data_for_page is a JSON string
-    #                 "user_id": "test123", "essay_id": "writing_sample_01",
-    #                 "mode": "feedback", "show_tutorial": False
-    #             })
-    #         }
-    #     )
-    #     await asyncio.sleep(3) # Allow time for navigation
-
-    #     # ==========================================
-    #     # WRITINGPRACTICE PAGE ACTIONS (from File 2)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: UPDATE_LIVE_TRANSCRIPT (chunked) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
-    #         target_element_id="liveTranscriptArea",
-    #         parameters={"new_chunk": "This is the first part ", "is_final_for_sentence": "false"}
-    #     )
-    #     await asyncio.sleep(0.5)
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.UPDATE_LIVE_TRANSCRIPT,
-    #         target_element_id="liveTranscriptArea",
-    #         parameters={"new_chunk": "of a live transcript.", "is_final_for_sentence": "true"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: DISPLAY_TRANSCRIPT_OR_TEXT to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.DISPLAY_TRANSCRIPT_OR_TEXT,
-    #         target_element_id="feedbackContent",
-    #         parameters={"text_content": "Essay feedback: Good structure, needs grammar work."}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: DISPLAY_REMARKS_LIST to '{target_client_identity}'.")
-    #     remarks_data = [
-    #         {"id": "R1", "title": "Grammar", "details": "Subject-verb agreement.", "correction_suggestion": "Match verb to subject."},
-    #         {"id": "R2", "title": "Vocab", "details": "Limited range.", "correction_suggestion": "Use more academic terms."}
-    #     ]
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.DISPLAY_REMARKS_LIST,
-    #         target_element_id="feedbackRemarks",
-    #         parameters={"remarks": json.dumps(remarks_data)} # Ensure remarks is a JSON string
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     # ==========================================
-    #     # ACTIONS WITH DEDICATED PAYLOADS (from File 1)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: HIGHLIGHT_TEXT_RANGES to '{target_client_identity}'.")
-    #     sample_highlights = [{"id": "hl1", "start": 0, "end": 5, "type": "test_hl", "message": "Test highlight"}]
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.HIGHLIGHT_TEXT_RANGES,
-    #         target_element_id="liveWritingEditor", # Example target
-    #         highlight_ranges_payload_data=sample_highlights
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: STRIKETHROUGH_TEXT_RANGES to '{target_client_identity}'.")
-    #     sample_strikethroughs = [{"id": "st1", "start": 6, "end": 10, "type": "test_st", "message": "Test strikethrough"}]
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.STRIKETHROUGH_TEXT_RANGES,
-    #         target_element_id="liveWritingEditor",
-    #         strikethrough_ranges_data=sample_strikethroughs
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: SUGGEST_TEXT_EDIT to '{target_client_identity}'.")
-    #     sample_text_edit = {"suggestion_id": "edit1", "start_pos": 11, "end_pos": 15, "original_text": "olld", "new_text": "new"}
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SUGGEST_TEXT_EDIT,
-    #         target_element_id="liveWritingEditor",
-    #         suggest_text_edit_payload_data=sample_text_edit
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     # ==========================================
-    #     # MORE ACTIONS (from File 2, using generic parameters)
-    #     # ==========================================
-    #     logger.info(f"B2F Test: SET_BUTTON_PROPERTIES to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SET_BUTTON_PROPERTIES,
-    #         target_element_id="submitAnswerButton",
-    #         parameters={"label": "Submit Essay Now", "disabled": "false", "style_class": "primary-button"}
-    #     )
-    #     await asyncio.sleep(1)
-        
-
-
-    #     logger.info(f"B2F Test: ENABLE_BUTTON to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.ENABLE_BUTTON,
-    #         target_element_id="startRecordingButton"
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (true) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
-    #         target_element_id="globalLoadingIndicator",
-    #         parameters={"is_loading": "true", "message": "Processing..."}
-    #     )
-    #     await asyncio.sleep(2)
-    #     logger.info(f"B2F Test: SHOW_LOADING_INDICATOR (false) to '{target_client_identity}'.")
-    #     await trigger_client_ui_action(
-    #         room=room, client_identity=target_client_identity,
-    #         action_type=interaction_pb2.ClientUIActionType.SHOW_LOADING_INDICATOR,
-    #         target_element_id="globalLoadingIndicator",
-    #         parameters={"is_loading": "false"}
-    #     )
-    #     await asyncio.sleep(1)
-
-    #     logger.info("B2F Agent Logic: All test UI actions sent.")
-
-    # except Exception as e:
-    #     logger.error(f"B2F Agent Logic: Error during sending UI actions: {e}", exc_info=True)
-
-
+        if not agent_instance._fallback_target_client_identity:
+            agent_instance._fallback_target_client_identity = target_client_identity
+    logger.info(f"B2F Agent Logic: Agent identity is '{agent_identity}'")
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint for the agent job."""
@@ -687,7 +537,7 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"Runtime Config -- Page: {GLOBAL_PAGE_PATH}, TTS: {GLOBAL_MODEL}, Temp: {GLOBAL_TEMPERATURE}, Avatar: {GLOBAL_AVATAR_ENABLED}")
     
-    rox_agent_instance = RoxAgent(page_path=GLOBAL_PAGE_PATH)
+    rox_agent_instance = RoxAgent(job_ctx=ctx, page_path=ctx.room.name)
     rox_agent_instance._room = ctx.room # Explicitly set agent's room reference
 
     avatar_session = None
@@ -718,6 +568,9 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info("Main agent session created successfully.")
 
+        # Set the agent_session on the rox_agent_instance for TTS and other session-dependent actions
+        rox_agent_instance.agent_session = main_agent_session
+
         if avatar_session:
             logger.info("Starting Tavus avatar session...")
             await avatar_session.start(agent_session=main_agent_session, room=ctx.room)
@@ -739,7 +592,7 @@ async def entrypoint(ctx: JobContext):
 
         # Populate participant_data with metadata
         if rox_agent_instance._room:
-            logger.info(f"PARTICIPANT_METADATA: Processing local and remote participants. Room SID: {rox_agent_instance._room.sid}, Name: {rox_agent_instance._room.name}")
+            logger.info(f"PARTICIPANT_METADATA: Processing local and remote participants. Room SID: {await rox_agent_instance._room.sid}, Name: {rox_agent_instance._room.name}")
             
             all_participants_to_process = []
             
@@ -855,7 +708,32 @@ if __name__ == "__main__":
     # Reconstruct sys.argv for LiveKit's CLI parser
     # This ensures LiveKit's own arguments are processed correctly
     # The first element of sys.argv is the script name, followed by unknown_args
-    sys.argv = [sys.argv[0]] + unknown_args 
+    # Check for a dynamic room name passed via environment variable.
+    # This allows an external process (like pronity-backend) to specify
+    # the room for the agent to join, overriding any defaults.
+    dynamic_room_name = os.getenv("LIVEKIT_ROOM_NAME")
+    livekit_args = unknown_args
+
+    # If the 'connect' command is being used and a dynamic room name is provided,
+    # we inject or override the --room argument for the LiveKit CLI.
+    if "connect" in livekit_args and dynamic_room_name:
+        logger.info(f"Found LIVEKIT_ROOM_NAME env var: {dynamic_room_name}. Overriding/setting --room.")
+        try:
+            # Find the index of the --room argument
+            room_arg_index = livekit_args.index("--room")
+            # Check if there is a value after --room to replace
+            if room_arg_index + 1 < len(livekit_args):
+                logger.info(f"Replacing existing --room value '{livekit_args[room_arg_index + 1]}' with '{dynamic_room_name}'.")
+                livekit_args[room_arg_index + 1] = dynamic_room_name
+            else:
+                # --room was the last argument, so append the new room name
+                livekit_args.append(dynamic_room_name)
+        except ValueError:
+            # --room argument was not found, so we add it.
+            logger.info("Adding --room argument to command.")
+            livekit_args.extend(["--room", dynamic_room_name])
+
+    sys.argv = [sys.argv[0]] + livekit_args 
 
     # Run the agent using LiveKit's CLI runner
     # This handles LiveKit-specific arguments like --url, --api-key, etc.

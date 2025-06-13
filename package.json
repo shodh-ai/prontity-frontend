@@ -48,6 +48,8 @@
     "uuid": "^11.1.0",
     "zustand": "^5.0.3",
     "react-router-dom": "^6.8.1"
+    
+    
   },
   "devDependencies": {
     "@types/node": "^20.17.31",
@@ -62,6 +64,7 @@
     "@vitejs/plugin-react": "4.3.4",
     "esbuild": "0.24.0",
     "globals": "15.12.0",
-    "vite": "6.0.4"
+    "vite": "6.0.4",
+    "@animaapp/vite-plugin-screen-graph": "^0.1.5"
   }
 }

@@ -19,7 +19,8 @@ const formSteps = [
 
 const MAX_RECORDING_TIME = 30;
 
-const API_ENDPOINT = "http://localhost:3002/user/fill-details";
+const API_ENDPOINT = "http://localhost:8001/user/fill-details";
+const API_ENDPOINT_LANGGRAPH = "http://localhost:8000/user/register";
 
 export const RegistrationForm = () => {
   const router = useRouter();
@@ -181,8 +182,45 @@ export const RegistrationForm = () => {
       }
 
       const result = await response.json();
-      alert('Registration successful! Data submitted to backend.');
-      console.log('Server response:', result);
+      console.log('Backend response:', result);
+
+      // Now, also send data to the LangGraph backend
+      const userId = localStorage.getItem('userId');
+      if (!userId) {
+        alert('Could not find user ID for AI backend submission.');
+        // Decide if this is a critical error. For now, we'll allow continuing.
+      } else {
+        const langgraphPayload = {
+          ...submissionPayload,
+          user_id: userId
+        };
+
+        try {
+          console.log("Sending to LangGraph AI backend:", JSON.stringify(langgraphPayload));
+          const langgraphResponse = await fetch(API_ENDPOINT_LANGGRAPH, {
+            method: 'POST',
+            body: JSON.stringify(langgraphPayload),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!langgraphResponse.ok) {
+            // Log the error but don't block the user
+            const errorData = await langgraphResponse.json().catch(() => ({ message: 'Failed to submit to AI backend.' }));
+            console.error('AI Backend submission failed:', errorData.message);
+            alert('Registration details submitted, but failed to update AI profile. Some features may be limited.');
+          } else {
+            const langgraphResult = await langgraphResponse.json();
+            console.log('LangGraph AI Backend response:', langgraphResult);
+            alert('Registration successful! Your profile has been updated for the AI tutor.');
+          }
+        } catch (aiError) {
+          console.error('Error submitting to AI backend:', aiError);
+          alert('Could not connect to the AI backend. Some features may be limited.');
+        }
+      }
+
       router.push('/dash_rox');
       
       // Optional: Clear form, navigate, remove from localStorage if it was a temporary store

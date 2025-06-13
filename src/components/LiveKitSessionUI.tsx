@@ -28,6 +28,10 @@ interface LiveKitSessionUIProps {
   toggleCamera: () => void;
   handleLeave: () => void;
   
+  // RPC handlers for interactive controls
+  onHandRaise?: () => Promise<void>;
+  onPushToTalk?: (isActive: boolean) => Promise<void>;
+  
   // Additional components
   customControls?: ReactNode;
   children?: ReactNode;
@@ -47,6 +51,8 @@ export default function LiveKitSessionUI({
   toggleAudio,
   toggleCamera,
   handleLeave,
+  onHandRaise,
+  onPushToTalk,
   customControls,
   children
 }: LiveKitSessionUIProps) {
@@ -109,6 +115,8 @@ export default function LiveKitSessionUI({
           hideAudio={hideAudio}
           hideVideo={hideVideo}
           customControls={customControls}
+          onHandRaise={onHandRaise}
+          onPushToTalk={onPushToTalk}
         />
       </div>
       

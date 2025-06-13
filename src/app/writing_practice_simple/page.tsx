@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import VideoControlsUI from "@/components/VideoControlsUI";
 
 /**
  * Writing-practice component (TOEFL style).
@@ -16,6 +17,28 @@ export default function WritingPracticeSession() {
   const [isRecording, setIsRecording] = useState(false);
   const [draft1, setDraft1] = useState("");
   const [draft2, setDraft2] = useState("");
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  
+  /* ----------------------------------------------------------- handlers */
+  const toggleAudio = () => setAudioEnabled(prev => !prev);
+  const toggleVideo = () => setVideoEnabled(prev => !prev);
+  const handleLeave = () => window.history.back();
+  
+  // Async handlers for interaction controls
+  const handleHandRaise = async (): Promise<void> => {
+    setIsHandRaised(prev => !prev);
+    console.log('Hand raised:', !isHandRaised);
+    // In a real implementation, this would call the RPC service
+  };
+  
+  const handlePushToTalk = async (isActive: boolean): Promise<void> => {
+    setIsPushToTalkActive(isActive);
+    console.log('Push to talk:', isActive);
+    // In a real implementation, this would call the RPC service
+  };
 
   /* ----------------------------------------------------------- derived UI */
   const pct  = Math.min((elapsed / TOTAL) * 100, 100);
@@ -34,7 +57,6 @@ export default function WritingPracticeSession() {
 
   /* ------------------------------------------------------------- helpers */
   const toggleRecording = () => setIsRecording(p => !p);
-  const handleClose     = () => window.history.back();
 
   /* ---------------------------------------------------------------- view */
   return (
@@ -49,7 +71,7 @@ export default function WritingPracticeSession() {
         {/* header */}
         <header className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-semibold">Writing Practice Session</h2>
-          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={handleLeave} className="text-gray-400 hover:text-gray-600">
             <XIcon className="h-6 w-6" />
           </button>
         </header>
@@ -88,23 +110,17 @@ export default function WritingPracticeSession() {
           </div>
 
           <div className="flex items-center space-x-3">
-            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full bg-gray-100">
-              <PlusIcon className="h-4 w-4" />
-            </Button>
-
-            <Button
-              size="icon"
-              onClick={toggleRecording}
-              className={`h-12 w-12 rounded-full shadow-sm transition-colors ${
-                isRecording ? "bg-[#566fe9] text-white" : "bg-[#566fe9]/10 text-[#566fe9]"
-              }`}
-            >
-              <MicIcon className="h-5 w-5" />
-            </Button>
-
-            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full bg-gray-100">
-              <ChatIcon className="h-4 w-4" />
-            </Button>
+            <VideoControlsUI
+              audioEnabled={audioEnabled}
+              videoEnabled={videoEnabled}
+              toggleAudio={toggleAudio}
+              toggleCamera={toggleVideo}
+              handleLeave={handleLeave}
+              hideVideo={true}
+              hideAudio={false}
+              onHandRaise={handleHandRaise}
+              onPushToTalk={handlePushToTalk}
+            />
           </div>
         </div>
       </div>

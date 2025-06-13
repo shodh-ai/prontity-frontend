@@ -7,7 +7,7 @@ import { register as pronityRegister, PronityApiError } from '@/api/pronityClien
 
 export default function SignupPage() {
   const router = useRouter();
-  const [name, setName] = useState('');
+  // const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -18,10 +18,10 @@ export default function SignupPage() {
     e.preventDefault();
     
     // Basic validation
-    if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
-      setErrorMessage('All fields are required');
-      return;
-    }
+    // if (!name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
+    //   setErrorMessage('All fields are required');
+    //   return;
+    // }
     
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match');
@@ -34,7 +34,7 @@ export default function SignupPage() {
     try {
       // Register the user with Pronity backend
       const userData = {
-        name,
+        // name,
         email,
         password
       };
@@ -43,12 +43,17 @@ export default function SignupPage() {
       const result = await pronityRegister(userData);
       
       // Store token and user info in localStorage
-      localStorage.setItem('token', result.token);
-      localStorage.setItem('user', JSON.stringify(result.user));
+      localStorage.setItem('authToken', result.token);
+      console.log('Token SET in localStorage on signup page:', localStorage.getItem('authToken'));
+      if (result.user) { 
+        localStorage.setItem('user', JSON.stringify(result.user));
+      } else {
+        localStorage.removeItem('user'); 
+      }
       
       console.log('Registration successful, redirecting to main page');
       // Redirect to main page after successful registration
-      router.push('/roxpage');
+      router.push('/registrationtest');
     } catch (err) {
       console.error('Registration error:', err);
       
@@ -142,7 +147,7 @@ export default function SignupPage() {
           
           {/* Registration Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
+            {/* <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700">
                 Full Name
               </label>
@@ -156,8 +161,8 @@ export default function SignupPage() {
                   disabled={isLoading}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:opacity-50 disabled:bg-gray-100"
                 />
-              </div>
-            </div>
+              </div> */}
+            {/* </div> */}
             
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">

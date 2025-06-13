@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import VideoControlsUI from "@/components/VideoControlsUI";
 
 /**
  *  WritingScaffoldingChat – a standalone page that mirrors the *final* frame of
@@ -13,6 +14,31 @@ export default function WritingScaffoldingChat() {
   const TOTAL = 900; // 15-minute chat window
   const [elapsed, setElapsed] = useState(0);
   const mmss = new Date((TOTAL - elapsed) * 1000).toISOString().slice(14, 19);
+  
+  /* --------------------------------------------------------------- state */
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  
+  /* ------------------------------------------------------------- handlers */
+  const toggleAudio = () => setAudioEnabled(prev => !prev);
+  const toggleVideo = () => setVideoEnabled(prev => !prev);
+  const handleLeave = () => window.history.back();
+  
+  // Async handlers for interaction controls
+  const handleHandRaise = async (): Promise<void> => {
+    setIsHandRaised(prev => !prev);
+    console.log('Hand raised:', !isHandRaised);
+    // In a real implementation, this would call the RPC service
+  };
+  
+  const handlePushToTalk = async (isActive: boolean): Promise<void> => {
+    setIsPushToTalkActive(isActive);
+    console.log('Push to talk:', isActive);
+    // In a real implementation, this would call the RPC service
+  };
+  
   useEffect(() => {
     const id = setInterval(() => setElapsed((s) => Math.min(s + 1, TOTAL)), 1000);
     return () => clearInterval(id);
@@ -65,7 +91,21 @@ export default function WritingScaffoldingChat() {
           </p>
 
           {/* right pane */}
-          <div className="flex-1">
+          <div className="flex-1 relative">
+            {/* Video Controls UI with RPC handlers */}
+            <div className="absolute bottom-4 right-4 z-20">
+              <VideoControlsUI
+                audioEnabled={audioEnabled}
+                videoEnabled={videoEnabled}
+                toggleAudio={toggleAudio}
+                toggleCamera={toggleVideo}
+                handleLeave={handleLeave}
+                hideVideo={true}
+                hideAudio={false}
+                onHandRaise={handleHandRaise}
+                onPushToTalk={handlePushToTalk}
+              />
+            </div>
             {/* draft */}
             <textarea
               value={draft}

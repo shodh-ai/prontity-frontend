@@ -65,14 +65,18 @@ export interface LoginCredentials {
   email: string;
   password: string;
 }
-
-export interface RegisterData extends LoginCredentials {
-  name: string;
+export interface RegisterData {
+  email: string;
+  password: string;
 }
+
+// export interface RegisterData extends LoginCredentials {
+//   name: string;
+// }
 
 export interface AuthResponse {
   token: string;
-  user: User;
+  user?: User; // Made user optional
 }
 
 // --- Helper function to handle API responses ---
@@ -140,10 +144,46 @@ export async function register(userData: RegisterData): Promise<AuthResponse> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData),
     });
-    return await handleApiResponse<AuthResponse>(response, 'Registration');
+
+    // We need to handle the specific structure of the registration response here,
+    // as it differs from what AuthResponse expects directly (token is nested in 'data').
+    if (!response.ok) {
+      // Use the existing error handling logic from handleApiResponse or replicate parts of it.
+      let errorMessage = `Registration failed: ${response.statusText}`;
+      let errorDetails;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
+        errorDetails = errorData.details || errorData;
+      } catch (e) {
+        // If response is not JSON, try to get text
+        try {
+          const errorText = await response.text();
+          errorMessage = errorText || errorMessage;
+        } catch (textError) { /* Fallback */ }
+      }
+      console.error(`Registration Error: Status ${response.status}, Message: ${errorMessage}`, errorDetails);
+      throw new PronityApiError(errorMessage, response.status, errorDetails);
+    }
+
+    const responseBody = await response.json(); // Expected: { message: string, data: string (token), user?: User }
+
+    if (!responseBody.data || typeof responseBody.data !== 'string') {
+      const errMessage = 'Token missing or invalid in registration response from server.';
+      console.error(errMessage, responseBody);
+      throw new PronityApiError(errMessage, response.status, responseBody);
+    }
+
+    return {
+      token: responseBody.data,
+      user: responseBody.user, // This will be undefined if backend doesn't send it, which is now fine for AuthResponse
+    };
+
   } catch (error) {
     if (error instanceof PronityApiError) throw error;
-    throw new PronityApiError(`Network error during registration: ${(error as Error).message}`, 0);
+    // Ensure that even non-PronityApiErrors are wrapped or handled consistently
+    const message = error instanceof Error ? error.message : String(error);
+    throw new PronityApiError(`Network error during registration: ${message}`, 0);
   }
 }
 

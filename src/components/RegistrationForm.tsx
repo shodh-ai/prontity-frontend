@@ -1,5 +1,6 @@
 import { ArrowLeftIcon, MicIcon, Square, Play, Pause } from "lucide-react";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect, useRef, ChangeEvent, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
@@ -18,7 +19,10 @@ const formSteps = [
 
 const MAX_RECORDING_TIME = 30;
 
-export const RegistrationForm = (): JSX.Element => {
+const API_ENDPOINT = "http://localhost:3002/user/fill-details";
+
+export const RegistrationForm = () => {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [currentInput, setCurrentInput] = useState("");
@@ -30,6 +34,13 @@ export const RegistrationForm = (): JSX.Element => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    // Check for the token as soon as the component loads
+    const token = localStorage.getItem('authToken');
+    console.log('Token FOUND on RegistrationForm mount:', token);
+  }, []); // To show loading state
 
   useEffect(() => {
     return () => {
@@ -37,6 +48,33 @@ export const RegistrationForm = (): JSX.Element => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
+
+  // Load saved data on component mount
+  useEffect(() => {
+    const savedDataString = localStorage.getItem('registrationFormData');
+    if (savedDataString) {
+      const savedData = JSON.parse(savedDataString);
+      setFormData(savedData);
+
+      const firstStepInfo = formSteps[0];
+      const firstStepKey = firstStepInfo.placeholder.toLowerCase().replace(/\s+/g, '_');
+      if (currentStep === 0 && savedData[firstStepKey] && firstStepInfo.inputType === 'text') {
+        setCurrentInput(savedData[firstStepKey]);
+      }
+      // Note: Restoring voice recording state (audioBlob, audioUrl) from localStorage is complex
+      // as Blob objects aren't directly JSON-serializable. This example focuses on text inputs
+      // and a placeholder/URL for voice if it was saved.
+      // If a saved audioUrl exists for the voice step, you might want to set it.
+      const voiceStepIndex = formSteps.findIndex(step => step.inputType === 'voice');
+      if (voiceStepIndex !== -1) {
+        const voiceStepKey = formSteps[voiceStepIndex].placeholder.toLowerCase().replace(/\s+/g, '_');
+        if (savedData[voiceStepKey] && typeof savedData[voiceStepKey] === 'string') {
+          // If you stored a persistent URL or identifier, you could use it here.
+          // If it was a blob URL, it's likely expired. For simplicity, we don't restore audio playback state here.
+        }
+      }
+    }
+  }, []); // Runs once on mount
 
   const startRecording = async () => {
     try {
@@ -83,25 +121,169 @@ export const RegistrationForm = (): JSX.Element => {
   const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
   const getProgressPercentage = () => (recordingTime / MAX_RECORDING_TIME) * 100;
 
-  const handleNext = () => {
-    if (currentStep === 4) {
-      if (audioBlob) {
-        const stepKey = formSteps[currentStep].placeholder.toLowerCase().replace(/\s+/g, '_');
-        setFormData(prev => ({ ...prev, [stepKey]: 'recorded' }));
-        if (currentStep < formSteps.length - 1) { setCurrentStep(prev => prev + 1); setCurrentInput(""); }
+  const handleSubmitToBackend = async (dataToSubmit: Record<string, any>) => {
+    console.log("Initial dataToSubmit received by handleSubmitToBackend:", JSON.parse(JSON.stringify(dataToSubmit)));
+    setIsSubmitting(true);
+    try {
+      const submissionPayload: Record<string, any> = {};
+      const voiceStepPlaceholderKey = formSteps.find(step => step.inputType === 'voice')?.placeholder.toLowerCase().replace(/\s+/g, '_');
+
+      console.log("Building submission payload from dataToSubmit:", dataToSubmit);
+
+      for (const key in dataToSubmit) {
+        if (dataToSubmit.hasOwnProperty(key)) {
+          if (key === voiceStepPlaceholderKey) {
+            console.log(`Skipping voice data key: ${key}`);
+            continue; // Skip the voice recording placeholder/data
+          }
+
+          let targetKey = key;
+          let value = dataToSubmit[key];
+
+          // Rename keys as requested
+          if (key === 'i_want_to_improve_speaking_fluency') {
+            targetKey = 'goal';
+          } else if (key === 'speaking_and_writing_still_makes_me_nervous') {
+            targetKey = 'feeling';
+          } else if (key === 'a_bit_nervous_but_ready_to_try') {
+            targetKey = 'confidence';
+          }
+          // Assuming 'Name' placeholder correctly becomes 'name' key from dataToSubmit
+
+          submissionPayload[targetKey] = value;
+          console.log(`Added to submissionPayload: ${targetKey} = ${value}`);
+        }
       }
-    } else if (currentInput.trim()) {
-      const stepKey = formSteps[currentStep].placeholder.toLowerCase().replace(/\s+/g, '_');
-      setFormData(prev => ({ ...prev, [stepKey]: currentInput }));
-      if (currentStep < formSteps.length - 1) { setCurrentStep(prev => prev + 1); setCurrentInput(""); }
+      submissionPayload.analysis = 'test';
+      console.log("Final submissionPayload before token retrieval and fetch:", submissionPayload);
+      const token = localStorage.getItem('authToken');
+      console.log('Retrieved token for submission:', token);
+
+      if (!token) {
+        alert('Authentication error: You are not logged in.');
+        setIsSubmitting(false);
+        return;
+      }
+      console.log("Sending JSON payload:", JSON.stringify(submissionPayload));
+
+      const response = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        body: JSON.stringify(submissionPayload),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to submit form. Server returned an error.' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      alert('Registration successful! Data submitted to backend.');
+      console.log('Server response:', result);
+      router.push('/dash_rox');
+      
+      // Optional: Clear form, navigate, remove from localStorage if it was a temporary store
+      // localStorage.removeItem('registrationFormData');
+      // setCurrentStep(0); setFormData({}); setCurrentInput(""); setAudioBlob(null); setAudioUrl(""); setRecordingTime(0);
+
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      alert(`Submission failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleNext = () => {
+    const currentStepInfo = formSteps[currentStep];
+    const stepKey = currentStepInfo.placeholder.toLowerCase().replace(/\s+/g, '_');
+    let entryValue;
+
+    if (currentStepInfo.inputType === "voice") {
+      if (!audioBlob && !audioUrl) { 
+        console.warn("Attempting to proceed on voice step without audio.");
+        return;
+      }
+      // Store a placeholder in formData state if a live audioBlob exists, or the audioUrl if not.
+      // The actual audioBlob is used for submission.
+      entryValue = audioBlob ? 'recorded_audio_placeholder' : audioUrl;
+    } else {
+      if (!currentInput.trim()) {
+        console.warn("Attempting to proceed on text step without input.");
+        return;
+      }
+      entryValue = currentInput;
+    }
+
+    const newFormData = { ...formData, [stepKey]: entryValue };
+    setFormData(newFormData);
+
+    if (currentStep < formSteps.length - 1) {
+      const nextStepIndex = currentStep + 1;
+      setCurrentStep(nextStepIndex);
+      const nextStepInfo = formSteps[nextStepIndex];
+      const nextStepKeyFromState = nextStepInfo.placeholder.toLowerCase().replace(/\s+/g, '_');
+      
+      if (nextStepInfo.inputType === "text") {
+        setCurrentInput(newFormData[nextStepKeyFromState] || "");
+      } else if (nextStepInfo.inputType === "voice") {
+        setCurrentInput(""); 
+        const savedAudioData = newFormData[nextStepKeyFromState];
+        if (savedAudioData === 'recorded_audio_placeholder') {
+            // If audioUrl is already set (e.g. from a previous recording in this session for this step), keep it for playback.
+            // audioBlob should also be available if this placeholder was set due to a live recording.
+            // If navigating to a step that had a recording, and audioUrl is not set, but we have audioBlob, set audioUrl.
+            if (audioBlob && !audioUrl) setAudioUrl(URL.createObjectURL(audioBlob));
+            // If no audioBlob, but placeholder exists, it implies an issue or prior state not fully restored for playback.
+            // For simplicity, we rely on audioUrl being set if playback is possible.
+        } else if (typeof savedAudioData === 'string' && savedAudioData.startsWith('blob:')) {
+          setAudioUrl(savedAudioData); // This was likely from localStorage load
+          setAudioBlob(null); 
+          setRecordingTime(MAX_RECORDING_TIME); 
+        } else {
+          setAudioUrl("");
+          setAudioBlob(null);
+          setRecordingTime(0);
+        }
+      } else {
+        setCurrentInput("");
+      }
+    } else {
+      // Last step: Submit to backend
+      console.log('Form data to be submitted from handleNext:', newFormData);
+      handleSubmitToBackend(newFormData);
     }
   };
 
   const handlePrevious = () => {
     if (currentStep > 0) {
-      setCurrentStep(prev => prev - 1);
-      const stepKey = formSteps[currentStep - 1].placeholder.toLowerCase().replace(/\s+/g, '_');
-      setCurrentInput(formData[stepKey] || "");
+      const prevStepIndex = currentStep - 1;
+      setCurrentStep(prevStepIndex);
+      const prevStepInfo = formSteps[prevStepIndex];
+      const stepKey = prevStepInfo.placeholder.toLowerCase().replace(/\s+/g, '_');
+
+      if (prevStepInfo.inputType === "text") {
+        setCurrentInput(formData[stepKey] || "");
+      } else if (prevStepInfo.inputType === "voice") {
+        setCurrentInput(""); // Clear text input field
+        // Restore audio state if available in formData
+        const savedAudioData = formData[stepKey];
+        if (typeof savedAudioData === 'string' && savedAudioData.startsWith('blob:')) {
+          setAudioUrl(savedAudioData);
+          // As with handleNext, re-creating Blob is tricky. User might need to re-record.
+          setAudioBlob(null); 
+          setRecordingTime(MAX_RECORDING_TIME); // Indicate loaded audio
+        } else {
+          setAudioUrl("");
+          setAudioBlob(null);
+          setRecordingTime(0);
+        }
+      } else {
+        setCurrentInput("");
+      }
     }
   };
 
@@ -200,7 +382,7 @@ export const RegistrationForm = (): JSX.Element => {
                 <div className="space-y-4">
                   {renderInput()}
                   <div className="flex justify-end">
-                    <Button className="h-12 w-12 p-0 bg-[#566fe9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center transition-colors duration-200 disabled:opacity-50" aria-label="Continue" onClick={handleNext} disabled={!canProceed}>
+                    <Button className="h-12 w-12 p-0 bg-[#566fe9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center transition-colors duration-200 disabled:opacity-50" aria-label="Continue" onClick={handleNext} disabled={!canProceed || isSubmitting}>
                       <svg width="40" height="40" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <rect width="40" height="40" rx="4" fill="#566FE9"/>
                         <path d="M22.2075 9.79251C22.0818 9.66685 21.9248 9.57697 21.7528 9.53215C21.5807 9.48733 21.3998 9.48918 21.2288 9.53751H21.2194L9.22313 13.1775C9.02838 13.2336 8.85528 13.3476 8.72677 13.5044C8.59826 13.6611 8.52041 13.8532 8.50353 14.0551C8.48666 14.2571 8.53155 14.4594 8.63227 14.6353C8.73299 14.8112 8.88477 14.9523 9.06751 15.04L14.375 17.625L16.9563 22.9294C17.0365 23.1007 17.1642 23.2455 17.3241 23.3466C17.484 23.4477 17.6696 23.501 17.8588 23.5C17.8875 23.5 17.9163 23.4988 17.945 23.4963C18.1468 23.4799 18.3388 23.4022 18.4952 23.2737C18.6516 23.1451 18.765 22.9717 18.82 22.7769L22.4575 10.7806C22.4575 10.7775 22.4575 10.7744 22.4575 10.7713C22.5065 10.6006 22.5091 10.42 22.4652 10.248C22.4212 10.076 22.3323 9.91878 22.2075 9.79251ZM17.8644 22.4906L17.8613 22.4994V22.495L15.3575 17.3513L18.3575 14.3513C18.4473 14.2567 18.4966 14.1309 18.495 14.0005C18.4933 13.8701 18.4408 13.7455 18.3486 13.6533C18.2564 13.5611 18.1318 13.5086 18.0014 13.5069C17.871 13.5052 17.7452 13.5546 17.6506 13.6444L14.6506 16.6444L9.50501 14.1406H9.50063H9.50938L21.5 10.5L17.8644 22.4906Z" fill="white"/>
@@ -215,7 +397,7 @@ export const RegistrationForm = (): JSX.Element => {
                     className="p-0 w-12 h-12 bg-[#566FE9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center shrink-0 disabled:opacity-50"
                     aria-label="Submit"
                     onClick={handleNext}
-                    disabled={!canProceed}
+                    disabled={!canProceed || isSubmitting}
                   >
                     <svg width="40" height="40" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <rect width="40" height="40" rx="4" fill="#566FE9"/>
@@ -226,6 +408,7 @@ export const RegistrationForm = (): JSX.Element => {
               )}
             </CardContent>
           </Card>
+          {isSubmitting && <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-20"><p className="text-lg font-semibold p-4 bg-white rounded shadow-lg">Submitting...</p></div>}
         </div>
       </div>
     </main>

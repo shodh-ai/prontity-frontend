@@ -125,11 +125,10 @@ export default function LiveKitSession({
   aiAssistantEnabled = true,
   showAvatar = false,
   onRoomCreated,
-   // Destructure the new prop
 }: LiveKitSessionProps) {
   // State for UI elements that might be controlled by React state
-  const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");
-  const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
+  const [agentUpdatableText, setAgentUpdatableText] = useState<string>('This text can be updated by the agent via RPC call.');
+  const [agentElementVisible, setAgentElementVisible] = useState<boolean>(true);
 
   const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
@@ -155,6 +154,8 @@ export default function LiveKitSession({
   // We only need a ref for the typed service client.
   const agentServiceClientRef = useRef<AgentInteractionClientImpl | null>(null);
   const [rpcResponse, setRpcResponse] = useState<string>('');
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
 
   const handleLeave = useCallback(async () => {
     console.log('Leaving room...');
@@ -291,6 +292,68 @@ export default function LiveKitSession({
     } catch (error) {
       console.error('Error calling HandleFrontendButton RPC:', error);
       setRpcResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  
+  // Handler for hand raise button via RPC
+  const handleHandRaise = async (): Promise<void> => {
+    if (!agentServiceClientRef.current) {
+      console.error('Agent RPC service client not initialized. Are you connected to the room?');
+      return;
+    }
+    
+    try {
+      setIsHandRaised(!isHandRaised);
+      
+      const request = FrontendButtonClickRequest.create({
+        buttonId: "hand_raise_button",
+        customData: JSON.stringify({
+          action: "hand_raise",
+          user: userName,
+          timestamp: new Date().toISOString(),
+          isRaised: !isHandRaised // Toggle state
+        })
+      });
+      
+      console.log('Sending hand raise RPC request to agent:', request);
+      
+      const response = await agentServiceClientRef.current.HandleFrontendButton(request);
+      console.log('Hand raise RPC response from agent:', response);
+    } catch (error) {
+      console.error('Error calling hand raise RPC:', error);
+      // Revert state if there was an error
+      setIsHandRaised(isHandRaised);
+    }
+  };
+
+  // Handler for push to talk via RPC
+  const handlePushToTalk = async (isActive: boolean): Promise<void> => {
+    if (!agentServiceClientRef.current) {
+      console.error('Agent RPC service client not initialized. Are you connected to the room?');
+      return;
+    }
+    
+    try {
+      setIsPushToTalkActive(isActive);
+      
+      const request = FrontendButtonClickRequest.create({
+        buttonId: "push_to_talk_button",
+        customData: JSON.stringify({
+          action: "push_to_talk",
+          user: userName,
+          timestamp: new Date().toISOString(),
+          isActive: isActive
+        })
+      });
+      
+      console.log('Sending push-to-talk RPC request to agent:', request);
+      
+      const response = await agentServiceClientRef.current.HandleFrontendButton(request);
+      console.log('Push-to-talk RPC response from agent:', response);
+    } catch (error) {
+      console.error('Error calling push-to-talk RPC:', error);
+      // Revert state if there was an error
+      setIsPushToTalkActive(!isActive);
     }
   };
 
@@ -475,11 +538,11 @@ export default function LiveKitSession({
         const reactUIActionsProps = {
           // Text content updaters
           textStateUpdaters: {
-            'agentUpdatableText': setAgentUpdatableTextState,
+            'agentUpdatableText': setAgentUpdatableText,
           },
           // Visibility updaters
           visibilityStateUpdaters: {
-            'agentToggleVisibilityElement': setIsAgentElementVisible,
+            'agentToggleVisibilityElement': setAgentElementVisible,
           },
           // Timer control updaters
           timerControlUpdaters: {
@@ -556,16 +619,17 @@ export default function LiveKitSession({
             case ClientUIActionType.UPDATE_TEXT_CONTENT:
               const newText = request.parameters["text"];
               if (request.targetElementId && newText !== undefined) {
-                // React way: Update state
-                if (request.targetElementId === "agentUpdatableText") { // Example mapping
-                    setAgentUpdatableTextState(newText);
+                // React way using state:
+                if (request.targetElementId === "agentUpdatableText") {
+                    setAgentUpdatableText(newText);
                     message = `Element '${request.targetElementId}' text updated (React state).`;
                 } else {
-                // Direct DOM manipulation (less ideal in React, but for generic elements):
+                  // Direct DOM update as fallback
+                  const newText = request.parameters?.new_text || "(Empty text from agent)";
                   const element = document.getElementById(request.targetElementId);
                   if (element) {
-                    element.innerText = newText;
-                    message = `Element '${request.targetElementId}' text updated.`;
+                    element.textContent = newText;
+                    message = `Text content set for '${request.targetElementId}' via DOM.`;
                   } else {
                     success = false;
                     message = `Error: Element '${request.targetElementId}' not found.`;
@@ -579,12 +643,12 @@ export default function LiveKitSession({
 
             case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
               if (request.targetElementId) {
-                // React way:
-                if (request.targetElementId === "agentToggleVisibilityElement") {
-                    setIsAgentElementVisible(prev => !prev); // Simple toggle
-                    message = `Element '${request.targetElementId}' visibility toggled (React state).`;
+                // For visibility toggle, we handle it specially for React-managed components
+                if (request.targetElementId === 'agentToggleVisibilityElement') {
+                  setAgentElementVisible((prev: boolean) => !prev); // Toggle using state
+                  message = `Visibility toggled for React-managed element '${request.targetElementId}'.`;
                 } else {
-                // Direct DOM manipulation:
+                  // Direct DOM manipulation:
                   const element = document.getElementById(request.targetElementId);
                   if (element) {
                     element.style.display = element.style.display === 'none' ? '' : 'none';
@@ -679,56 +743,63 @@ export default function LiveKitSession({
 
   return (
     <RoomContext.Provider value={roomInstance}>
-      <LiveKitSessionUI
-        token={token}
-        pageType={pageType}
-        sessionTitle={sessionTitle}
-        questionText={questionText}
-        userName={userName}
-        audioEnabled={audioEnabled}
-        videoEnabled={videoEnabled}
-        hideAudio={hideAudio}
-        hideVideo={hideVideo}
-        showTimer={showTimer}
-        timerDuration={timerDuration}
-        toggleAudio={toggleAudio}
-        toggleCamera={toggleCamera}
-        handleLeave={handleLeave} // Now correctly defined
-        customControls={customControls}
-      >
-        {aiAssistantEnabled && (audioInitialized || hideAudio) && (
-          <div className="hidden">
-            <AgentController 
-              roomName={roomName} 
-              pageType={pageType} 
-              showAvatar={showAvatar}
-            />
-          </div>
-        )}
-        
-        <RoomAudioRenderer />
+      <div className="livekit-session-wrapper">
+        <LiveKitSessionUI
+          token={token}
+          pageType={pageType}
+          sessionTitle={sessionTitle}
+          questionText={questionText}
+          userName={userName}
+          audioEnabled={audioEnabled}
+          videoEnabled={videoEnabled}
+          toggleAudio={toggleAudio}
+          toggleCamera={toggleCamera}
+          handleLeave={handleLeave}
+          hideAudio={hideAudio}
+          hideVideo={hideVideo}
+          showTimer={showTimer}
+          customControls={customControls}
+          onHandRaise={handleHandRaise}
+          onPushToTalk={handlePushToTalk}
+        >
+          {aiAssistantEnabled && (audioInitialized || hideAudio) && (
+            <div className="hidden">
+              <AgentController 
+                roomName={roomName} 
+                pageType={pageType} 
+                showAvatar={showAvatar}
+              />
+            </div>
+          )}
+          
+          <RoomAudioRenderer />
 
-        {/* Elements for Agent to Target */}
-        <div style={{ border: '1px solid blue', padding: '10px', marginTop: '10px' }}>
-          <h4>Agent Controllable UI</h4>
-          <p id="agentUpdatableText">{agentUpdatableTextState}</p>
-          <div id="agentToggleVisibilityElement" style={{ background: 'lightgreen', padding: '5px', display: isAgentElementVisible ? 'block' : 'none' }}>
-            Agent can toggle my visibility.
-          </div>
-          <button id="agentTargetButton">Agent might click me later</button>
-        </div>
+          {/* Test UI elements - remove in production */}
+          {process.env.NODE_ENV === 'development' && (
+            <>
+              {/* Elements for Agent to Target */}
+              <div style={{ border: '1px solid blue', padding: '10px', marginTop: '10px' }}>
+                <h4>Agent Controllable UI</h4>
+                <p id="agentUpdatableText">{agentUpdatableText}</p>
+                <div id="agentToggleVisibilityElement" style={{ background: 'lightgreen', padding: '5px', display: agentElementVisible ? 'block' : 'none' }}>
+                  Agent can toggle my visibility.
+                </div>
+                <button id="agentTargetButton">Agent might click me later</button>
+              </div>
 
-        <div style={{ padding: '10px', background: '#f0f0f0', marginTop: '10px', textAlign: 'center', border: '1px solid #ccc' }}>
-          <h4>Agent RPC Test</h4>
-          <button onClick={handleRpcButtonClick} className="figma-button" disabled={!agentServiceClientRef.current || roomInstance.state !== 'connected'}>
-            Trigger Agent RPC
-          </button>
-          <p style={{ marginTop: '5px', fontSize: 'small', color: '#333' }}>
-            Agent RPC Response: <span style={{ fontWeight: 'bold' }}>{rpcResponse || '(No response yet)'}</span>
-          </p>
-        </div>
-
-      </LiveKitSessionUI>
+              <div style={{ padding: '10px', background: '#f0f0f0', marginTop: '10px', textAlign: 'center', border: '1px solid #ccc' }}>
+                <h4>Agent RPC Test</h4>
+                <button onClick={handleRpcButtonClick} className="figma-button" disabled={!agentServiceClientRef.current || roomInstance.state !== 'connected'}>
+                  Trigger Agent RPC
+                </button>
+                <p style={{ marginTop: '5px', fontSize: 'small', color: '#333' }}>
+                  Agent RPC Response: <span style={{ fontWeight: 'bold' }}>{rpcResponse || '(No response yet)'}</span>
+                </p>
+              </div>
+            </>
+          )}
+        </LiveKitSessionUI>
+      </div>
     </RoomContext.Provider>
   );
 }

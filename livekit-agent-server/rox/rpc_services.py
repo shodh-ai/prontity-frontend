@@ -294,109 +294,56 @@ class AgentInteractionService: # Simple class without inheritance
                     logger.info(f"Backend API response status: {response.status}")
                     if response.status == 200 and 'text/event-stream' in response.headers.get('Content-Type', ''):
                         logger.info("Backend response is a stream. Parsing SSE...")
-                        current_event_name = None # Initialize before the loop
+                        current_event_name = None
                         current_event_data_lines = []
 
                         async for line_bytes in response.content:
                             line = line_bytes.decode('utf-8').strip()
 
-                            if not line:  # Empty line signifies end of an event
+                            if line.startswith('event:'):
+                                current_event_name = line[len('event:'):].strip()
+                            elif line.startswith('data:'):
+                                current_event_data_lines.append(line[len('data:'):].strip())
+                            elif not line:
                                 if current_event_name and current_event_data_lines:
                                     data_str = "\n".join(current_event_data_lines)
+                                    logger.debug(f"SSE: Received event '{current_event_name}' with data: {data_str[:200]}...")
+                                    
                                     try:
-                                        if current_event_name == "stream_end":
-                                            try:
-                                                data_json = json.loads(data_str)
-                                                logger.info(f"SSE Event: {current_event_name}, Data: {data_json}")
-                                            except json.JSONDecodeError:
-                                                logger.info(f"SSE Event: {current_event_name}, Data (non-JSON): {data_str}")
-                                                data_json = {"message": data_str}
-                                        else: # For other events, expect JSON
-                                            data_json = json.loads(data_str)
-                                            logger.debug(f"SSE Event: {current_event_name}, Raw Data String: '{data_str}', Parsed JSON: {data_json}")
+                                        data_json = json.loads(data_str)
 
                                         if current_event_name == "streaming_text_chunk":
-                                            text_to_speak = data_json.get('streaming_text_chunk', '')
-                                            if text_to_speak:
-                                                logger.info(f"SSE: Received streaming_text_chunk for TTS: {text_to_speak[:100]}...")
-                                                if self.agent_instance and hasattr(self.agent_instance, 'speak_text'):
-                                                    await self.agent_instance.speak_text(text_to_speak, job_ctx_override=job_ctx)
-                                                else:
-                                                    logger.error("SSE: agent_instance or speak_text method not available.")
-                                            
-                                            backend_ui_actions = data_json.get("final_ui_actions", [])
-                                            if backend_ui_actions:
-                                                logger.info(f"SSE: Processing UI actions from '{current_event_name}' event: {backend_ui_actions}")
-                                                target_identity = self.agent_instance._latest_participant_identity_for_ui_actions or invocation_data.caller_identity
-                                                if not target_identity:
-                                                    logger.warning(f"SSE: No target identity found for UI actions from {current_event_name}.")
-                                                else:
-                                                    for action in backend_ui_actions:
-                                                        if isinstance(action, dict):
-                                                            await self.agent_instance.send_ui_action_to_frontend(
-                                                                action_data=action,
-                                                                target_identity=target_identity,
-                                                                job_ctx_override=job_ctx
-                                                            )
-                                                        else:
-                                                            logger.warning(f"SSE: Invalid UI action format in {current_event_name}: {action}")
-                                        
+                                            text_to_speak = data_json.get('streaming_text_chunk')
+                                            if text_to_speak and self.agent_instance and hasattr(self.agent_instance, 'speak_text'):
+                                                logger.info(f"SSE: Speaking text from 'streaming_text_chunk': {text_to_speak[:100]}...")
+                                                await self.agent_instance.speak_text(text_to_speak)
+                                            else:
+                                                logger.warning("SSE: 'streaming_text_chunk' received but no text found or agent can't speak.")
+
                                         elif current_event_name == "final_ui_actions":
-                                            backend_ui_actions = data_json if isinstance(data_json, list) else data_json.get("actions", [])
-                                            if backend_ui_actions:
-                                                logger.info(f"SSE: Received separate '{current_event_name}' event: {backend_ui_actions}")
-                                                target_identity = self.agent_instance._latest_participant_identity_for_ui_actions or invocation_data.caller_identity
-                                                if not target_identity:
-                                                    logger.warning(f"SSE: No target identity found for UI actions from {current_event_name} event.")
-                                                else:
-                                                    for action in backend_ui_actions:
-                                                        if isinstance(action, dict):
-                                                            await self.agent_instance.send_ui_action_to_frontend(
-                                                                action_data=action,
-                                                                target_identity=target_identity,
-                                                                job_ctx_override=job_ctx
-                                                            )
-                                                        else:
-                                                            logger.warning(f"SSE: Invalid UI action format in {current_event_name}: {action}")
-                                        
+                                            ui_actions = data_json.get('ui_actions', [])
+                                            if ui_actions:
+                                                logger.info(f"SSE: Received 'final_ui_actions' with {len(ui_actions)} actions.")
+                                                logger.debug(f"UI Actions to be processed: {ui_actions}")
+                                            else:
+                                                logger.warning("SSE: Received 'final_ui_actions' but the 'ui_actions' key was empty or missing.")
+
                                         elif current_event_name == "stream_end":
                                             logger.info(f"SSE: Received stream_end event. Message: {data_json.get('message', 'Stream ended')}")
                                         
                                         else:
-                                            logger.warning(f"SSE: Received unhandled event type '{current_event_name}' with data: {data_json if isinstance(data_json, dict) else data_str}")
+                                            logger.warning(f"SSE: Received unhandled event type: {current_event_name}")
 
-                                    except json.JSONDecodeError as e:
-                                        logger.error(f"SSE: Failed to parse JSON for event '{current_event_name}': '{data_str}'. Error: {e}")
+                                    except json.JSONDecodeError:
+                                        logger.error(f"SSE: JSONDecodeError for event '{current_event_name}' with data: {data_str}")
                                     except Exception as e:
                                         logger.error(f"SSE: Error processing event '{current_event_name}': {e}", exc_info=True)
-                                    finally:
-                                        current_event_name = None
-                                        current_event_data_lines = []
-                            
-                            elif line.startswith('event:'):
-                                current_event_name = line[len('event:'):].strip()
-                            elif line.startswith('data:'):
-                                current_event_data_lines.append(line[len('data:'):].strip())
 
-                        if current_event_name and current_event_data_lines:
-                            data_str = "\n".join(current_event_data_lines)
-                            logger.warning(f"SSE: Stream ended with unterminated event '{current_event_name}' and data: {data_str}. Attempting to process.")
-                            try:
-                                if current_event_name == "stream_end":
-                                    logger.info(f"SSE (trailing): '{current_event_name}' with data: {data_str}")
-                                else:
-                                    data_json = json.loads(data_str)
-                                    if current_event_name == "streaming_text_chunk":
-                                        text_to_speak = data_json.get('streaming_text_chunk', '')
-                                        if text_to_speak and self.agent_instance and hasattr(self.agent_instance, 'speak_text'):
-                                            logger.info(f"SSE (trailing): Speaking text from partial '{current_event_name}': {text_to_speak[:100]}...")
-                                            await self.agent_instance.speak_text(text_to_speak, job_ctx_override=job_ctx)
-                            except json.JSONDecodeError as e:
-                                logger.error(f"SSE (trailing): Failed to parse JSON for partial event '{current_event_name}': '{data_str}'. Error: {e}")
-                            except Exception as e:
-                                logger.error(f"SSE (trailing): Error processing partial event '{current_event_name}': {e}", exc_info=True)
-                            logger.info("Finished consuming backend SSE stream.")
-                    else: # This else now aligns with the 'if response.status == 200 and 'text/event-stream'...' check
+                                    current_event_name = None
+                                    current_event_data_lines = []
+                        
+                        logger.info("Finished consuming backend SSE stream.")
+                    else:
                         response_text = await response.text()
                         logger.error(f"Backend API returned non-streaming or error response: Status={response.status}, Body={response_text}")
 

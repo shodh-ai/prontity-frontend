@@ -5,6 +5,7 @@ import uuid
 import time
 import asyncio
 from livekit.rtc.rpc import RpcInvocationData # For RPC invocation data
+from livekit.agents import JobContext # Added for RPC context
 import json
 from generated.protos import interaction_pb2
 
@@ -196,7 +197,8 @@ class AgentInteractionService: # Simple class without inheritance
                     # The actual call that is causing the error - NOW FIXED
                     await self.agent_instance.send_ui_action_to_frontend(
                         action_data=action_data_for_agent, 
-                        target_identity=target_client_identity
+                        target_identity=target_client_identity,
+                        job_ctx_override=self.agent_instance._job_ctx # Use JobContext from RpcInvocationData
                     )
                     logger.info(f"RPC: Successfully called send_ui_action_to_frontend for {target_client_identity}")
                 except Exception as e:
@@ -215,7 +217,7 @@ class AgentInteractionService: # Simple class without inheritance
                 
                 # Create a task to send the request asynchronously
                 loop = asyncio.get_event_loop()
-                task = loop.create_task(self._send_test_request_to_backend())
+                task = loop.create_task(self._send_test_request_to_backend(job_ctx=self.agent_instance._job_ctx)) # Pass JobContext
                 
                 # Log that we're sending a test request
                 logger.info("RPC: Created async task to send test request to backend API")
@@ -240,7 +242,7 @@ class AgentInteractionService: # Simple class without inheritance
         
         return base64_response
         
-    async def _send_test_request_to_backend(self):
+    async def _send_test_request_to_backend(self, job_ctx: JobContext):
         """Send a request to the backend API and handle the streaming response."""
         import aiohttp
         import os
@@ -307,20 +309,42 @@ class AgentInteractionService: # Simple class without inheritance
                                             logger.info(f"SSE: Received text_chunk: {text_to_send[:100]}...")
                                             # TODO: Send text_to_send to frontend via UI Action
                                             # Example: 
-                                            # ui_action_payload = interaction_pb2.AgentToClientUIActionRequest(
-                                            #     request_id=str(uuid.uuid4()),
-                                            #     action_type=interaction_pb2.ClientUIActionType.APPEND_TEXT_TO_ELEMENT, # Define this type
-                                            #     parameters={"element_id": "chat_display", "text_to_append": text_to_send}
-                                            # )
-                                            # await self.agent_instance.send_ui_action_to_frontend(ui_action_payload)
+                                            ui_action_payload = interaction_pb2.AgentToClientUIActionRequest(
+                                                request_id=str(uuid.uuid4()),
+                                                action_type=interaction_pb2.ClientUIActionType.APPEND_TEXT_TO_ELEMENT, # Define this type
+                                                parameters={"element_id": "chat_display", "text_to_append": text_to_send}
+                                            )
+                                            await self.agent_instance.send_ui_action_to_frontend(ui_action_payload, job_ctx_override=job_ctx)
 
                                         elif event_name == "final_response":
                                             logger.info(f"SSE: Received final_response: {json.dumps(data_json, indent=2)}")
                                             # TODO: Process final_response (ui_actions, final text, etc.) and send to frontend
-                                            # backend_ui_actions = data_json.get("ui_actions", [])
-                                            # for action_dict in backend_ui_actions:
-                                            #     # Convert action_dict to protobuf AgentToClientUIActionRequest & send
-                                            #     pass
+                                            backend_ui_actions = data_json.get("final_ui_actions", []) # Key is "final_ui_actions"
+                                            if backend_ui_actions: # Only proceed if there are actions
+                                                target_participant_identity = self.agent_instance._latest_participant_identity_for_ui_actions
+                                                if not target_participant_identity:
+                                                    logger.warning("SSE: _latest_participant_identity_for_ui_actions not set in agent_instance. Cannot send final_ui_actions.")
+                                                else:
+                                                    for action_dict in backend_ui_actions:
+                                                        if not isinstance(action_dict, dict):
+                                                            logger.error(f"SSE: final_ui_actions item is not a dict: {action_dict}")
+                                                            continue
+                                                        logger.info(f"SSE: Processing final_ui_action: {action_dict} for target: {target_participant_identity}")
+                                                        await self.agent_instance.send_ui_action_to_frontend(
+                                                            action_data=action_dict,
+                                                            target_identity=target_participant_identity,
+                                                            job_ctx_override=job_ctx
+                                                        )
+                                            
+                                            final_text_for_tts = data_json.get("final_text_for_tts")
+                                            if final_text_for_tts and self.agent_instance:
+                                                logger.info(f"SSE: final_response contains final_text_for_tts: '{final_text_for_tts[:100]}...'. Calling speak_text.")
+                                                await self.agent_instance.speak_text(final_text_for_tts)
+                                            elif not self.agent_instance:
+                                                logger.error("SSE: final_response - Agent instance not available, cannot speak TTS.")
+                                            else:
+                                                logger.info("SSE: final_response - No final_text_for_tts found in the response.")
+
                                             # final_text = data_json.get("response")
                                             # if final_text:
                                             #     # Send final_text as a UI action

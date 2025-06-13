@@ -14,6 +14,7 @@ import time   # For timestamps
 import json   # For handling JSON data
 from livekit import rtc # For B2F RPC type hints
 from generated.protos import interaction_pb2 # For B2F and F2B RPC messages
+from livekit.agents.ipc import proto as proto_agent  # For Agent-to-Client messages (e.g., RpcRequest, AgentToClientMessage)
 
 import os
 import sys
@@ -115,8 +116,10 @@ GLOBAL_AVATAR_ENABLED = tavus_module is not None and TAVUS_ENABLED
 
 class RoxAgent(Agent):
     """Rox AI assistant with UI interaction capabilities."""
-    def __init__(self, page_path="roxpage") -> None:
+    def __init__(self, job_ctx: JobContext, page_path="roxpage") -> None:
         super().__init__(instructions="You are Rox, an AI assistant for students using the learning platform. You help students understand their learning status and guide them through their learning journey.")
+        self._job_ctx: JobContext = job_ctx
+        self.agent_session: Optional[agents.AgentSession] = None # Will be set in entrypoint
         self.page_path = page_path
         self.latest_transcript_time = 0
 
@@ -132,57 +135,92 @@ class RoxAgent(Agent):
         logger.info(f"RoxAgent.__init__ called for page_path: {page_path}. Attributes: {dir(self)}")
 
 
-    async def send_ui_action_to_frontend(self, action_data: dict, target_identity: Optional[str] = None):
+    async def send_ui_action_to_frontend(self, action_data: dict, target_identity: Optional[str] = None, job_ctx_override: Optional[JobContext] = None):
+        """Send a UI action to the frontend via room data channel.
+        
+        Args:
+            action_data: Dictionary containing UI action data
+            target_identity: Target client identity (optional, falls back to room participants)
+            job_ctx_override: Optional JobContext for RPC communication
         """
-        Sends a structured UI action to the frontend using room.rpc.send_request.
-        """
-        if not self._room:
-            logger.error("RoxAgent.send_ui_action_to_frontend: Room not available.")
-            return
-
         try:
-            action_type_str = action_data.get("action_type_str")
-            if not action_type_str:
-                logger.warning("send_ui_action_to_frontend: 'action_type_str' missing.")
+            # Check if room is available
+            if not self._room:
+                logger.error("Cannot send UI action: Room not available")
                 return
-
-            try:
-                action_type_enum = interaction_pb2.ClientUIActionType.Value(action_type_str)
-            except ValueError:
-                logger.error(f"Invalid action_type_str '{action_type_str}'.")
+                
+            # Use the provided job context or fall back to the instance's stored context
+            current_ctx = job_ctx_override or self._job_ctx
+            if not current_ctx:
+                logger.error("No JobContext available for RPC in send_ui_action_to_frontend")
                 return
-
-            # Determine the target identity for the RPC call
+            
+            # Find target identity if not provided
             final_target_identity = target_identity
+            if not final_target_identity and self._room and self._room.participants:
+                # Use first remote participant as fallback target
+                for p_identity in self._room.participants.keys():
+                    if p_identity != self._room.local_participant.identity:
+                        final_target_identity = p_identity
+                        break
+            
             if not final_target_identity:
-                final_target_identity = self._fallback_target_client_identity
-
-            if not final_target_identity:
-                logger.error("No target identity available to send UI action.")
+                logger.error("Cannot send UI action: No target identity provided and no remote participants found")
                 return
-
-            # Create the protobuf message for the request
-            action_request = interaction_pb2.AgentToClientUIActionRequest(
-                request_id=action_data.get("request_id", str(uuid.uuid4())),
-                action_type=action_type_enum
-            )
-
-            # The 'parameters' field in protobuf is a map of string to string.
-            # We need to iterate through the input dict and convert all values to strings.
-            params_dict = action_data.get("parameters", {})
-            for key, value in params_dict.items():
-                action_request.parameters[key] = str(value)
             
-            logger.info(f"Sending UI action '{action_type_str}' to identity '{final_target_identity}'.")
+            # Accept either "type" or "action_type_str" to determine the action type
+            action_type = action_data.get("type") or action_data.get("action_type_str")
+            parameters = action_data.get("parameters", {})
             
-            await self.ctx.rpc.send_request(
-                identities=[final_target_identity],
-                payload=action_request.SerializeToString(),
-                topic="ui_action_requests"
-            )
-
+            if action_type == "SHOW_ALERT" or action_type == "alert":
+                logger.info(f"Preparing to send UI action 'SHOW_ALERT' to identity '{final_target_identity}' via room data channel.")
+                
+                # Extract alert parameters from either direct keys or from the parameters dict
+                alert_title = action_data.get("title", "")
+                alert_message = action_data.get("message", "")
+                alert_buttons = action_data.get("buttons", [])
+                
+                # If not found in top-level, check in parameters
+                if not alert_title and "title" in parameters:
+                    alert_title = parameters.get("title", "")
+                if not alert_message and "message" in parameters:
+                    alert_message = parameters.get("message", "")
+                if not alert_buttons and "buttons" in parameters:
+                    alert_buttons = parameters.get("buttons", [])
+                
+                # Create a simple JSON structure to send via data channel
+                json_payload = {
+                    "type": "agent_ui_action",
+                    "request_id": action_data.get("request_id", str(uuid.uuid4())),
+                    "method_name": "HandleAgentUIAction",
+                    "action_type": "SHOW_ALERT",
+                    "alert_title": alert_title,
+                    "alert_message": alert_message,
+                    "alert_buttons": alert_buttons,
+                    "source_identity": self._room.local_participant.identity
+                }
+                
+                # Serialize to JSON string then to bytes
+                json_str = json.dumps(json_payload)
+                serialized_payload = json_str.encode('utf-8')
+                
+                # Use the same topic naming convention
+                dispatch_topic = f"agent_dispatch:{self._room.local_participant.identity}"
+                
+                # Send the data
+                await self._room.local_participant.publish_data(
+                    payload=serialized_payload,
+                    topic=dispatch_topic, 
+                    destination_identities=[final_target_identity]
+                )
+                
+                logger.info(f"Successfully sent UI action to {final_target_identity} via room data channel. Topic: {dispatch_topic}")
+            else:
+                logger.error(f"Unsupported UI action type: {action_type}")
         except Exception as e:
-            logger.error(f"RoxAgent.send_ui_action_to_frontend: Error processing UI action: {e}", exc_info=True)
+            logger.error(f"RoxAgent.send_ui_action_to_frontend: Error processing UI action: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     async def dispatch_frontend_rpc(self, rpc_call_data: dict):
         """Sends generic RPC-like call via data channel (from File 1)."""
@@ -207,6 +245,22 @@ class RoxAgent(Agent):
         if audio_url: logger.debug(f"Audio URL: {audio_url}")
         else: logger.warning("No audio URL for reply.")
             
+    async def speak_text(self, text: str):
+        if not self.agent_session:
+            logger.error("RoxAgent.speak_text: AgentSession not available.")
+            return
+        if not text:
+            logger.warning("RoxAgent.speak_text: No text provided to speak.")
+            return
+        
+        try:
+            logger.info(f"RoxAgent.speak_text: Attempting to say via AgentSession: '{text[:100]}...' if len(text) > 100 else text)")
+            # add_to_chat_ctx=False prevents this spoken text from being re-added to the LLM context from this path
+            await self.agent_session.say(text, add_to_chat_ctx=False)
+            logger.info(f"RoxAgent.speak_text: Successfully called agent_session.say.")
+        except Exception as e:
+            logger.error(f"Error in RoxAgent.speak_text calling agent_session.say: {e}", exc_info=True)
+
     async def on_llm_response_done(self, chunks: list[ChatChunk]):
         """Called when LLM response is done, processes tool calls for UI actions (from File 1)."""
         logger.info(f"RoxAgent on_llm_response_done: Received {len(chunks)} chunks.")
@@ -483,7 +537,7 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"Runtime Config -- Page: {GLOBAL_PAGE_PATH}, TTS: {GLOBAL_MODEL}, Temp: {GLOBAL_TEMPERATURE}, Avatar: {GLOBAL_AVATAR_ENABLED}")
     
-    rox_agent_instance = RoxAgent(page_path=ctx.room.name)
+    rox_agent_instance = RoxAgent(job_ctx=ctx, page_path=ctx.room.name)
     rox_agent_instance._room = ctx.room # Explicitly set agent's room reference
 
     avatar_session = None
@@ -513,6 +567,9 @@ async def entrypoint(ctx: JobContext):
             turn_detection=MultilingualModel(),
         )
         logger.info("Main agent session created successfully.")
+
+        # Set the agent_session on the rox_agent_instance for TTS and other session-dependent actions
+        rox_agent_instance.agent_session = main_agent_session
 
         if avatar_session:
             logger.info("Starting Tavus avatar session...")

@@ -42,19 +42,20 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-konva": "^18.2.10",
+    "roughjs": "^4.6.6",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "2.5.4",
     "use-image": "^1.1.4",
     "uuid": "^11.1.0",
-    "zustand": "^5.0.3",
-    "react-router-dom": "^6.8.1"
-    
-    
+    "react-router-dom": "^6.8.1",
+    "vara": "^1.4.1",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.17.31",
     "@types/react": "^18.2.0",
     "@types/react-dom": "18.2.0",
+    "@types/vara": "^1.1.4",
     "autoprefixer": "^10.4.17",
     "eslint": "^9.25.1",
     "postcss": "^8.4.33",

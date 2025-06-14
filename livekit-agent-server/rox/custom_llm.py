@@ -19,8 +19,8 @@ import uuid
 logger = logging.getLogger(__name__)
 
 # Get the URL of your custom backend agent from environment variables
-MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL", "http://localhost:5005/process_interaction") # Default non-streaming URL
-MY_FASTAPI_URL_STREAMING = os.getenv("MY_CUSTOM_AGENT_URL_STREAMING", "http://localhost:5005/process_interaction_streaming") # New Streaming URL
+MY_CUSTOM_AGENT_URL = os.getenv("MY_CUSTOM_AGENT_URL", "http://localhost:8080/process_interaction") # Default non-streaming URL
+MY_FASTAPI_URL_STREAMING = os.getenv("MY_CUSTOM_AGENT_URL_STREAMING", "http://localhost:8080/process_interaction_streaming") # New Streaming URL
 
 class CustomLLMBridge(LLM):
     """

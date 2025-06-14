@@ -65,3 +65,12 @@ main/
 *.njsproj
 *.sln
 *.swp
+
+backend_ai_service_langgraph/
+pronity-backend/
+
+# Test outputs
+*_test_output.json
+
+# Pedagogy Chroma data
+data/pedagogy_chroma/

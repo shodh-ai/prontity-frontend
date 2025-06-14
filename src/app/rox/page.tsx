@@ -236,14 +236,14 @@ export default function RoxPage() {
     const fetchToken = async () => {
       try {
         // Use pronity-backend's startAiSessionController instead of direct token service
-        const pronityBackendUrl = "http://localhost:8000/api/start-ai-session"; // Same endpoint used in new-session page
+        const pronityBackendUrl = "http://localhost:8000/api/generate-token"; // Same endpoint used in new-session page
         console.log(
           "[rox/page.tsx] Attempting to POST to pronity-backend URL:",
           pronityBackendUrl
         );
 
         // IMPORTANT: Replace 'YOUR_PRONITY_SESSION_TOKEN' with the actual session token
-        const pronitySessionToken = localStorage.getItem("token"); // TODO: Get this from auth state/context/storage
+        const pronitySessionToken = localStorage.getItem("authToken"); // TODO: Get this from auth state/context/storage
         const userJsonString = localStorage.getItem("user"); // TODO: Get this from auth state/context/storage
         let User: UserProfile | null = null;
 
@@ -276,21 +276,11 @@ export default function RoxPage() {
         }
 
         const fetchOptions: RequestInit = {
-          method: "POST",
+          method: "GET",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${pronitySessionToken}`,
           },
-          body: JSON.stringify({
-            // Include session type and basic info
-            // Server should already know most details from the JWT token
-            session_type: "rox",
-            // Include any additional info the server might need
-            metadata: {
-              user_id: User_id,
-              participant_identity: userName
-            }
-          }),
         };
         const resp = await fetch(pronityBackendUrl, fetchOptions);
         if (!resp.ok) throw new Error(`Pronity backend error: ${resp.status}`);

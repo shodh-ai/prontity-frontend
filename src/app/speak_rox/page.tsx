@@ -4,10 +4,21 @@ import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { MessageButton } from "../../components/ui/message-button";
+import { MicButton } from "../../components/ui/mic";
 
 export default function Page(): JSX.Element {
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  // Placeholder for actual recording logic, kept from previous successful state
+  const [isSpeaking, setIsSpeaking] = useState(false); 
+
+  const handleMicClick = () => {
+    setIsRecording(prev => !prev);
+    // Add actual recording start/stop logic here
+    console.log(isRecording ? "Stopping recording" : "Starting recording");
+  };
   // Data for control buttons
   const controlButtons = [
     {
@@ -128,44 +139,30 @@ export default function Page(): JSX.Element {
               <div className="flex items-center justify-between w-full">
                 {/* Left Group: First three buttons are mapped here. */}
                 <div className="flex items-center gap-5">
-                  {controlButtons.slice(0, 3).map((button, index) => (
+                  {controlButtons.slice(0, 2).map((button, index) => (
                     <Button
                       key={index}
                       variant="outline"
                       size="icon"
                       className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
                     >
-                      {button.type === "background" ? (
-                        <div
-                          className="w-6 h-6 bg-cover"
-                          style={{ backgroundImage: `url(${button.icon})` }}
-                        />
-                      ) : (
-                        <img
-                          className="w-6 h-6"
-                          alt={button.alt}
-                          src={button.icon}
-                        />
-                      )}
+                      <img
+                        className="w-6 h-6"
+                        alt={button.alt}
+                        src={button.icon}
+                      />
                     </Button>
                   ))}
+                  <MicButton 
+                    isVisible={true} 
+                    isActive={isRecording} 
+                    onClick={handleMicClick} 
+                    className="w-14 h-14 p-4 rounded-[36px] border-none transition-colors" 
+                  />
                 </div>
 
                 {/* Right Group: The fourth button is placed here individually. */}
-                {/* START: MODIFICATION */}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors mr-20"
-                  onClick={() => setIsPopupVisible(true)}
-                >
-                {/* END: MODIFICATION */}
-                  <img
-                    className="w-6 h-6"
-                    alt={controlButtons[3].alt}
-                    src={controlButtons[3].icon}
-                  />
-                </Button>
+                <MessageButton isVisible={true} className="mr-20" />
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">

@@ -41,7 +41,7 @@ export const MessageButton = ({ isVisible, className }: MessageButtonProps): JSX
       {showBar && (
         <div 
           // The bar is positioned relative to the root container, whose size is maintained by the now-invisible button.
-          className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-20 flex items-center gap-2 w-auto p-2 rounded-full bg-white/90 backdrop-blur-md shadow-lg border border-gray-200/80 min-w-[300px] sm:min-w-[350px] md:min-w-[400px] h-12"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 flex items-center gap-2 w-auto p-2 rounded-full bg-white/90 backdrop-blur-md shadow-lg border border-gray-200/80 min-w-[300px] sm:min-w-[350px] md:min-w-[400px] h-12"
         >
           <span
             className="flex-grow bg-transparent px-2 text-black text-sm whitespace-nowrap overflow-hidden text-ellipsis"

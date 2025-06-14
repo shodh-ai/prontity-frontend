@@ -4,30 +4,21 @@ import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { MessageButton } from "../../components/ui/message-button";
-import { MicButton } from "../../components/ui/mic";
+import { MessageButton } from "@/components/ui/message-button";
+import { MicButton } from "@/components/ui/mic";
 
 export default function Page(): JSX.Element {
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  // Placeholder for actual recording logic, kept from previous successful state
-  const [isSpeaking, setIsSpeaking] = useState(false); 
-
-  const handleMicClick = () => {
-    setIsRecording(prev => !prev);
-    // Add actual recording start/stop logic here
-    console.log(isRecording ? "Stopping recording" : "Starting recording");
-  };
   // Data for control buttons
   const controlButtons = [
     {
-      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame.svg",
-      alt: "Settings",
-    },
-    {
       icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame-2.svg",
       alt: "Camera",
+    },
+    {
+      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame.svg",
+      alt: "Settings",
     },
     {
       icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/mic-on.svg",
@@ -56,7 +47,6 @@ export default function Page(): JSX.Element {
 
       {/* Main Content Area */}
       <main className="relative z-10 h-full flex flex-col pl-8 pr-12 py-6">
-        
         <Button
           variant="ghost"
           size="icon"
@@ -64,27 +54,23 @@ export default function Page(): JSX.Element {
         >
           <XIcon className="h-6 w-6" />
         </Button>
-        
+
         <div className="flex items-center justify-between pt-6 pl-9">
           {/* Left Column: Title. Balances the right column. */}
           <div className="flex-1">
             <h2 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base whitespace-nowrap">
-              Speaking Practice Session
+              Speaking practice session
             </h2>
           </div>
 
           {/* Center Column: Contains the progress bar. */}
           <div className="w-full max-w-xl px-4">
-            <Progress
-              value={28}
-              className="h-2.5 [&>div]:bg-[#566FE9]"
-            />
+            <Progress value={28} className="h-2.5 [&>div]:bg-[#566FE9]" />
           </div>
 
           {/* Right Column: This is now an empty spacer to balance the left column. */}
           <div className="flex-1" />
         </div>
-
 
         {/* Passage Card */}
         <div className="flex-grow flex items-center justify-center py-8 gap-4">
@@ -118,8 +104,9 @@ export default function Page(): JSX.Element {
         </div>
 
         {/* Footer section with conditional UI */}
-        <div className="flex flex-col items-center gap-4 pb-6">
-          <div className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
+        <div className="flex flex-col items-center gap-4 pb-5">
+          {/* MOVED THIS BUBBLE DOWN to reduce the gap with the avatar below */}
+          <div className="relative top-5 z-30 inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
             <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
               Hello. I am Rox, your AI Assistant!
             </p>
@@ -128,7 +115,7 @@ export default function Page(): JSX.Element {
             <div className="relative w-full h-full">
               <div className="absolute w-[70%] h-[70%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#566fe9] rounded-full blur-[50px]" />
               <img
-                className="absolute w-full h-full top-0 left-0 object-contain"
+                className="absolute w-full h-full top-7 left-2 object-contain"
                 alt="Rox AI Assistant"
                 src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
               />
@@ -137,32 +124,49 @@ export default function Page(): JSX.Element {
           <div className="w-full max-w-lg">
             {!isPopupVisible ? (
               <div className="flex items-center justify-between w-full">
-                {/* Left Group: First three buttons are mapped here. */}
-                <div className="flex items-center gap-5">
-                  {controlButtons.slice(0, 2).map((button, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      size="icon"
-                      className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
-                    >
-                      <img
-                        className="w-6 h-6"
-                        alt={button.alt}
-                        src={button.icon}
-                      />
-                    </Button>
-                  ))}
-                  <MicButton 
-                    isVisible={true} 
-                    isActive={isRecording} 
-                    onClick={handleMicClick} 
-                    className="w-14 h-14 p-4 rounded-[36px] border-none transition-colors" 
-                  />
+                {/* Left Group: This group is pushed to the extreme left by 'justify-between' */}
+                <div className="flex items-center gap-4 -ml-20">
+                  {controlButtons.slice(0, 3).map((button) => {
+                    if (button.alt === "Mic") {
+                      return (
+                        <MicButton
+                          key="mic-button"
+                          isVisible={true}
+                          isActive={true}
+                        />
+                      );
+                    }
+                    return (
+                      <Button
+                        key={button.alt}
+                        variant="outline"
+                        size="icon"
+                        className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
+                      >
+                        {/* Original Mic button used 'type: background', other buttons might not have this type property */}
+                        {button.type === "background" && button.icon ? (
+                          <div
+                            className="w-6 h-6 bg-cover"
+                            style={{ backgroundImage: `url(${button.icon})` }}
+                          />
+                        ) : (
+                          <img
+                            className="w-6 h-6"
+                            alt={button.alt}
+                            src={button.icon}
+                          />
+                        )}
+                      </Button>
+                    );
+                  })}
                 </div>
 
-                {/* Right Group: The fourth button is placed here individually. */}
-                <MessageButton isVisible={true} className="mr-20" />
+                {/* Right Group: MessageButton component */}
+                <MessageButton
+                  isVisible={true}
+                  className="mr-10"
+                  onClick={() => setIsPopupVisible(true)}
+                />
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">

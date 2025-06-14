@@ -73,9 +73,8 @@ const TimerController: React.FC<TimerControllerProps> = ({ visible = true, room,
   return (
     <Timer
       initialSeconds={timerDuration}
-      onComplete={handleTimerComplete}
+      onTimerEnds={handleTimerComplete}
       timerLabel={timerLabel}
-      isActive={timerActive}
       mode={timerMode}
     />
   );

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { ReactNode } from 'react';
-import VideoControlsUI from './VideoControlsUI';
 import TimerController from './TimerController';
 import '../styles/livekit-session-ui.css';
 
@@ -98,19 +97,7 @@ export default function LiveKitSessionUI({
       )}
       
       {/* Main conference container - now only contains controls */}
-      <div className="conference-container">
-        {/* Video controls */}
-        <VideoControlsUI
-          audioEnabled={audioEnabled}
-          videoEnabled={videoEnabled}
-          toggleAudio={toggleAudio}
-          toggleCamera={toggleCamera}
-          handleLeave={handleLeave}
-          hideAudio={hideAudio}
-          hideVideo={hideVideo}
-          customControls={customControls}
-        />
-      </div>
+
       
       {/* Additional content passed as children */}
       {children}

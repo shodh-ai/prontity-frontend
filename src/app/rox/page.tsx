@@ -15,7 +15,6 @@ import SimpleTavusDisplay from "@/components/SimpleTavusDisplay";
 import { getTokenEndpointUrl, tokenServiceConfig } from "@/config/services";
 import AgentTextInput from "@/components/ui/AgentTextInput";
 // Import other UI components if needed, e.g., Button from '@/components/ui/button';
-import StudentStatusDisplay from "@/components/StudentStatusDisplay";
 import { Button } from "@/components/ui/button"; // Assuming you have a Button component
 import LiveKitSession, { LiveKitRpcAdapter } from "@/components/LiveKitSession"; // Import LiveKitRpcAdapter
 import {
@@ -1139,11 +1138,7 @@ export default function RoxPage() {
           </button>
         )}
 
-        <StudentStatusDisplay
-          isOpen={isStudentStatusDisplayOpen}
-          anchorElement={docsIconRef.current}
-          onClose={() => setIsStudentStatusDisplayOpen(false)}
-        />
+        
       </main>
     </div>
   );

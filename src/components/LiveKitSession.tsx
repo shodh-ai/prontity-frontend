@@ -10,10 +10,7 @@ import AgentController from '@/components/AgentController';
 import LiveKitSessionUI from '@/components/LiveKitSessionUI';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
-import '@/app/speakingpage/figma-styles.css';
 import '@/styles/figma-exact.css';
-import '@/styles/enhanced-room.css';
-import '@/styles/video-controls.css';
 import '@/styles/livekit-session-ui.css';
 
 import { PageType } from '@/components/LiveKitSessionUI';

@@ -45,19 +45,19 @@ export default function Page(): JSX.Element {
 
       {/* Main Content Area */}
       <main className="relative z-10 h-full flex flex-col pl-8 pr-12 py-6">
-        
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-1 right-2 h-6 w-6 p-0 z-20"
-        >
-          <XIcon className="h-6 w-6" />
-        </Button>
-        
-        <div className="flex items-center justify-between pt-6 pl-9">
-          {/* Left Column: Title. Balances the right column. */}
-          <div className="flex-1">
-            <h2 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base whitespace-nowrap">
+        <div className="page-header-container relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-1 right-2 h-6 w-6 p-0 z-20"
+          >
+            <XIcon className="h-6 w-6" />
+          </Button>
+
+          <div className="flex items-center justify-between pt-6 pl-9">
+            {/* Left Column: Title. Balances the right column. */}
+            <div className="flex-1">
+              <h2 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base whitespace-nowrap">
               Speaking Practice Session
             </h2>
           </div>
@@ -73,7 +73,7 @@ export default function Page(): JSX.Element {
           {/* Right Column: This is now an empty spacer to balance the left column. */}
           <div className="flex-1" />
         </div>
-
+        </div>
 
         {/* Passage Card */}
         <div className="flex-grow flex items-center justify-center py-8 gap-4">
@@ -107,10 +107,11 @@ export default function Page(): JSX.Element {
         </div>
 
         {/* Footer section with conditional UI */}
-        <div className="flex flex-col items-center gap-4 pb-6">
-          <div className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
-            <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
-              Hello. I am Rox, your AI Assistant!
+        <div className="page-footer-container">
+          <div className="flex flex-col items-center gap-4 pb-6">
+            <div className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
+              <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
+                Hello. I am Rox, your AI Assistant!
             </p>
           </div>
           <div className="w-[90px] h-[90px] z-20">
@@ -125,47 +126,29 @@ export default function Page(): JSX.Element {
           </div>
           <div className="w-full max-w-lg">
             {!isPopupVisible ? (
-              <div className="flex items-center justify-between w-full">
-                {/* Left Group: First three buttons are mapped here. */}
-                <div className="flex items-center gap-5">
-                  {controlButtons.slice(0, 3).map((button, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      size="icon"
-                      className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
-                    >
-                      {button.type === "background" ? (
-                        <div
-                          className="w-6 h-6 bg-cover"
-                          style={{ backgroundImage: `url(${button.icon})` }}
-                        />
-                      ) : (
-                        <img
-                          className="w-6 h-6"
-                          alt={button.alt}
-                          src={button.icon}
-                        />
-                      )}
-                    </Button>
-                  ))}
-                </div>
-
-                {/* Right Group: The fourth button is placed here individually. */}
-                {/* START: MODIFICATION */}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors mr-20"
-                  onClick={() => setIsPopupVisible(true)}
-                >
-                {/* END: MODIFICATION */}
-                  <img
-                    className="w-6 h-6"
-                    alt={controlButtons[3].alt}
-                    src={controlButtons[3].icon}
-                  />
-                </Button>
+              <div className="flex items-center justify-center gap-5 w-full">
+                {controlButtons.map((button, index) => (
+                  <Button
+                    key={index}
+                    variant="outline"
+                    size="icon"
+                    className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
+                    onClick={button.alt === "Message" ? () => setIsPopupVisible(true) : undefined}
+                  >
+                    {button.type === "background" ? (
+                      <div
+                        className="w-6 h-6 bg-cover"
+                        style={{ backgroundImage: `url(${button.icon})` }}
+                      />
+                    ) : (
+                      <img
+                        className="w-6 h-6"
+                        alt={button.alt}
+                        src={button.icon}
+                      />
+                    )}
+                  </Button>
+                ))}
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
@@ -188,6 +171,7 @@ export default function Page(): JSX.Element {
               </div>
             )}
           </div>
+        </div>
         </div>
       </main>
     </div>

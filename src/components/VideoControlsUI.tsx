@@ -2,6 +2,7 @@
 
 import React from 'react';
 import '../styles/video-controls.css';
+import InteractionControls from './ui/InteractionControls';
 
 interface VideoControlsUIProps {
   audioEnabled: boolean;
@@ -12,6 +13,8 @@ interface VideoControlsUIProps {
   hideAudio?: boolean;
   hideVideo?: boolean;
   customControls?: React.ReactNode;
+  onHandRaise?: () => Promise<void>;
+  onPushToTalk?: (isActive: boolean) => Promise<void>;
 }
 
 export default function VideoControlsUI({
@@ -22,7 +25,9 @@ export default function VideoControlsUI({
   handleLeave,
   hideAudio = false,
   hideVideo = false,
-  customControls
+  customControls,
+  onHandRaise,
+  onPushToTalk
 }: VideoControlsUIProps) {
   return (
     <div className="custom-controls">
@@ -70,6 +75,14 @@ export default function VideoControlsUI({
         </button>
       )}
 
+      {/* Hand raise and push-to-talk controls */}
+      {onHandRaise && onPushToTalk && (
+        <InteractionControls 
+          onHandRaise={onHandRaise}
+          onPushToTalk={onPushToTalk}
+        />
+      )}
+      
       {/* Custom controls can be injected here */}
       {customControls}
 

@@ -9,6 +9,9 @@ from livekit.agents import JobContext # Added for RPC context
 import json
 from generated.protos import interaction_pb2
 
+# Import our doubt service
+from .doubt_service import get_doubt_service
+
 logger = logging.getLogger(__name__)
 
 class AgentInteractionService: # Simple class without inheritance
@@ -60,7 +63,53 @@ class AgentInteractionService: # Simple class without inheritance
 
         logger.info(f"RPC: HandleFrontendButton called by participant: {invocation_data.caller_identity}")
         logger.info(f"RPC: Request button_id='{request.button_id}', custom_data='{request.custom_data}'")
-
+        
+        # Handle push-to-talk button specifically
+        if request.button_id == "push_to_talk" and self.agent_instance:
+            logger.info("RPC: Processing push-to-talk button press")
+            try:
+                # Get the doubt service
+                doubt_service = get_doubt_service(self.agent_instance)
+                
+                # Extract transcript and student info from custom_data
+                parsed_data = {}
+                student_id = invocation_data.caller_identity or "anonymous_student"
+                session_id = None
+                transcript = ""
+                
+                try:
+                    if request.custom_data:
+                        parsed_data = json.loads(request.custom_data)
+                        transcript = parsed_data.get("transcript", "")
+                        if "session_id" in parsed_data:
+                            session_id = parsed_data.get("session_id")
+                        elif "sessionId" in parsed_data:
+                            session_id = parsed_data.get("sessionId")
+                except json.JSONDecodeError:
+                    # If not JSON, treat the whole custom_data as transcript
+                    transcript = request.custom_data
+                    
+                # If no explicit session ID but we have one in agent context, use that
+                if not session_id and hasattr(self.agent_instance, '_latest_session_id'):
+                    session_id = self.agent_instance._latest_session_id
+                    
+                # Process the doubt using our LangGraph workflow
+                if transcript:
+                    logger.info(f"RPC: Processing student doubt: '{transcript[:50]}...'")
+                    
+                    # Create task to process doubt asynchronously
+                    loop = asyncio.get_event_loop()
+                    doubt_task = loop.create_task(
+                        doubt_service.handle_push_to_talk(student_id, transcript, session_id)
+                    )
+                    
+                    # We'll continue - the task will run in the background and send UI actions when ready
+                    logger.info("RPC: Created async task to process student doubt")
+                else:
+                    logger.warning("RPC: Push-to-talk button pressed but no transcript provided")
+            except Exception as e:
+                logger.error(f"RPC: Error processing push-to-talk: {e}", exc_info=True)
+        
         # Process custom_data if present and agent_instance exists
         if self.agent_instance and request.custom_data:
             try: # Line 65

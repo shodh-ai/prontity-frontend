@@ -4,10 +4,36 @@ import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import VideoControlsUI from "@/components/VideoControlsUI";
+import InteractionControls from "@/components/ui/InteractionControls";
 
 export default function Page(): JSX.Element {
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
+  // State for audio/video and interaction controls
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  
+  // Handlers for VideoControlsUI
+  const toggleAudio = () => setAudioEnabled(prev => !prev);
+  const toggleVideo = () => setVideoEnabled(prev => !prev);
+  const handleLeave = () => window.history.back();
+  
+  // Async handlers for interaction controls
+  const handleHandRaise = async (): Promise<void> => {
+    setIsHandRaised(prev => !prev);
+    console.log('Hand raised:', !isHandRaised);
+    // In a real implementation, this would call the RPC service
+  };
+  
+  const handlePushToTalk = async (isActive: boolean): Promise<void> => {
+    setIsPushToTalkActive(isActive);
+    console.log('Push to talk:', isActive);
+    // In a real implementation, this would call the RPC service
+  };
+  
   // Data for control buttons
   const controlButtons = [
     {
@@ -151,21 +177,42 @@ export default function Page(): JSX.Element {
                   ))}
                 </div>
 
-                {/* Right Group: The fourth button is placed here individually. */}
-                {/* START: MODIFICATION */}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors mr-20"
-                  onClick={() => setIsPopupVisible(true)}
-                >
-                {/* END: MODIFICATION */}
-                  <img
-                    className="w-6 h-6"
-                    alt={controlButtons[3].alt}
-                    src={controlButtons[3].icon}
-                  />
-                </Button>
+                {/* Right Group: Message button and interaction controls */}
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
+                    onClick={() => setIsPopupVisible(true)}
+                  >
+                    <img
+                      className="w-6 h-6"
+                      alt={controlButtons[3].alt}
+                      src={controlButtons[3].icon}
+                    />
+                  </Button>
+                  
+                  {/* Hand raise and Push-to-talk buttons */}
+                  <div className="mr-2">
+                    <VideoControlsUI
+                      audioEnabled={audioEnabled}
+                      videoEnabled={videoEnabled}
+                      toggleAudio={toggleAudio}
+                      toggleCamera={toggleVideo}
+                      handleLeave={handleLeave}
+                      hideVideo={true}
+                      hideAudio={true}
+                      onHandRaise={handleHandRaise}
+                      onPushToTalk={handlePushToTalk}
+                      customControls={
+                        <InteractionControls
+                          onHandRaise={handleHandRaise}
+                          onPushToTalk={handlePushToTalk}
+                        />
+                      }
+                    />
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">

@@ -10,7 +10,11 @@ import json
 from generated.protos import interaction_pb2
 
 # Import our doubt service
-from .doubt_service import get_doubt_service
+try:
+    from .doubt_service import get_doubt_service  # Try relative import first
+except ImportError:
+    # Fall back to absolute import if running as script
+    from doubt_service import get_doubt_service
 
 logger = logging.getLogger(__name__)
 

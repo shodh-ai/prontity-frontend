@@ -5,16 +5,30 @@ interface InteractionControlsProps {
   onHandRaise: () => Promise<void>;
   onPushToTalk: (isActive: boolean) => Promise<void>;
   className?: string;
+  // Optional props for external state management
+  isHandRaised?: boolean;
+  isPushToTalkActive?: boolean;
 }
 
 const InteractionControls: React.FC<InteractionControlsProps> = ({
   onHandRaise,
   onPushToTalk,
   className = '',
+  // Use external state if provided, otherwise use internal state
+  isHandRaised: externalHandRaised,
+  isPushToTalkActive: externalPushToTalkActive,
 }) => {
-  const [isHandRaised, setIsHandRaised] = useState(false);
-  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  const [internalHandRaised, setInternalHandRaised] = useState(false);
+  const [internalPushToTalkActive, setInternalPushToTalkActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Use external state if provided, otherwise use internal state
+  const isHandRaised = externalHandRaised !== undefined ? externalHandRaised : internalHandRaised;
+  const isPushToTalkActive = externalPushToTalkActive !== undefined ? externalPushToTalkActive : internalPushToTalkActive;
+  
+  // Use appropriate setState function based on whether external state is provided
+  const setIsHandRaised = externalHandRaised !== undefined ? () => {} : setInternalHandRaised;
+  const setIsPushToTalkActive = externalPushToTalkActive !== undefined ? () => {} : setInternalPushToTalkActive;
 
   const handleHandRaiseClick = async () => {
     try {

@@ -14,6 +14,7 @@ interface LiveKitSessionUIProps {
   sessionTitle?: string;
   questionText?: string;
   userName?: string;
+  room?: any; // Room object for TimerController
   
   // UI state properties
   audioEnabled: boolean;
@@ -22,6 +23,9 @@ interface LiveKitSessionUIProps {
   hideVideo?: boolean;
   showTimer?: boolean;
   timerDuration?: number;
+  
+  // Speech recognition
+  transcript?: string;
   
   // Event handlers
   toggleAudio: () => void;
@@ -48,6 +52,8 @@ export default function LiveKitSessionUI({
   hideAudio = false,
   hideVideo = false,
   showTimer = false,
+  transcript = '',
+  room = null,
   toggleAudio,
   toggleCamera,
   handleLeave,
@@ -99,13 +105,20 @@ export default function LiveKitSessionUI({
       {/* Timer display if enabled */}
       {showTimer && token && (pageType === 'speaking' || pageType === 'speakingpage') && (
         <div className="timer-container">
-          <TimerController visible={true} />
+          <TimerController visible={true} room={room} />
         </div>
       )}
       
+      {/* Speech transcript display when push to talk is active */}
+      {transcript && (
+        <div className="transcript-container">
+          <div className="transcript-header">Your message:</div>
+          <div className="transcript-content">{transcript}</div>
+        </div>
+      )}
+        
       {/* Main conference container - now only contains controls */}
-      <div className="conference-container">
-        {/* Video controls */}
+      <div className="controls-container">
         <VideoControlsUI
           audioEnabled={audioEnabled}
           videoEnabled={videoEnabled}

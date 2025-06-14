@@ -3,6 +3,10 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import VideoControlsUI from "@/components/VideoControlsUI";
+import DoubtHandlerProvider from "@/components/DoubtHandlerProvider";
+import InteractionControlsWrapper from "@/components/InteractionControlsWrapper";
+import { useSession } from "next-auth/react";
+import AuthProvider from "@/components/AuthProvider";
 
 /**
  * Live Writing Task page – with *clickable* error highlights.
@@ -11,7 +15,24 @@ import VideoControlsUI from "@/components/VideoControlsUI";
  *  ▸ Clicking any highlight opens a sidebar explaining the rule (subject-verb agreement, etc.).
  *  ▸ Uses Tailwind + shadcn/ui Button.
  */
-export default function WritingLiveSession() {
+// Main page component with auth/context providers
+export default function WritingLivePage() {
+  return (
+    <AuthProvider>
+      <DoubtHandlerProvider>
+        <WritingLiveSession />
+      </DoubtHandlerProvider>
+    </AuthProvider>
+  );
+}
+
+// Session content component
+function WritingLiveSession() {
+  const { data: session } = useSession();
+  const userName = session?.user?.name || 'anonymous-user';
+  
+  // Room name for LiveKit connection
+  const roomName = `writing-live-${Date.now()}`; 
   /* ---------------------------------------------------------------- state */
   const DURATION = 600; // seconds
   const [elapsed, setElapsed] = useState(0);
@@ -120,17 +141,16 @@ export default function WritingLiveSession() {
           </div>
           
           <div className="flex items-center space-x-3">
-            <VideoControlsUI
-              audioEnabled={audioEnabled}
-              videoEnabled={videoEnabled}
-              toggleAudio={toggleAudio}
-              toggleCamera={toggleVideo}
-              handleLeave={handleLeave}
-              hideVideo={true}
-              hideAudio={false}
-              onHandRaise={handleHandRaise}
-              onPushToTalk={handlePushToTalk}
-            />
+            {/* New Interaction Controls with RPC integration */}
+            {roomName && userName && (
+              <div className="bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow">
+                <InteractionControlsWrapper 
+                  roomName={roomName}
+                  userName={userName}
+                  className="w-full"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

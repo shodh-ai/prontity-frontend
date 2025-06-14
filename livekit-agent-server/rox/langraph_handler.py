@@ -19,7 +19,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemoryCheckpoint
+# Updated import for newer LangGraph versions
+from langgraph.checkpoint import MemoryCheckpoint
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

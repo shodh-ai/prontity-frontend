@@ -7,11 +7,16 @@ import SpeakingTimer from '@/components/SpeakingTimer';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import NextTaskButton from '@/components/NextTaskButton';
 import SpeechToText from '@/components/SpeechToText';
+import DoubtHandlerProvider from '@/components/DoubtHandlerProvider';
+import InteractionControlsWrapper from '@/components/InteractionControlsWrapper';
 import { useSession } from 'next-auth/react';
+import AuthProvider from '@/components/AuthProvider';
 
 // Import API clients
 import contentApi from '@/api/contentService';
 import userProgressApi from '@/api/userProgressService';
+
+
 
 function SpeakingPageContent() {
   const router = useRouter();
@@ -49,6 +54,8 @@ function SpeakingPageContent() {
       }
     }
   }, [session]);
+  
+
   
   // Load a speaking topic from the Content Service API
   useEffect(() => {
@@ -159,13 +166,15 @@ function SpeakingPageContent() {
       </button>
       
       {/* Speech-to-Text component */}
-      <div className="fixed bottom-20 right-4 z-40 w-80">
-        <SpeechToText 
-          onTextChange={setTranscribedText}
-          onRecordingChange={setIsTranscribing}
-          placeholder="Start speaking for transcription..."
-          className="border-2 border-blue-200 shadow-lg"
-        />
+      <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-4">
+        <div className="w-80">
+          <SpeechToText 
+            onTextChange={setTranscribedText}
+            onRecordingChange={setIsTranscribing}
+            placeholder="Start speaking for transcription..."
+            className="border-2 border-blue-200 shadow-lg"
+          />
+        </div>
       </div>
       
       {/* Flow Navigation component - just the button */}
@@ -198,13 +207,38 @@ function SpeakingPageContent() {
           </div>
         </div>
       ) : topic ? (
-        <LiveKitSession
-          roomName={roomName}
-          userName={userName || 'student-user'}
-          questionText={topic.promptText}
-          sessionTitle={`Speaking Practice: ${topic.title}`}
-          onLeave={handleLeave}
-        />
+        <div className="relative bg-white rounded-lg shadow-md p-6 mb-6">
+          <h2 className="text-2xl font-bold mb-4">Speaking Practice: {topic.title}</h2>
+          <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+            <h3 className="font-medium mb-2">Task:</h3>
+            <p>{topic.promptText}</p>
+          </div>
+          
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
+            <p className="text-sm text-gray-600">Session: {roomName || 'Initializing...'}</p>
+            <button 
+              onClick={handleLeave}
+              className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition"
+            >
+              End Session
+            </button>
+          </div>
+
+          {/* Interaction Controls with RPC integration */}
+          {roomName && userName && (
+            <div className="bg-white p-4 rounded-lg shadow-md mb-4">
+              <h3 className="text-lg font-medium mb-3">Interaction Controls</h3>
+              <p className="text-sm text-gray-600 mb-3">Use these controls to ask for help or clarification</p>
+              <InteractionControlsWrapper 
+                roomName={roomName}
+                userName={userName}
+                className="w-full"
+              />
+            </div>
+          )}
+
+
+        </div>
       ) : (
         <div className="flex items-center justify-center h-screen w-full">
           <div className="text-center">
@@ -222,10 +256,14 @@ function SpeakingPageContent() {
   );
 }
 
-export default function Page() {
+export default function SpeakingPage() {
   return (
-    <ProtectedRoute>
-      <SpeakingPageContent />
-    </ProtectedRoute>
+    <AuthProvider>
+      <ProtectedRoute>
+        <DoubtHandlerProvider>
+          <SpeakingPageContent />
+        </DoubtHandlerProvider>
+      </ProtectedRoute>
+    </AuthProvider>
   );
 }

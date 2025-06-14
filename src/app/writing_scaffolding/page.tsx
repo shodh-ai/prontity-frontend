@@ -3,13 +3,34 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import VideoControlsUI from "@/components/VideoControlsUI";
+import DoubtHandlerProvider from "@/components/DoubtHandlerProvider";
+import InteractionControlsWrapper from "@/components/InteractionControlsWrapper";
+import { useSession } from "next-auth/react";
+import AuthProvider from "@/components/AuthProvider";
 
 /**
  *  WritingScaffoldingChat – a standalone page that mirrors the *final* frame of
  *  the reference (reading passage on the left, student draft + chat bubbles on
  *  the right).
  */
-export default function WritingScaffoldingChat() {
+// Main page component with auth/context providers
+export default function WritingScaffoldingPage() {
+  return (
+    <AuthProvider>
+      <DoubtHandlerProvider>
+        <WritingScaffoldingChat />
+      </DoubtHandlerProvider>
+    </AuthProvider>
+  );
+}
+
+// Session content component
+function WritingScaffoldingChat() {
+  const { data: session } = useSession();
+  const userName = session?.user?.name || 'anonymous-user';
+  
+  // Room name for LiveKit connection
+  const roomName = `writing-scaffold-${Date.now()}`; 
   /* -------------------------------------------------------------- timers */
   const TOTAL = 900; // 15-minute chat window
   const [elapsed, setElapsed] = useState(0);
@@ -92,19 +113,17 @@ export default function WritingScaffoldingChat() {
 
           {/* right pane */}
           <div className="flex-1 relative">
-            {/* Video Controls UI with RPC handlers */}
+            {/* Interaction Controls with LiveKit RPC integration */}
             <div className="absolute bottom-4 right-4 z-20">
-              <VideoControlsUI
-                audioEnabled={audioEnabled}
-                videoEnabled={videoEnabled}
-                toggleAudio={toggleAudio}
-                toggleCamera={toggleVideo}
-                handleLeave={handleLeave}
-                hideVideo={true}
-                hideAudio={false}
-                onHandRaise={handleHandRaise}
-                onPushToTalk={handlePushToTalk}
-              />
+              {roomName && userName && (
+                <div className="bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow">
+                  <InteractionControlsWrapper 
+                    roomName={roomName}
+                    userName={userName}
+                    className="w-full"
+                  />
+                </div>
+              )}
             </div>
             {/* draft */}
             <textarea

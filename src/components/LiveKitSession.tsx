@@ -8,6 +8,8 @@ import { Room, Track, RoomEvent, LocalParticipant, RemoteParticipant, RpcError, 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import AgentController from '@/components/AgentController';
 import LiveKitSessionUI from '@/components/LiveKitSessionUI';
+import InteractionControlsWithRpc from '@/components/ui/InteractionControlsWithRpc';
+import { useDoubtHandler } from '@/components/DoubtHandlerProvider';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
 import '@livekit/components-styles';
 import '@/app/speakingpage/figma-styles.css';
@@ -30,6 +32,7 @@ import {
    // Import for the new payload type
 } from '@/generated/protos/interaction'; // Adjust path if your generated file is elsewhere
 import { FrontendButtonClickRequest } from '@/generated/protos/interaction'; // Import request message
+import { createContext } from 'react';
 
 // Helper functions for Base64 encoding/decoding Uint8Array <-> string
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -107,6 +110,7 @@ interface LiveKitSessionProps {
   hideAudio?: boolean;
   aiAssistantEnabled?: boolean;
   showAvatar?: boolean;
+  enableInteractionControls?: boolean;
   onRoomCreated?: (room: Room) => void;
 }
 
@@ -124,6 +128,7 @@ export default function LiveKitSession({
   hideAudio = false,
   aiAssistantEnabled = true,
   showAvatar = false,
+  enableInteractionControls = false,
   onRoomCreated,
 }: LiveKitSessionProps) {
   // State for UI elements that might be controlled by React state
@@ -156,6 +161,17 @@ export default function LiveKitSession({
   const [rpcResponse, setRpcResponse] = useState<string>('');
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const [transcript, setTranscript] = useState('');
+  
+  // Get doubt handler context for interaction feedback
+  let doubtHandlerContext: any;
+  try {
+    doubtHandlerContext = useDoubtHandler();
+  } catch (error) {
+    // DoubtHandlerProvider might not be in the component tree
+    console.log('DoubtHandlerProvider not found in component tree');
+  }
 
   const handleLeave = useCallback(async () => {
     console.log('Leaving room...');
@@ -326,6 +342,84 @@ export default function LiveKitSession({
     }
   };
 
+  // Initialize speech recognition
+  const initSpeechRecognition = () => {
+    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      // @ts-ignore - TypeScript doesn't have built-in types for webkit prefixed APIs
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      
+      recognition.onresult = (event: any) => {
+        let currentTranscript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          currentTranscript += event.results[i][0].transcript + ' ';
+        }
+        setTranscript(currentTranscript.trim());
+      };
+      
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        stopSpeechRecognition();
+        setIsPushToTalkActive(false);
+      };
+      
+      recognition.onend = () => {
+        setIsPushToTalkActive(false);
+      };
+      
+      return recognition;
+    }
+    return null;
+  };
+
+  // Start speech recognition
+  const startSpeechRecognition = () => {
+    if (!recognitionRef.current) {
+      recognitionRef.current = initSpeechRecognition();
+    }
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+        return true;
+      } catch (error) {
+        console.error('Error starting speech recognition:', error);
+        return false;
+      }
+    } else {
+      console.error('Speech recognition is not supported in this browser');
+      return false;
+    }
+  };
+
+  // Stop speech recognition
+  const stopSpeechRecognition = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping speech recognition:', error);
+      }
+    }
+  };
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore errors on unmount
+        }
+      }
+    };
+  }, []);
+
   // Handler for push to talk via RPC
   const handlePushToTalk = async (isActive: boolean): Promise<void> => {
     if (!agentServiceClientRef.current) {
@@ -336,24 +430,76 @@ export default function LiveKitSession({
     try {
       setIsPushToTalkActive(isActive);
       
-      const request = FrontendButtonClickRequest.create({
-        buttonId: "push_to_talk_button",
-        customData: JSON.stringify({
-          action: "push_to_talk",
-          user: userName,
-          timestamp: new Date().toISOString(),
-          isActive: isActive
-        })
-      });
+      if (isActive) {
+        // Starting push-to-talk - initialize speech recognition
+        const started = startSpeechRecognition();
+        if (!started) {
+          // If speech recognition failed to start
+          setIsPushToTalkActive(false);
+          return;
+        }
+
+        // Send initial push-to-talk activation request
+        const startRequest = FrontendButtonClickRequest.create({
+          buttonId: "push_to_talk_button",
+          customData: JSON.stringify({
+            action: "push_to_talk_start",
+            user: userName,
+            timestamp: new Date().toISOString()
+          })
+        });
+        
+        console.log('Sending push-to-talk start RPC request to agent:', startRequest);
+        
+        const response = await agentServiceClientRef.current.HandleFrontendButton(startRequest);
+        
+      } else {
+        // Ending push-to-talk - stop recording and send transcript
+        stopSpeechRecognition();
+        
+        if (transcript.trim()) {
+          const endRequest = FrontendButtonClickRequest.create({
+            buttonId: "push_to_talk_end",
+            customData: JSON.stringify({
+              action: "push_to_talk_end",
+              user: userName,
+              timestamp: new Date().toISOString(),
+              transcript: transcript.trim(),
+              session_id: roomName // Using roomName as session ID
+            })
+          });
+          
+          console.log('Sending push-to-talk end RPC request with transcript to agent:', endRequest);
+          
+          const response = await agentServiceClientRef.current.HandleFrontendButton(endRequest);
+          console.log('Push-to-talk transcript RPC response from agent:', response);
+                console.log('Doubt UI action:', doubtResponse.ui_action);
+                // Process UI action if needed (redirect, show dialog, etc.)
+                if (doubtResponse.ui_action.action_type_str === 'REDIRECT_TO_PAGE' && 
+                    doubtResponse.ui_action.parameters?.url) {
+                  // Could use router.push here if you want to redirect
+                  console.log('Should redirect to:', doubtResponse.ui_action.parameters.url);
+                }
+              }
+            } catch (error) {
+              console.error('Error processing doubt response payload:', error);
+            }
+          }
+          
+          // Clear transcript after sending
+          setTranscript('');
+        } else {
+          console.log('No transcript to send');
+        }
+      }
       
-      console.log('Sending push-to-talk RPC request to agent:', request);
-      
-      const response = await agentServiceClientRef.current.HandleFrontendButton(request);
-      console.log('Push-to-talk RPC response from agent:', response);
     } catch (error) {
       console.error('Error calling push-to-talk RPC:', error);
-      // Revert state if there was an error
-      setIsPushToTalkActive(!isActive);
+      // Clean up and revert state if there was an error
+      if (isActive) {
+        stopSpeechRecognition();
+      }
+      setIsPushToTalkActive(false);
     }
   };
 
@@ -760,7 +906,9 @@ export default function LiveKitSession({
           showTimer={showTimer}
           customControls={customControls}
           onHandRaise={handleHandRaise}
+          transcript={transcript}
           onPushToTalk={handlePushToTalk}
+          room={roomInstance}
         >
           {aiAssistantEnabled && (audioInitialized || hideAudio) && (
             <div className="hidden">

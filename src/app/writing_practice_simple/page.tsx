@@ -3,6 +3,10 @@
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import VideoControlsUI from "@/components/VideoControlsUI";
+import DoubtHandlerProvider from "@/components/DoubtHandlerProvider";
+import InteractionControlsWrapper from "@/components/InteractionControlsWrapper";
+import { useSession } from "next-auth/react";
+import AuthProvider from "@/components/AuthProvider";
 
 /**
  * Writing-practice component (TOEFL style).
@@ -10,7 +14,22 @@ import VideoControlsUI from "@/components/VideoControlsUI";
  * ▸ Two editable text-areas for the learner’s drafts
  * ▸ Single control cluster (timer, add-time, mic, chat)
  */
-export default function WritingPracticeSession() {
+// Main page component with auth/context providers
+export default function WritingPracticePage() {
+  return (
+    <AuthProvider>
+      <DoubtHandlerProvider>
+        <WritingPracticeSession />
+      </DoubtHandlerProvider>
+    </AuthProvider>
+  );
+}
+
+// Session content component
+function WritingPracticeSession() {
+  const { data: session } = useSession();
+  const userName = session?.user?.name || 'anonymous-user';
+  
   /* ---------------------------------------------------------------- state */
   const TOTAL = 120; // seconds
   const [elapsed, setElapsed] = useState(0);
@@ -19,26 +38,15 @@ export default function WritingPracticeSession() {
   const [draft2, setDraft2] = useState("");
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(false);
-  const [isHandRaised, setIsHandRaised] = useState(false);
-  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  
+  // Room name for LiveKit connection
+  const roomName = `writing-practice-${Date.now()}`;
+
   
   /* ----------------------------------------------------------- handlers */
   const toggleAudio = () => setAudioEnabled(prev => !prev);
   const toggleVideo = () => setVideoEnabled(prev => !prev);
   const handleLeave = () => window.history.back();
-  
-  // Async handlers for interaction controls
-  const handleHandRaise = async (): Promise<void> => {
-    setIsHandRaised(prev => !prev);
-    console.log('Hand raised:', !isHandRaised);
-    // In a real implementation, this would call the RPC service
-  };
-  
-  const handlePushToTalk = async (isActive: boolean): Promise<void> => {
-    setIsPushToTalkActive(isActive);
-    console.log('Push to talk:', isActive);
-    // In a real implementation, this would call the RPC service
-  };
 
   /* ----------------------------------------------------------- derived UI */
   const pct  = Math.min((elapsed / TOTAL) * 100, 100);
@@ -110,17 +118,16 @@ export default function WritingPracticeSession() {
           </div>
 
           <div className="flex items-center space-x-3">
-            <VideoControlsUI
-              audioEnabled={audioEnabled}
-              videoEnabled={videoEnabled}
-              toggleAudio={toggleAudio}
-              toggleCamera={toggleVideo}
-              handleLeave={handleLeave}
-              hideVideo={true}
-              hideAudio={false}
-              onHandRaise={handleHandRaise}
-              onPushToTalk={handlePushToTalk}
-            />
+            {/* New Interaction Controls with RPC integration */}
+            {roomName && userName && (
+              <div className="bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow">
+                <InteractionControlsWrapper 
+                  roomName={roomName}
+                  userName={userName}
+                  className="w-full"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

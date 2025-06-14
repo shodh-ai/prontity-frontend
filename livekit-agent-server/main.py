@@ -27,6 +27,7 @@ def run_agent(agent_request: AgentRequest):
         command = [
             python_executable,
             rox_main_path,
+            "dev",
             "--room",
             room_name,
             "--url",

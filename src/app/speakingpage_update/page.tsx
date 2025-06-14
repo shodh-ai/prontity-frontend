@@ -6,6 +6,7 @@ import LiveKitSession from '@/components/LiveKitSession';
 import SpeakingTimer from '@/components/SpeakingTimer';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import NextTaskButton from '@/components/NextTaskButton';
+import SpeechToText from '@/components/SpeechToText';
 import { useSession } from 'next-auth/react';
 
 // Import API clients
@@ -20,6 +21,8 @@ function SpeakingPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userName, setUserName] = useState('');
+  const [transcribedText, setTranscribedText] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [topic, setTopic] = useState<{
     topicId: string;
     title: string;
@@ -154,6 +157,16 @@ function SpeakingPageContent() {
       >
         New Topic
       </button>
+      
+      {/* Speech-to-Text component */}
+      <div className="fixed bottom-20 right-4 z-40 w-80">
+        <SpeechToText 
+          onTextChange={setTranscribedText}
+          onRecordingChange={setIsTranscribing}
+          placeholder="Start speaking for transcription..."
+          className="border-2 border-blue-200 shadow-lg"
+        />
+      </div>
       
       {/* Flow Navigation component - just the button */}
       <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-lg px-4">

@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, MicIcon, Square, Play, Pause } from "lucide-react";
+import { ArrowLeftIcon, MicIcon, Square, Play, Pause, HeadphonesIcon } from "lucide-react";
 import React, {
   useState,
   useEffect,
@@ -81,6 +81,8 @@ export const RegistrationForm = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any | null>(null);
 
   useEffect(() => {
     // Check for the token as soon as the component loads
@@ -92,6 +94,13 @@ export const RegistrationForm = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore errors when stopping on unmount
+        }
+      }
     };
   }, [audioUrl]);
 
@@ -442,6 +451,66 @@ export const RegistrationForm = () => {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleNext();
   };
+  
+  // Speech-to-text functionality
+  const toggleSpeechToText = () => {
+    if (isListening) {
+      stopSpeechToText();
+    } else {
+      startSpeechToText();
+    }
+  };
+
+  const startSpeechToText = () => {
+    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      // @ts-ignore - TypeScript doesn't have built-in types for webkit prefixed APIs
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+      
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript + ' ';
+        }
+        setCurrentInput(transcript.trim());
+      };
+      
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        setIsListening(false);
+      };
+      
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+      
+      recognitionRef.current = recognition;
+      
+      try {
+        recognition.start();
+        setIsListening(true);
+      } catch (error) {
+        console.error('Error starting speech recognition:', error);
+      }
+    } else {
+      alert('Speech recognition is not supported in this browser. Try Chrome or Edge.');
+    }
+  };
+
+  const stopSpeechToText = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping speech recognition:', error);
+      }
+      setIsListening(false);
+    }
+  };
   const currentFormStep = formSteps[currentStep];
   const updatedProgressSteps = progressSteps.map((step, index) => ({
     ...step,
@@ -525,14 +594,23 @@ export const RegistrationForm = () => {
       );
     }
     return (
-      <Input
-        className="h-12 border border-gray-300 rounded-md px-3 text-sm flex-grow leading-[3rem]"
-        placeholder={currentFormStep.placeholder}
-        type={currentFormStep.inputType}
-        value={currentInput}
-        onChange={(e) => setCurrentInput(e.target.value)}
-        onKeyPress={handleKeyPress}
-      />
+      <div className="relative w-full">
+        <Input
+          className="h-12 border border-gray-300 rounded-md px-3 pr-12 text-sm flex-grow leading-[3rem]"
+          placeholder={currentFormStep.placeholder}
+          type={currentFormStep.inputType}
+          value={currentInput}
+          onChange={(e) => setCurrentInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+        />
+        <button
+          type="button"
+          className={`absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center ${isListening ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+          onClick={toggleSpeechToText}
+        >
+          <HeadphonesIcon className="w-4 h-4" />
+        </button>
+      </div>
     );
   };
 

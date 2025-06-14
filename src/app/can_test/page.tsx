@@ -45,7 +45,6 @@ export default function Page(): JSX.Element {
     },
   ];
 
-
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
 
   useEffect(() => {
@@ -123,7 +122,7 @@ export default function Page(): JSX.Element {
   ): Promise<{ width: number; height: number }> {
     return new Promise((resolve) => {
       const temp = document.createElement("div");
-      temp.style.fontFamily = "Satisfy, cursive"; // Ensure this font is loaded or matches Vara's font
+      temp.style.fontFamily = "Satisfy, cursive";
       temp.style.fontSize = `${fontSize}px`;
       temp.style.position = "absolute";
       temp.style.left = "-9999px";
@@ -144,7 +143,9 @@ export default function Page(): JSX.Element {
     if (!lessonData) return;
 
     const canvasElement = document.getElementById("canvas");
-    const unionContainer = document.getElementById("union-container") as HTMLImageElement;
+    const unionContainer = document.getElementById(
+      "union-container"
+    ) as HTMLImageElement;
 
     if (!canvasElement || !unionContainer) {
       console.error("Required elements (canvas, union-container) not found.");
@@ -154,12 +155,23 @@ export default function Page(): JSX.Element {
     let isCancelled = false;
     let currentCanvasDimensions = { ...lessonData.canvasDimensions };
 
-    const setupAndRunLesson = (width: number, height: number) => {
+    const setupAndRunLesson = (
+      width: number,
+      height: number,
+      scaleFactors: { x: number; y: number }
+    ) => {
       if (isCancelled) return;
+
+      if (canvasElement) {
+        const varaContainers = canvasElement.querySelectorAll('div[id^="vara-"]');
+        varaContainers.forEach((container) => container.remove());
+      }
+      stageRef.current?.destroy();
 
       currentCanvasDimensions = { width, height };
       canvasElement.style.width = `${width}px`;
       canvasElement.style.height = `${height}px`;
+      canvasElement.style.backgroundColor = "transparent";
 
       const stage = new Konva.Stage({
         container: "canvas",
@@ -168,6 +180,7 @@ export default function Page(): JSX.Element {
       });
       stageRef.current = stage;
       const layer = new Konva.Layer();
+      layer.contrast(20);
       layerRef.current = layer;
       stage.add(layer);
 
@@ -178,16 +191,34 @@ export default function Page(): JSX.Element {
           try {
             switch (step.command) {
               case "write":
-                await handleWrite(step as WriteCommand, elementMap, currentCanvasDimensions);
+                await handleWrite(
+                  step as WriteCommand,
+                  elementMap,
+                  currentCanvasDimensions,
+                  scaleFactors
+                );
                 break;
               case "drawShape":
-                await handleDrawShape(step as DrawShapeCommand, elementMap);
+                await handleDrawShape(
+                  step as DrawShapeCommand,
+                  elementMap,
+                  scaleFactors
+                );
                 break;
               case "annotate":
-                await handleAnnotate(step as AnnotateCommand, elementMap);
+                await handleAnnotate(
+                  step as AnnotateCommand,
+                  elementMap,
+                  scaleFactors
+                );
                 break;
               case "drawSVG":
-                await handleDrawSVG(step as DrawSVGCommand, elementMap, currentCanvasDimensions);
+                await handleDrawSVG(
+                  step as DrawSVGCommand,
+                  elementMap,
+                  currentCanvasDimensions,
+                  scaleFactors
+                );
                 break;
               case "wait":
                 await new Promise((resolve) =>
@@ -206,15 +237,25 @@ export default function Page(): JSX.Element {
     };
 
     const resizeCanvas = () => {
+      if (isCancelled || !lessonData) return;
       const unionRect = unionContainer.getBoundingClientRect();
-      if (unionRect.width > 0) {
-        const newCanvasWidth = unionRect.width * 0.8;
-        const newCanvasHeight = unionRect.height * 0.8;
-        setupAndRunLesson(newCanvasWidth, newCanvasHeight);
+
+      let newCanvasWidth, newCanvasHeight;
+
+      if (unionRect.width > 0 && unionRect.height > 0) {
+        newCanvasWidth = unionRect.width * 0.95;
+        newCanvasHeight = unionRect.height * 0.85;
       } else {
-        // Fallback if the image dimensions are not available
-        setupAndRunLesson(lessonData.canvasDimensions.width, lessonData.canvasDimensions.height);
+        newCanvasWidth = lessonData.canvasDimensions.width;
+        newCanvasHeight = lessonData.canvasDimensions.height;
       }
+
+      const scaleFactors = {
+        x: newCanvasWidth / lessonData.canvasDimensions.width,
+        y: newCanvasHeight / lessonData.canvasDimensions.height,
+      };
+
+      setupAndRunLesson(newCanvasWidth, newCanvasHeight, scaleFactors);
     };
 
     if (unionContainer.complete) {
@@ -228,10 +269,6 @@ export default function Page(): JSX.Element {
     return () => {
       isCancelled = true;
       window.removeEventListener("resize", resizeCanvas);
-      if (canvasElement) {
-        const varaContainers = canvasElement.querySelectorAll('div[id^="vara-"]');
-        varaContainers.forEach((container) => container.remove());
-      }
       stageRef.current?.destroy();
     };
   }, [lessonData]);
@@ -260,30 +297,33 @@ export default function Page(): JSX.Element {
     return containerElement;
   }
 
-  async function handleWrite(step: WriteCommand, elementMap: Map<string, any>, currentCanvasDimensions: { width: number; height: number }) {
+  async function handleWrite(
+    step: WriteCommand,
+    elementMap: Map<string, any>,
+    currentCanvasDimensions: { width: number; height: number },
+    scaleFactors: { x: number; y: number }
+  ) {
     return new Promise(async (resolve, reject) => {
       try {
         let position = step.payload.position;
-        let fontSize = step.payload.varaOptions.fontSize || 24;
-        let textWidth, textHeight;
 
-        // Scale font size down if text is wider than canvas
-        const canvasWidth = currentCanvasDimensions.width;
-        const padding = 20; // 10px padding on each side
-        let dimensions = await getTextDimensions(step.payload.text, fontSize);
+        const scaledFontSize =
+          (step.payload.varaOptions.fontSize || 24) *
+          Math.min(scaleFactors.x, scaleFactors.y);
 
-        if (dimensions.width > canvasWidth - padding) {
-          const scaleRatio = (canvasWidth - padding) / dimensions.width;
-          fontSize *= scaleRatio;
-          dimensions = await getTextDimensions(step.payload.text, fontSize);
-        }
-        textWidth = dimensions.width;
-        textHeight = dimensions.height;
-
-        if (!position) {
+        if (position) {
+          position = {
+            x: position.x * scaleFactors.x,
+            y: position.y * scaleFactors.y,
+          };
+        } else {
+          const { width, height } = await getTextDimensions(
+            step.payload.text,
+            scaledFontSize
+          );
           const spot = findEmptySpot(
-            textWidth,
-            textHeight,
+            width,
+            height,
             elementMap,
             currentCanvasDimensions
           );
@@ -294,7 +334,7 @@ export default function Page(): JSX.Element {
               "Could not find an empty spot for text:",
               step.payload.text
             );
-            position = { x: 10, y: 10 }; // Fallback position
+            position = { x: 10, y: 10 };
           }
         }
 
@@ -315,23 +355,27 @@ export default function Page(): JSX.Element {
               text: step.payload.text,
               duration: step.payload.varaOptions.duration || 1000,
               color: step.payload.varaOptions.color || "black",
-              fontSize: fontSize, // Use the adjusted font size
+              fontSize: scaledFontSize,
               id: step.id,
             },
           ]
         );
 
         vara.ready(() => {
-          const { width, height } = container.getBoundingClientRect();
-          elementMap.set(step.id, {
-            element: vara,
-            x: position.x,
-            y: position.y,
-            width,
-            height,
-            type: 'vara-text'
-          });
+          setTimeout(() => {
+            const clientRect = container.getBoundingClientRect();
+            const canvasRect = document.getElementById("canvas")!.getBoundingClientRect();
+            elementMap.set(step.id, {
+              element: vara,
+              x: clientRect.left - canvasRect.left,
+              y: clientRect.top - canvasRect.top,
+              width: clientRect.width,
+              height: clientRect.height,
+              type: "vara-text",
+            });
+          }, 100);
         });
+
         vara.animationEnd(() => resolve(vara));
       } catch (error) {
         console.error("Error in handleWrite:", error);
@@ -342,30 +386,33 @@ export default function Page(): JSX.Element {
 
   async function handleDrawShape(
     step: DrawShapeCommand,
-    elementMap: Map<string, any>
+    elementMap: Map<string, any>,
+    scaleFactors: { x: number; y: number }
   ) {
-    if (!layerRef.current) {
-      console.error("Konva Layer not initialized!");
-      return;
-    }
+    if (!layerRef.current) return;
 
     try {
       const generator = rough.generator();
       let drawable;
 
+      const scaledPoints = step.payload.points.map((p) => ({
+        x: p.x * scaleFactors.x,
+        y: p.y * scaleFactors.y,
+      }));
+      const scaledStrokeWidth = (step.payload.roughOptions.strokeWidth || 2) * Math.min(scaleFactors.x, scaleFactors.y);
+
+
       switch (step.payload.shapeType) {
         case "line":
           drawable = generator.line(
-            step.payload.points[0].x,
-            step.payload.points[0].y,
-            step.payload.points[1].x,
-            step.payload.points[1].y,
-            step.payload.roughOptions
+            scaledPoints[0].x,
+            scaledPoints[0].y,
+            scaledPoints[1].x,
+            scaledPoints[1].y,
+            { ...step.payload.roughOptions, strokeWidth: scaledStrokeWidth }
           );
           break;
-        // Add other shapes like rectangle, circle, ellipse as needed
         default:
-          console.warn(`Unsupported shapeType: ${step.payload.shapeType}`);
           return;
       }
 
@@ -373,20 +420,13 @@ export default function Page(): JSX.Element {
       const path = new Konva.Path({
         data: paths[0].d,
         stroke: step.payload.roughOptions.stroke || "#000",
-        strokeWidth: step.payload.roughOptions.strokeWidth || 2,
-        id: step.id, // Assign id to Konva node
+        strokeWidth: scaledStrokeWidth,
+        id: step.id,
       });
 
       layerRef.current.add(path);
-      const { x: rectX, y: rectY, width, height } = path.getClientRect();
-      elementMap.set(step.id, {
-        element: path,
-        x: rectX,
-        y: rectY,
-        width,
-        height,
-        type: 'rough-shape'
-      });
+      const { x, y, width, height } = path.getClientRect();
+      elementMap.set(step.id, { element: path, x, y, width, height, type: "rough-shape" });
     } catch (error) {
       console.error("Error creating shape:", error);
     }
@@ -394,43 +434,26 @@ export default function Page(): JSX.Element {
 
   async function handleAnnotate(
     step: AnnotateCommand,
-    elementMap: Map<string, any>
+    elementMap: Map<string, any>,
+    scaleFactors: { x: number; y: number }
   ) {
-    if (!layerRef.current) {
-      console.error("Konva Layer not initialized!");
-      return;
-    }
-
+    if (!layerRef.current) return;
     const targetData = elementMap.get(step.payload.targetId);
-    
-    if (!targetData) {
-      console.error(
-        `Target element with id ${step.payload.targetId} not found in elementMap!`
-      );
-      return;
-    }
+    if (!targetData) return;
 
     try {
-      let x, y, radius;
-      // Use stored dimensions from elementMap
       const targetBox = { x: targetData.x, y: targetData.y, width: targetData.width, height: targetData.height };
-
-      x = targetBox.x + targetBox.width / 2;
-      y = targetBox.y + targetBox.height / 2;
-      radius = Math.max(targetBox.width, targetBox.height) * 0.7; // Adjust multiplier as needed
-
+      const x = targetBox.x + targetBox.width / 2;
+      const y = targetBox.y + targetBox.height / 2;
+      const radius = Math.max(targetBox.width, targetBox.height) * 0.7;
+      
+      const scaledStrokeWidth = (step.payload.roughOptions.strokeWidth || 2) * Math.min(scaleFactors.x, scaleFactors.y);
       const generator = rough.generator();
       let drawable;
 
       if (step.payload.annotationType === "circle") {
-        drawable = generator.circle(
-          x,
-          y,
-          radius * 2, // diameter
-          step.payload.roughOptions
-        );
+        drawable = generator.circle(x, y, radius * 2, { ...step.payload.roughOptions, strokeWidth: scaledStrokeWidth });
       } else {
-        console.warn(`Unsupported annotationType: ${step.payload.annotationType}`);
         return;
       }
 
@@ -438,20 +461,13 @@ export default function Page(): JSX.Element {
       const annotation = new Konva.Path({
         data: paths[0].d,
         stroke: step.payload.roughOptions.stroke || "#ff0000",
-        strokeWidth: step.payload.roughOptions.strokeWidth || 2,
-        id: step.id, // Assign id to Konva node
+        strokeWidth: scaledStrokeWidth,
+        id: step.id,
       });
 
       layerRef.current.add(annotation);
       const { x: rectX, y: rectY, width, height } = annotation.getClientRect();
-      elementMap.set(step.id, {
-        element: annotation,
-        x: rectX,
-        y: rectY,
-        width,
-        height,
-        type: 'annotation'
-      });
+      elementMap.set(step.id, { element: annotation, x: rectX, y: rectY, width, height, type: "annotation" });
     } catch (error) {
       console.error("Error creating annotation:", error);
     }
@@ -460,16 +476,10 @@ export default function Page(): JSX.Element {
   async function handleDrawSVG(
     step: DrawSVGCommand,
     elementMap: Map<string, any>,
-    currentCanvasDimensions: { width: number; height: number }
+    currentCanvasDimensions: { width: number; height: number },
+    scaleFactors: { x: number; y: number }
   ): Promise<void> {
-    if (!layerRef.current) {
-      console.error(
-        "Konva Layer not initialized for SVG drawing!"
-      );
-      return Promise.reject(
-        new Error("Konva Layer not initialized")
-      );
-    }
+    if (!layerRef.current) return Promise.reject(new Error("Konva Layer not initialized"));
 
     return new Promise<void>((resolve, reject) => {
       Konva.Image.fromURL(
@@ -481,63 +491,41 @@ export default function Page(): JSX.Element {
             const naturalWidth = imageNode.width();
             const naturalHeight = imageNode.height();
 
-            if (naturalWidth === 0 || naturalHeight === 0) {
-              console.warn(
-                "Image/SVG loaded with zero dimensions:",
-                step.payload.svgUrl,
-                "Using fallback/desired size."
-              );
-              finalWidth = step.payload.desiredSize?.width || 100;
-              finalHeight = step.payload.desiredSize?.height || 100;
-            } else if (step.payload.desiredSize) {
-              if (step.payload.desiredSize.width && step.payload.desiredSize.height) {
-                finalWidth = step.payload.desiredSize.width;
-                finalHeight = step.payload.desiredSize.height;
-              } else if (step.payload.desiredSize.width) {
-                finalWidth = step.payload.desiredSize.width;
+            const desiredWidth = step.payload.desiredSize?.width;
+            const desiredHeight = step.payload.desiredSize?.height;
+
+            if (desiredWidth && desiredHeight) {
+                finalWidth = desiredWidth * scaleFactors.x;
+                finalHeight = desiredHeight * scaleFactors.y;
+            } else if (desiredWidth) {
+                finalWidth = desiredWidth * scaleFactors.x;
                 finalHeight = (naturalHeight / naturalWidth) * finalWidth;
-              } else if (step.payload.desiredSize.height) {
-                finalHeight = step.payload.desiredSize.height;
+            } else if (desiredHeight) {
+                finalHeight = desiredHeight * scaleFactors.y;
                 finalWidth = (naturalWidth / naturalHeight) * finalHeight;
-              } else {
-                finalWidth = naturalWidth;
-                finalHeight = naturalHeight;
-              }
             } else {
-              finalWidth = naturalWidth;
-              finalHeight = naturalHeight;
+                finalWidth = naturalWidth * scaleFactors.x;
+                finalHeight = naturalHeight * scaleFactors.y;
             }
             
-            // Scale SVG down if it's larger than the canvas
-            const canvasWidth = currentCanvasDimensions.width;
-            const canvasHeight = currentCanvasDimensions.height;
-            const padding = 20; // 10px padding on each side
-
-            if (finalWidth > canvasWidth - padding || finalHeight > canvasHeight - padding) {
-                const scaleRatio = Math.min((canvasWidth - padding) / finalWidth, (canvasHeight - padding) / finalHeight);
-                finalWidth *= scaleRatio;
-                finalHeight *= scaleRatio;
-            }
-
             imageNode.width(finalWidth);
             imageNode.height(finalHeight);
 
             let position = step.payload.position;
-            if (!position) {
+            if (position) {
+              position = { x: position.x * scaleFactors.x, y: position.y * scaleFactors.y };
+            } else {
               const spot = findEmptySpot(
                 finalWidth,
                 finalHeight,
                 elementMap,
-                currentCanvasDimensions, // Use correct canvas dimensions
-                20 // Padding for SVGs
+                currentCanvasDimensions,
+                20
               );
               if (spot) {
                 position = spot;
               } else {
-                console.warn(
-                  `Could not find an empty spot for SVG/image: ${step.payload.description || step.id}. Using fallback.`
-                );
-                position = { x: 10, y: 10 }; // Fallback position
+                position = { x: 10, y: 10 };
               }
             }
 
@@ -546,7 +534,6 @@ export default function Page(): JSX.Element {
             imageNode.id(step.id);
 
             layerRef.current!.add(imageNode);
-
             elementMap.set(step.id, {
               element: imageNode,
               x: position.x,
@@ -555,26 +542,13 @@ export default function Page(): JSX.Element {
               height: finalHeight,
               type: "svg",
             });
-
             resolve();
           } catch (error) {
-            console.error(
-              "Error processing SVG/image node for:",
-              step.payload.svgUrl,
-              error
-            );
             reject(error);
           }
         },
         (error) => {
-          console.error(
-            "Error loading image/SVG from URL:",
-            step.payload.svgUrl,
-            error
-          );
-          reject(
-            new Error(`Failed to load image/SVG from ${step.payload.svgUrl}`)
-          );
+          reject(new Error(`Failed to load image/SVG from ${step.payload.svgUrl}`));
         }
       );
     });
@@ -582,24 +556,21 @@ export default function Page(): JSX.Element {
 
   return (
     <div className="w-full h-screen bg-white overflow-hidden relative">
-      {/* Background elements */}
       <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
       <div className="absolute w-[25vw] h-[25vw] max-w-[353px] max-h-[353px] bottom-[-25vh] left-[-10vw] bg-[#336de6] rounded-full" />
-      {/* Main content container with backdrop blur and union graphic */}
       <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[200px] [-webkit-backdrop-filter:blur(200px)_brightness(100%)]">
-        {/* This container establishes a shared positioning context for the image and the canvas */}
         <div className="absolute w-full h-full flex justify-center items-center">
-          <div className="relative w-full max-w-[1336px] h-auto flex justify-center items-center">
+          <div className="relative w-full max-w-[1336px] h-auto flex justify-center items-center p-4">
             <img
               id="union-container"
               className="w-full h-auto opacity-50"
               alt="Union"
               src="https://c.animaapp.com/mbsxrl26lLrLIJ/img/union.svg"
             />
-            {/* Canvas is now absolutely positioned within the same container as the image */}
             <div
               id="canvas"
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border border-gray-400 bg-white"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[55%]"
+              style={{ background: 'rgba(255, 255, 255, 0.7)' }}
             >
               {/* Konva and Vara will populate this div */}
             </div>
@@ -607,7 +578,6 @@ export default function Page(): JSX.Element {
         </div>
       </div>
 
-      {/* Main Content Area */}
       <main className="relative z-10 h-full flex flex-col pl-8 pr-12 py-6">
         <Button
           variant="ghost"
@@ -618,35 +588,26 @@ export default function Page(): JSX.Element {
         </Button>
 
         <div className="flex items-center justify-between pt-6 pl-9">
-          {/* Left Column: Title. Balances the right column. */}
-          <div className="flex-1">
-
-          </div>
-
-          {/* Center Column: Contains the progress bar. */}
-         
-
-          {/* Right Column: This is now an empty spacer to balance the left column. */}
+          <div className="flex-1"></div>
           <div className="flex-1" />
         </div>
 
-        {/* Passage Card - Canvas moved into the Union SVG backdrop */}
         <div className="flex-grow flex items-center justify-center py-8 gap-4">
-          {/* This space is now empty, content moved. Adjust parent styling if needed. */}
+          {/* This space is now empty as content is within the union backdrop */}
         </div>
 
-        {/* Footer section with conditional UI */}
-        <div className="flex flex-col items-center gap-4 pb-6">
+        <div className="flex flex-col items-center gap-1 pb-6 mt-4">
           <div className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
-            <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
+            <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)] ">
               Hello. I am Rox, your AI Assistant!
             </p>
           </div>
           <div className="w-[90px] h-[90px] z-20">
             <div className="relative w-full h-full">
               <div className="absolute w-[70%] h-[70%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#566fe9] rounded-full blur-[50px]" />
+              {/* MODIFICATION HERE: Changed top-0 to top-2 to shift the image down. */}
               <img
-                className="absolute w-full h-full top-0 left-0 object-contain"
+                className="absolute w-full h-full top-2 left-2 object-contain"
                 alt="Rox AI Assistant"
                 src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
               />
@@ -655,7 +616,6 @@ export default function Page(): JSX.Element {
           <div className="w-full max-w-lg">
             {!isPopupVisible ? (
               <div className="flex items-center justify-between w-full">
-                {/* Left Group: This group is pushed to the extreme left by 'justify-between' */}
                 <div className="flex items-center gap-4 -ml-20">
                   {controlButtons.slice(0, 4).map((button, index) => (
                     <Button
@@ -679,16 +639,12 @@ export default function Page(): JSX.Element {
                     </Button>
                   ))}
                 </div>
-
-                {/* Right Group: This button is pushed to the extreme right by 'justify-between' */}
-                {/* START: MODIFICATION - Removed mr-20 */}
                 <Button
                   variant="outline"
                   size="icon"
                   className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors mr-10"
                   onClick={() => setIsPopupVisible(true)}
                 >
-                {/* END: MODIFICATION */}
                   <img
                     className="w-6 h-6"
                     alt={controlButtons[4].alt}

@@ -1,0 +1,151 @@
+{
+  "lessonTitle": "The Pythagorean Theorem",
+  "canvasDimensions": { "width": 1000, "height": 750 },
+  "steps": [
+    {
+      "command": "write",
+      "id": "title-text",
+      "payload": {
+        "text": "The Pythagorean Theorem",
+        "position": { "x": 50, "y": 50 },
+        "varaOptions": { "fontSize": 48, "color": "#333333", "duration": 2000 }
+      }
+    },
+    {
+      "command": "wait",
+      "payload": { "duration": 1000 }
+    },
+    {
+      "command": "drawShape",
+      "id": "triangle-side-a",
+      "payload": {
+        "shapeType": "line",
+        "points": [
+          { "x": 150, "y": 450 },
+          { "x": 550, "y": 450 }
+        ],
+        "isRough": true,
+        "roughOptions": {
+          "stroke": "black",
+          "strokeWidth": 4,
+          "roughness": 1.5
+        }
+      }
+    },
+    {
+      "command": "drawShape",
+      "id": "triangle-side-b",
+      "payload": {
+        "shapeType": "line",
+        "points": [
+          { "x": 150, "y": 450 },
+          { "x": 150, "y": 200 }
+        ],
+        "isRough": true,
+        "roughOptions": {
+          "stroke": "black",
+          "strokeWidth": 4,
+          "roughness": 1.5
+        }
+      }
+    },
+    {
+      "command": "wait",
+      "payload": { "duration": 500 }
+    },
+    {
+      "command": "drawShape",
+      "id": "triangle-hypotenuse",
+      "payload": {
+        "shapeType": "line",
+        "points": [
+          { "x": 150, "y": 200 },
+          { "x": 550, "y": 450 }
+        ],
+        "isRough": true,
+        "roughOptions": {
+          "stroke": "darkblue",
+          "strokeWidth": 4,
+          "roughness": 1
+        }
+      }
+    },
+    {
+      "command": "write",
+      "id": "label-a",
+      "payload": {
+        "text": "a",
+        "position": { "x": 350, "y": 470 },
+        "varaOptions": { "fontSize": 36, "color": "#555" }
+      }
+    },
+    {
+      "command": "write",
+      "id": "label-b",
+      "payload": {
+        "text": "b",
+        "position": { "x": 100, "y": 325 },
+        "varaOptions": { "fontSize": 36, "color": "#555" }
+      }
+    },
+    {
+      "command": "write",
+      "id": "label-c",
+      "payload": {
+        "text": "c",
+        "position": { "x": 370, "y": 300 },
+        "varaOptions": { "fontSize": 36, "color": "darkblue" }
+      }
+    },
+    {
+      "command": "write",
+      "id": "formula-text",
+      "payload": {
+        "text": "a² + b² = c²",
+        "position": { "x": 600, "y": 150 },
+        "varaOptions": { "fontSize": 52, "color": "#d9534f", "duration": 2500 }
+      }
+    },
+    {
+      "command": "wait",
+      "payload": { "duration": 1500 }
+    },
+    {
+      "command": "annotate",
+      "id": "formula-annotation",
+      "payload": {
+        "targetId": "formula-text",
+        "annotationType": "circle",
+        "isRough": true,
+        "roughOptions": {
+          "stroke": "#d9534f",
+          "strokeWidth": 3,
+          "roughness": 2.5
+        }
+      }
+    },
+    {
+      "command": "wait",
+      "payload": { "duration": 1000 }
+    },
+    {
+      "command": "drawSVG",
+      "id": "ladder-example-svg",
+      "payload": {
+        "svgUrl": "https://raw.githubusercontent.com/google/material-design-icons/master/png/action/build_circle/materialicons/48dp/2x/baseline_build_circle_black_48dp.png",
+        "description": "An SVG diagram showing a ladder against a wall, forming a right triangle.",
+        "position": { "x": 450, "y": 550 },
+        "desiredSize": { "width": 200 }
+      }
+    },
+    {
+      "command": "write",
+      "id": "example-explanation",
+      "payload": {
+        "text": "It's used to find unknown lengths in the real world!",
+        "position": { "x": 650, "y": 600 },
+        "varaOptions": { "fontSize": 24, "color": "#0275d8" }
+      }
+    }
+  ]
+}

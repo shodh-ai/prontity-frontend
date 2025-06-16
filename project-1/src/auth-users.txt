@@ -1,0 +1,5 @@
+Test User Credentials:
+Email: demo@example.com
+Password: password
+
+These credentials are configured in the Next.js authentication system.

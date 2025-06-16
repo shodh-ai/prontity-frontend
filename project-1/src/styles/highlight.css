@@ -1,0 +1,104 @@
+/* Basic highlight styling */
+.highlight {
+  /* Use background color for visibility */
+  background-color: rgba(255, 255, 0, 0.3); /* Default yellow highlight */
+  border-radius: 2px;
+  padding: 0.05em 0; /* Minimal vertical padding */
+  margin: 0 -0.05em; /* Counteract padding */
+  box-decoration-break: clone; /* Ensures background covers wrapped lines nicely */
+  -webkit-box-decoration-break: clone;
+}
+
+/* Type-specific styling */
+.highlight.highlight-grammar {
+  /* Example: Red underline */
+  background-color: rgba(255, 0, 0, 0.15); /* Light red background */
+  /* Add a subtle bottom border instead of underline for better control */
+  border-bottom: 1.5px dotted red;
+  /* box-shadow: 0 1px 0 0 red; /* Alternative underline */
+}
+
+.highlight.highlight-coherence {
+  /* Example: Blue wavy underline */
+  background-color: rgba(0, 0, 255, 0.1); /* Light blue background */
+  /* Wavy underline is hard with pure CSS, border is easier */
+  border-bottom: 1.5px dotted blue;
+}
+
+.highlight.highlight-suggestion {
+  /* Example: Green dashed underline */
+  background-color: rgba(0, 128, 0, 0.1); /* Light green background */
+  border-bottom: 1.5px dashed green;
+}
+
+/* Style for text edit suggestions */
+.highlight.highlight-text_suggestion {
+  background-color: rgba(128, 0, 128, 0.1); /* Light purple background */
+  border-bottom: 1.5px dotted purple; /* Purple dotted underline */
+  cursor: pointer; /* Indicate it's clickable */
+}
+
+/* Style for inline suggestions (non-intrusive) */
+.highlight.inline_suggestion {
+  /* No background color for less intrusion, or a very very light one */
+  /* background-color: rgba(0, 100, 255, 0.05); */ 
+  border-bottom: 1.5px dotted #007bff; /* Blue dotted underline */
+  /* cursor: help; */ /* Optional: 'help' cursor to indicate more info on hover */
+}
+
+/* Styles for Comment Types */
+.highlight.comment_generic {
+  background-color: rgba(108, 117, 125, 0.1); /* Light gray background */
+  border-bottom: 1.5px dashed #6c757d; /* Gray dashed underline */
+}
+
+.highlight.comment_info {
+  background-color: rgba(23, 162, 184, 0.1); /* Light cyan background */
+  border-bottom: 1.5px dashed #17a2b8; /* Cyan dashed underline */
+}
+
+.highlight.comment_warning {
+  background-color: rgba(255, 193, 7, 0.15); /* Light yellow background */
+  border-bottom: 1.5px dashed #ffc107; /* Yellow dashed underline */
+}
+
+.highlight.comment_error {
+  background-color: rgba(220, 53, 69, 0.15); /* Light red background */
+  border-bottom: 1.5px dashed #dc3545; /* Red dashed underline */
+}
+
+.highlight.comment_question {
+  background-color: rgba(102, 16, 242, 0.1); /* Light purple background */
+  border-bottom: 1.5px dashed #6610f2; /* Purple dashed underline */
+}
+
+.highlight.comment_suggestion {
+  background-color: rgba(40, 167, 69, 0.1); /* Light green background */
+  border-bottom: 1.5px dashed #28a745; /* Green dashed underline */
+}
+
+
+/* Style for the default 'agent_highlight' type */
+.highlight.highlight-agent_highlight {
+  background-color: rgba(255, 100, 0, 0.3); /* Bright orange, hard to miss */
+  border-bottom: 2px solid darkorange;
+}
+
+/* Style for the 'test_highlight' type seen in logs */
+.highlight.highlight-test_highlight {
+  background-color: rgba(0, 255, 255, 0.3); /* Bright cyan, hard to miss */
+  border-bottom: 2px solid teal;
+}
+
+/* Active highlight styling */
+.highlight.highlight-active {
+  /* Make the active one stand out more */
+  background-color: rgba(255, 165, 0, 0.5); /* Brighter orange background */
+  box-shadow: 0 0 0 1px orange; /* Add an outline */
+  /* Ensure active style overrides type-specific backgrounds if needed */
+}
+
+/* Ensure underlines don't add extra height */
+.ProseMirror span[class*="highlight"] {
+  line-height: inherit; /* Prevent underlines from messing with line height */
+}

@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package rox.interaction; // Package name
 
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+
 // For simple notifications if agent calls client and no specific response is needed.
 message Empty {}
 
@@ -54,10 +57,26 @@ message NotifyPageLoadRequest {
   optional string transcript = 6; // Optional: e.g., "client_loaded_rox_page"
 }
 
+// Message for generic RPC invocation data, if client constructs this based on proto
+message RpcInvocationData {
+  string caller_identity = 1; // Optional: if server needs to know caller from payload
+  string payload = 2;         // Base64 encoded actual protobuf message for the specific call
+  string request_id = 3;      // Optional: for tracking
+}
+
 // Service the agent will implement (called by frontend)
 service AgentInteraction {
-  rpc HandleFrontendButton(FrontendButtonClickRequest) returns (AgentResponse);
-  rpc NotifyPageLoad(NotifyPageLoadRequest) returns (AgentResponse); // Agent acknowledges page load
+  // Changed to accept RpcInvocationData and return StringValue (base64 encoded AgentResponse)
+  rpc HandleFrontendButton(RpcInvocationData) returns (google.protobuf.StringValue);
+
+  // Old one, kept for reference or if used elsewhere. Remove if V2 fully replaces it.
+  rpc NotifyPageLoad(NotifyPageLoadRequest) returns (AgentResponse);
+
+  // Method frontend is calling, signature aligned with Python service style
+  rpc NotifyPageLoadV2(RpcInvocationData) returns (google.protobuf.StringValue);
+
+  // TestPing method
+  rpc TestPing(google.protobuf.Empty) returns (google.protobuf.StringValue);
 }
 
 // Message to represent a single text highlight range

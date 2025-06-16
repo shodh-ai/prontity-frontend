@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 
 interface MicButtonProps {
   isVisible: boolean;
+  isActive?: boolean;
   onClick?: (isNowActive: boolean) => void;
   // Callback to pass the active MediaStream to the parent, e.g., for recording or visualization.
   onStreamChange?: (stream: MediaStream | null) => void;
@@ -10,6 +11,7 @@ interface MicButtonProps {
 
 export const MicButton = ({
   isVisible,
+  isActive,
   onClick,
   onStreamChange,
   className,
@@ -26,7 +28,7 @@ export const MicButton = ({
     return () => {
       if (stream) {
         console.log("Component unmounting, stopping all media tracks.");
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       }
     };
   }, [stream]); // The dependency array ensures this effect is aware of the current stream.
@@ -44,8 +46,8 @@ export const MicButton = ({
         });
         console.log("Microphone access granted.");
         setStream(newStream); // Save the stream
-        setIsMuted(false);    // Update the button's state
-        onClick?.(true);      // Inform parent that mic is now active
+        setIsMuted(false); // Update the button's state
+        onClick?.(true); // Inform parent that mic is now active
         onStreamChange?.(newStream); // Pass the stream to the parent
       } catch (err) {
         // The user denied permission or an error occurred.
@@ -59,11 +61,11 @@ export const MicButton = ({
       if (stream) {
         console.log("Stopping all media tracks.");
         // Stop every track in the stream, which releases the microphone.
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       }
-      setStream(null);      // Clear the stream from state
-      setIsMuted(true);     // Update the button's state
-      onClick?.(false);     // Inform parent that mic is now inactive
+      setStream(null); // Clear the stream from state
+      setIsMuted(true); // Update the button's state
+      onClick?.(false); // Inform parent that mic is now inactive
       onStreamChange?.(null); // Inform parent the stream is gone
     }
   };
@@ -82,7 +84,7 @@ export const MicButton = ({
   const iconAlt = isMuted ? "Microphone is off" : "Microphone is on";
 
   return (
-    <div className={`flex items-center h-12 ${className || ''}`}>
+    <div className={`flex items-center h-12 ${className || ""}`}>
       <button
         onClick={handleMicToggle}
         className={`p-3 sm:p-4 rounded-full h-14 w-14 flex items-center justify-center transition-colors duration-200 backdrop-blur-sm z-10 text-black ${buttonStyle}`}

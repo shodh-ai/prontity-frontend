@@ -6,12 +6,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
-import { RpcInvocationData } from 'livekit-client';
+import { RpcInvocationData } from "livekit-client";
 import {
   AgentToClientUIActionRequest,
   ClientUIActionResponse,
-} from '@/generated/protos/interaction';
-import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession';
+} from "@/generated/protos/interaction";
+import LiveKitSession, { LiveKitRpcAdapter } from "@/components/LiveKitSession";
+import InlineTimerButton from "@/components/ui/InlineTimerButton";
+import { RecordingBar } from "@/components/ui/record";
 
 // Helper function for Base64 encoding
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -26,38 +28,105 @@ function uint8ArrayToBase64(buffer: Uint8Array): string {
 export default function Page(): JSX.Element {
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
 
-  const handlePerformUIAction = useCallback(async (rpcInvocationData: RpcInvocationData): Promise<string> => {
-    const payloadString = rpcInvocationData.payload as string | undefined;
-    let requestId = rpcInvocationData.requestId || "";
-    console.log("[SpeakRoxPage] B2F RPC received. Request ID:", requestId);
+  const handlePerformUIAction = useCallback(
+    async (rpcInvocationData: RpcInvocationData): Promise<string> => {
+      const payloadString = rpcInvocationData.payload as string | undefined;
+      let requestId = rpcInvocationData.requestId || "";
+      console.log("[SpeakRoxPage] B2F RPC received. Request ID:", requestId);
 
-    try {
-      if (!payloadString) throw new Error("No payload received.");
+      try {
+        if (!payloadString) throw new Error("No payload received.");
 
-      const request = AgentToClientUIActionRequest.fromJSON(JSON.parse(payloadString));
-      let success = true;
-      let message = "Action processed successfully.";
+        const request = AgentToClientUIActionRequest.fromJSON(
+          JSON.parse(payloadString)
+        );
+        let success = true;
+        let message = "Action processed successfully.";
 
-      console.log(`[SpeakRoxPage] Received action: ${request.actionType}`, request);
-      // This page doesn't have complex UI elements like an editor,
-      // so we'll just log the action for now.
+        console.log(
+          `[SpeakRoxPage] Received action: ${request.actionType}`,
+          request
+        );
+        // This page doesn't have complex UI elements like an editor,
+        // so we'll just log the action for now.
 
-      const response = ClientUIActionResponse.create({ requestId, success, message });
-      return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
-    } catch (innerError) {
-      console.error('[SpeakRoxPage] Error handling Agent PerformUIAction:', innerError);
-      const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
-      const errResponse = ClientUIActionResponse.create({
-        requestId,
-        success: false,
-        message: `Client error processing UI action: ${errMessage}`
-      });
-      return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-    }
-  }, []);
+        const response = ClientUIActionResponse.create({
+          requestId,
+          success,
+          message,
+        });
+        return uint8ArrayToBase64(
+          ClientUIActionResponse.encode(response).finish()
+        );
+      } catch (innerError) {
+        console.error(
+          "[SpeakRoxPage] Error handling Agent PerformUIAction:",
+          innerError
+        );
+        const errMessage =
+          innerError instanceof Error ? innerError.message : String(innerError);
+        const errResponse = ClientUIActionResponse.create({
+          requestId,
+          success: false,
+          message: `Client error processing UI action: ${errMessage}`,
+        });
+        return uint8ArrayToBase64(
+          ClientUIActionResponse.encode(errResponse).finish()
+        );
+      }
+    },
+    []
+  );
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
+  const [showRecordingBar, setShowRecordingBar] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   // Data for control buttons
+  const startRecording = async () => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        setIsMicActive(true);
+        setShowRecordingBar(true);
+
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorderRef.current.onstop = () => {
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: "audio/wav",
+          });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          console.log("Recording finished:", audioUrl);
+          stream.getTracks().forEach((track) => track.stop());
+        };
+
+        mediaRecorderRef.current.start();
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+    setIsMicActive(false);
+    setShowRecordingBar(false);
+  };
+
   const controlButtons = [
     {
       icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame-2.svg",
@@ -80,14 +149,20 @@ export default function Page(): JSX.Element {
 
   return (
     <div className="w-full h-screen bg-white overflow-hidden relative">
-      <div style={{ display: 'none' }}>
+      <div style={{ display: "none" }}>
         <LiveKitSession
           roomName="speak-rox-room"
           userName="speak-rox-user"
           onConnected={(connectedRoom, rpcAdapter) => {
-            console.log("LiveKit connected in SpeakRoxPage, room:", connectedRoom);
+            console.log(
+              "LiveKit connected in SpeakRoxPage, room:",
+              connectedRoom
+            );
             liveKitRpcAdapterRef.current = rpcAdapter;
-            console.log("LiveKitRpcAdapter assigned in SpeakRoxPage:", liveKitRpcAdapterRef.current);
+            console.log(
+              "LiveKitRpcAdapter assigned in SpeakRoxPage:",
+              liveKitRpcAdapterRef.current
+            );
           }}
           onPerformUIAction={handlePerformUIAction}
         />
@@ -150,12 +225,12 @@ export default function Page(): JSX.Element {
                   <br />
                   Contrary to popular belief, Lorem Ipsum is not simply random
                   text. It has roots in a piece of classical Latin literature
-                  from 45 BC, making it over 2000 years old. Richard
-                  McClintock, a Latin professor at Hampden-Sydney College in
-                  Virginia, looked up one of the more obscure Latin words,
-                  consectetur, from a Lorem Ipsum passage, and going through the
-                  cites of the word in classical literature, discovered the
-                  undoubtable source.
+                  from 45 BC, making it over 2000 years old. Richard McClintock,
+                  a Latin professor at Hampden-Sydney College in Virginia,
+                  looked up one of the more obscure Latin words, consectetur,
+                  from a Lorem Ipsum passage, and going through the cites of the
+                  word in classical literature, discovered the undoubtable
+                  source.
                 </p>
               </CardContent>
             </Card>
@@ -183,48 +258,59 @@ export default function Page(): JSX.Element {
           <div className="w-full max-w-lg">
             {!isPopupVisible ? (
               <div className="flex items-center justify-between w-full">
-                {/* Left Group: This group is pushed to the extreme left by 'justify-between' */}
-                <div className="flex items-center gap-4 -ml-20">
-                  {controlButtons.slice(0, 3).map((button) => {
-                    if (button.alt === "Mic") {
-                      return (
-                        <MicButton
-                          key="mic-button"
-                          isVisible={true}
-                        />
-                      );
-                    }
-                    return (
-                      <Button
-                        key={button.alt}
-                        variant="outline"
-                        size="icon"
-                        className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
-                      >
-                        {/* Original Mic button used 'type: background', other buttons might not have this type property */}
-                        {button.type === "background" && button.icon ? (
-                          <div
-                            className="w-6 h-6 bg-cover"
-                            style={{ backgroundImage: `url(${button.icon})` }}
-                          />
-                        ) : (
-                          <img
-                            className="w-6 h-6"
-                            alt={button.alt}
-                            src={button.icon}
-                          />
-                        )}
-                      </Button>
-                    );
-                  })}
+                <div
+                  className={`flex items-center gap-4 ${
+                    !showRecordingBar ? "-ml-20" : ""
+                  }`}
+                >
+                  {showRecordingBar ? (
+                    <RecordingBar onStop={stopRecording} />
+                  ) : (
+                    <>
+                      {controlButtons.slice(0, 3).map((button) => {
+                        if (button.alt === "Camera") {
+                          return (
+                            <Button
+                              key={button.alt}
+                              variant="outline"
+                              size="icon"
+                              className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
+                              onClick={startRecording}
+                            >
+                              <img
+                                className="w-6 h-6"
+                                alt={button.alt}
+                                src={button.icon}
+                              />
+                            </Button>
+                          );
+                        }
+                        if (button.alt === "Mic") {
+                          return (
+                            <MicButton
+                              key="mic-button"
+                              isVisible={true}
+                              isActive={isMicActive}
+                            />
+                          );
+                        }
+                        if (button.alt === "Settings") {
+                          return (
+                            <InlineTimerButton key="inline-timer-button" />
+                          );
+                        }
+                        return null;
+                      })}
+                    </>
+                  )}
                 </div>
-
-                {/* Right Group: MessageButton component */}
-                <MessageButton
-                  isVisible={true}
-                  className="mr-10"
-                  onClick={() => setIsPopupVisible(true)}
-                />
+                {!showRecordingBar && (
+                  <MessageButton
+                    isVisible={true}
+                    className="mr-10"
+                    onClick={() => setIsPopupVisible(true)}
+                  />
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">

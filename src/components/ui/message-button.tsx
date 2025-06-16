@@ -3,14 +3,18 @@ import React, { useState } from "react";
 interface MessageButtonProps {
   isVisible: boolean;
   className?: string;
+  onClick?: () => void; // Added onClick prop
 }
 
-export const MessageButton = ({ isVisible, className }: MessageButtonProps): JSX.Element | null => {
+export const MessageButton = ({ isVisible, className, onClick }: MessageButtonProps): JSX.Element | null => {
   const [showBar, setShowBar] = useState(false);
   const staticMessage = "Can you tell me about my course summary and course insights till now?";
 
   const handleToggleBar = () => {
     setShowBar(prev => !prev);
+    if (onClick) {
+      onClick(); // Call the parent's onClick handler
+    }
   };
 
   const handleSend = () => {

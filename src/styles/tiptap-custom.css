@@ -1,0 +1,27 @@
+/* Custom Tiptap Scrollbar Styles */
+
+/* For Webkit-based browsers (Chrome, Safari, Edge) */
+.editor-container .ProseMirror::-webkit-scrollbar {
+  width: 10px; /* Width of the scrollbar */
+}
+
+.editor-container .ProseMirror::-webkit-scrollbar-track {
+  background: #f0f0f0; /* Color of the tracking area */
+  border-radius: 8px;
+}
+
+.editor-container .ProseMirror::-webkit-scrollbar-thumb {
+  background-color: #007bff; /* Blue color for the scrollbar thumb */
+  border-radius: 8px;
+  border: 2px solid #f0f0f0; /* Creates padding around thumb, matching track color */
+}
+
+.editor-container .ProseMirror::-webkit-scrollbar-thumb:hover {
+  background-color: #0056b3; /* Darker blue on hover */
+}
+
+/* For Firefox */
+.editor-container .ProseMirror {
+  scrollbar-width: thin; /* "auto" or "thin" */
+  scrollbar-color: #007bff #f0f0f0; /* thumb and track color */
+}

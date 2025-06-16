@@ -5,7 +5,7 @@
 // WebRTC Token Service configuration
 export const tokenServiceConfig = {
   // URL of the token service
-  url: process.env.NEXT_PUBLIC_TOKEN_SERVICE_URL || process.env.NEXT_PUBLIC_APP_URL || (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}:3002` : undefined) || 'http://localhost:3002',
+  url: process.env.NEXT_PUBLIC_TOKEN_SERVICE_URL || '',
   
   // API key for token service authentication
   apiKey: process.env.NEXT_PUBLIC_TOKEN_SERVICE_API_KEY || '',

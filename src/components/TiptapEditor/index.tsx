@@ -9,6 +9,7 @@ import { StrikeThroughRange } from './strikeThroughInterface'; // Added import
 const DEFAULT_HIGHLIGHT_DATA: Highlight[] = [];
 const DEFAULT_STRIKETHROUGH_DATA: StrikeThroughRange[] = [];
 import { strikeThroughPluginKey } from './StrikeThroughPluginLogic'; // Added import
+import '@/styles/tiptap-custom.css'; // Import custom Tiptap styles
 
 // --- Define Prop Types ---
 interface TiptapEditorProps {

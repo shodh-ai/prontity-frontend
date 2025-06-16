@@ -65,8 +65,9 @@ export default function RoxPage() {
     useState(false);
   const docsIconRef = useRef<HTMLImageElement>(null);
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
+  const pageLoadNotifiedRef = useRef(false); // Flag to ensure NotifyPageLoad is sent only once
   const connectionAttemptedRef = useRef<boolean>(false);
-  const timeoutIdsRef = useRef<number[]>([]);
+  const timeoutIdsRef = useRef<NodeJS.Timeout[]>([]);
   const tokenUpdateTimeRef = useRef<number>(0);
   const lastRoomNameRef = useRef<string | null>(null);
   
@@ -408,6 +409,46 @@ export default function RoxPage() {
     }
   };
 
+  const handleTestPingCall = async () => {
+    if (!liveKitRpcAdapterRef.current) {
+      const errorMessage =
+        "LiveKitRpcAdapter not available. Cannot call TestPing.";
+      console.error(errorMessage);
+      setRpcCallStatus(errorMessage);
+      return;
+    }
+    try {
+      setRpcCallStatus("Sending TestPing RPC call...");
+      const pingPayload = { ping_message: "Hello from frontend TestPing!" };
+      const serializedRequest = new TextEncoder().encode(JSON.stringify(pingPayload));
+
+      console.log(
+        "Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'TestPing' with request:",
+        pingPayload
+      );
+
+      const serializedResponseBytes = await liveKitRpcAdapterRef.current.request(
+        "rox.interaction.AgentInteraction",
+        "TestPing",
+        serializedRequest
+      );
+
+      const responseJson = new TextDecoder().decode(serializedResponseBytes);
+      const responseMessage = JSON.parse(responseJson);
+      console.log("RPC Response from TestPing:", responseMessage);
+
+      const successMessage = `TestPing RPC successful: ${responseMessage.pong_message || "No pong message"}. Status: ${responseMessage.status || "No status"}`;
+      setRpcCallStatus(successMessage);
+
+    } catch (e) {
+      const errorMessage = `Error calling TestPing RPC: ${
+        e instanceof Error ? e.message : String(e)
+      }`;
+      console.error(errorMessage, e);
+      setRpcCallStatus(errorMessage);
+    }
+  };
+
   // Add refs for connection management
   // Refs and constants are already declared at the top of the component
   
@@ -455,12 +496,23 @@ export default function RoxPage() {
           // Initialize RPC adapter with a longer timeout of 30 seconds to prevent RPC timeouts
           liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(
             newRoomInstance.localParticipant,
-            fallbackAgentIdentity,
-            30000 // 30 seconds timeout for RPC calls
+            "ai-assistant" // Target agent identity for RPC (corrected)
           );
           console.log(
             "LiveKitRpcAdapter initialized with fallback identity. Will update when agent is detected."
           );
+
+          // Add a delay before sending the initial page load notification
+          console.log("[RoxPage] Delaying initial NotifyPageLoadV2 call by 5 seconds...");
+          const timeoutId = setTimeout(() => {
+            if (roomRef.current && roomRef.current.state === 'connected') {
+              console.log("[RoxPage] Sending initial NotifyPageLoadV2 after delay.");
+              sendPageLoadNotificationToAgent(roomRef.current);
+            } else {
+              console.warn("[RoxPage] Room not connected after delay, not sending NotifyPageLoadV2.");
+            }
+          }, 5000);
+          timeoutIdsRef.current.push(timeoutId); // Store timeout ID for potential cleanup
 
           const localP = newRoomInstance.localParticipant; // Define localP
 
@@ -536,7 +588,7 @@ export default function RoxPage() {
                 NotifyPageLoadRequest.encode(pageLoadData).finish();
 
               console.log(
-                `[RoxPage] Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'NotifyPageLoad' with request:`,
+                `[RoxPage] Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'NotifyPageLoadV2' with request:`,
                 {
                   taskStage: pageLoadData.taskStage,
                   userId: pageLoadData.userId,
@@ -549,48 +601,50 @@ export default function RoxPage() {
                 const serializedResponse =
                   await liveKitRpcAdapterRef.current.request(
                     "rox.interaction.AgentInteraction",
-                    "NotifyPageLoad",
+                    "NotifyPageLoadV2",
                     serializedRequest
                   );
                 
-                const responseMessage = AgentResponse.decode(serializedResponse);
-                
+                // DIAGNOSTIC: Expecting JSON string response
+                const decodedString = new TextDecoder().decode(serializedResponse);
+                const responseJson = JSON.parse(decodedString);
+
                 console.log(
-                  `[RoxPage] RPC Response from NotifyPageLoad received successfully:`,
-                  {
-                    statusMessage: responseMessage.statusMessage?.substring(0, 100),
-                    hasDataPayload: responseMessage.dataPayload ? true : false,
-                    success: true
-                  }
+                  `[RoxPage] RPC Response from NotifyPageLoadV2 (DIAGNOSTIC - JSON) received successfully:`,
+                  responseJson
                 );
-                
-                return responseMessage;
+                setRpcCallStatus(
+                  `NotifyPageLoadV2 (DIAGNOSTIC) Success: ${responseJson.message || responseJson.status || 'OK'}`
+                );
+                // Optionally return the parsed JSON or a success indicator
+                // return responseJson; 
               } catch (rpcError) {
                 // Specifically handling RPC failures
                 console.error(
-                  `[RoxPage] RPC connection error in NotifyPageLoad: ${rpcError instanceof Error ? rpcError.message : String(rpcError)}`
+                  `[RoxPage] RPC connection error in NotifyPageLoadV2: ${rpcError instanceof Error ? rpcError.message : String(rpcError)}`,
+                  rpcError
                 );
-                throw rpcError; // Re-throw for the caller to handle
+                setRpcCallStatus(
+                  `NotifyPageLoadV2 RPC Error: ${rpcError instanceof Error ? rpcError.message : String(rpcError)}`
+                );
+                // throw rpcError; // Or return an error indicator
               }
             } catch (e) {
-              // General error handling
+              // General error handling for preparing the request etc.
               console.error(
-                `[RoxPage] Error preparing or calling NotifyPageLoad RPC: ${
+                `[RoxPage] Error preparing NotifyPageLoadV2 RPC call: ${
                   e instanceof Error ? e.message : String(e)
                 }`,
                 e
               );
-              return null;
+              setRpcCallStatus(
+                `NotifyPageLoadV2 Preparation Error: ${e instanceof Error ? e.message : String(e)}`
+              );
+              // return null; // Or an error indicator
             }
           };
 
-          // Increase the delay and add connection check before sending notification
-          setTimeout(
-
-            () => sendPageLoadNotificationToAgent(newRoomInstance),
-
-            2000 // Check if the connection is still valid before sending
-          );
+          // PageLoad notification will now be sent after agent identity is confirmed and RPC adapter is ready.
           // Setup a listener for when participants join to identify the agent
           newRoomInstance.on(
             RoomEvent.ParticipantConnected,
@@ -613,33 +667,13 @@ export default function RoxPage() {
                   console.log(
                     "LiveKitRpcAdapter updated with detected agent identity."
                   );
-                }
-              }
-            }
-          );
-
-          // Setup a listener for when participants join to identify the agent
-          newRoomInstance.on(
-            RoomEvent.ParticipantConnected,
-            (participant: RemoteParticipant) => {
-              console.log(`New participant connected: ${participant.identity}`);
-              if (
-                participant.identity !==
-                newRoomInstance.localParticipant.identity
-              ) {
-                // This is likely the agent
-                console.log(
-                  `Found agent with identity: ${participant.identity}`
-                );
-                // Update the RPC adapter with the correct agent identity
-                if (liveKitRpcAdapterRef.current) {
-                  liveKitRpcAdapterRef.current = new LiveKitRpcAdapter(
-                    newRoomInstance.localParticipant,
-                    participant.identity
-                  );
-                  console.log(
-                    "LiveKitRpcAdapter updated with detected agent identity."
-                  );
+                  if (!pageLoadNotifiedRef.current) {
+                    sendPageLoadNotificationToAgent(newRoomInstance);
+                    pageLoadNotifiedRef.current = true;
+                    console.log(
+                      "[RoxPage] Sent PageLoad notification after new agent connected."
+                    );
+                  }
                 }
               }
             }
@@ -681,6 +715,13 @@ export default function RoxPage() {
                 console.log(
                   "LiveKitRpcAdapter updated with existing agent identity."
                 );
+                if (!pageLoadNotifiedRef.current) {
+                  sendPageLoadNotificationToAgent(newRoomInstance);
+                  pageLoadNotifiedRef.current = true;
+                  console.log(
+                    "[RoxPage] Sent PageLoad notification for existing agent."
+                  );
+                }
               }
             } catch (err) {
               console.warn("Error checking existing participants:", err);
@@ -1054,7 +1095,8 @@ export default function RoxPage() {
             >
               Test RPC
             </Button>
-            {rpcCallStatus && (
+            {/* Status display for RPC calls */}
+        {rpcCallStatus && (
               <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 text-center w-full break-words">
                 {rpcCallStatus}
               </p>
@@ -1130,12 +1172,20 @@ export default function RoxPage() {
         )}
         {/* Disconnect button - optional, can be placed elsewhere or removed */}
         {isConnected && (
-          <button
-            onClick={handleDisconnect}
-            className="absolute top-4 left-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded"
-          >
-            Disconnect
-          </button>
+          <>
+            <button
+              onClick={handleDisconnect}
+              className="absolute top-4 left-4 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded"
+            >
+              Disconnect
+            </button>
+            <button
+              onClick={handleTestPingCall}
+              className="absolute top-4 left-32 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded"
+            >
+              Test Ping Call
+            </button>
+          </>
         )}
 
         

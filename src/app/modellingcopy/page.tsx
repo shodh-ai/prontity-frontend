@@ -175,50 +175,51 @@ export default function ModellingCopyPage() {
   const handleToggleNotesPanel = () => {
     setIsNotesPanelVisible(prev => !prev);
   };
-  const handleTestRpcCall = async () => {
+  const handleTestRpcCall = useCallback(async () => {
     if (!liveKitRpcAdapterRef.current) {
-      const errorMessage =
-        "LiveKitRpcAdapter not available. Cannot call HandleFrontendButton.";
-      console.error(errorMessage);
-      setRpcCallStatus(errorMessage);
+      setRpcCallStatus("RPC Adapter not ready.");
+      console.error("[ModellingCopyPage] RPC Adapter not available for Test RPC call.");
       return;
     }
+
+    setRpcCallStatus("Sending 'Trigger Highlight' RPC call...");
+    console.log("[ModellingCopyPage] Attempting to send 'Trigger Highlight' RPC call.");
+
     try {
-      setRpcCallStatus("Sending RPC call...");
-      
       const requestMessage = FrontendButtonClickRequest.create({
-        buttonId: "test_rpc_button",
-        customData: "Hello from frontend via LiveKitRpcAdapter!",
+        buttonId: "trigger_highlight_test", // Specific ID for backend to recognize
+        // Optionally, include a payload if your backend needs more context
+        // customData: JSON.stringify({ detail: "requesting highlight for specific text" })
       });
-      const serializedRequest =
-        FrontendButtonClickRequest.encode(requestMessage).finish();
+      console.log("[ModellingCopyPage] FrontendButtonClickRequest (for highlight) created:", requestMessage);
 
-      console.log(
-        "Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'HandleFrontendButton' with request:",
-        requestMessage
-      );
+      const serializedRequest = FrontendButtonClickRequest.encode(requestMessage).finish();
 
+      // Ensure 'rox.interaction.AgentInteraction' and 'HandleFrontendButton' match your LiveKitSession setup
+      // and the backend agent's RPC registration.
       const serializedResponse = await liveKitRpcAdapterRef.current.request(
         "rox.interaction.AgentInteraction", // Fully qualified service name from proto package and service
-        "HandleFrontendButton",
+        "HandleFrontendButton",             // The RPC method name on the backend agent
         serializedRequest
       );
 
-      const responseMessage = AgentResponse.decode(serializedResponse);
-      console.log("RPC Response from HandleFrontendButton:", responseMessage);
+      if (!serializedResponse) {
+        throw new Error("No response (null/undefined) received from RPC call.");
+      }
+      
+      const agentResponse = AgentResponse.decode(serializedResponse);
+      console.log("[ModellingCopyPage] AgentResponse received for 'Trigger Highlight':", agentResponse);
 
-      const successMessage = `RPC call successful: ${
-        responseMessage.statusMessage || "No status message"
-      }. Data: ${responseMessage.dataPayload || "No data"}`;
-      setRpcCallStatus(successMessage);
-    } catch (e) {
-      const errorMessage = `Error calling HandleFrontendButton RPC: ${
-        e instanceof Error ? e.message : String(e)
-      }`;
-      console.error(errorMessage, e);
-      setRpcCallStatus(errorMessage);
+      setRpcCallStatus(
+        `'Trigger Highlight' RPC successful: ${agentResponse.statusMessage || "Backend acknowledged."}. Data: ${agentResponse.dataPayload || "No data"}`
+      );
+    } catch (error: any) {
+      console.error("[ModellingCopyPage] Error during 'Trigger Highlight' RPC call:", error);
+      setRpcCallStatus(
+        `'Trigger Highlight' RPC failed: ${error.message || "Unknown error"}`
+      );
     }
-  };
+  }, [liveKitRpcAdapterRef]);
   return (
     <div className="w-full h-screen bg-white overflow-hidden relative">
       <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />

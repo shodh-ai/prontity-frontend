@@ -1,13 +1,60 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
+import { RpcInvocationData } from 'livekit-client';
+import {
+  AgentToClientUIActionRequest,
+  ClientUIActionResponse,
+} from '@/generated/protos/interaction';
+import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession';
+
+// Helper function for Base64 encoding
+function uint8ArrayToBase64(buffer: Uint8Array): string {
+  let binary = "";
+  const len = buffer.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(buffer[i]);
+  }
+  return btoa(binary);
+}
 
 export default function Page(): JSX.Element {
+  const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
+
+  const handlePerformUIAction = useCallback(async (rpcInvocationData: RpcInvocationData): Promise<string> => {
+    const payloadString = rpcInvocationData.payload as string | undefined;
+    let requestId = rpcInvocationData.requestId || "";
+    console.log("[ScaffSpeakPage] B2F RPC received. Request ID:", requestId);
+
+    try {
+      if (!payloadString) throw new Error("No payload received.");
+
+      const request = AgentToClientUIActionRequest.fromJSON(JSON.parse(payloadString));
+      let success = true;
+      let message = "Action processed successfully.";
+
+      console.log(`[ScaffSpeakPage] Received action: ${request.actionType}`, request);
+      // This page doesn't have complex UI elements like an editor,
+      // so we'll just log the action for now.
+
+      const response = ClientUIActionResponse.create({ requestId, success, message });
+      return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+    } catch (innerError) {
+      console.error('[ScaffSpeakPage] Error handling Agent PerformUIAction:', innerError);
+      const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
+      const errResponse = ClientUIActionResponse.create({
+        requestId,
+        success: false,
+        message: `Client error processing UI action: ${errMessage}`
+      });
+      return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+    }
+  }, []);
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
   // Data for control buttons
@@ -42,6 +89,18 @@ export default function Page(): JSX.Element {
 
   return (
     <div className="w-full h-screen bg-white overflow-hidden relative">
+      <div style={{ display: 'none' }}>
+        <LiveKitSession
+          roomName="scaff-speak-room"
+          userName="scaff-speak-user"
+          onConnected={(connectedRoom, rpcAdapter) => {
+            console.log("LiveKit connected in ScaffSpeakPage, room:", connectedRoom);
+            liveKitRpcAdapterRef.current = rpcAdapter;
+            console.log("LiveKitRpcAdapter assigned in ScaffSpeakPage:", liveKitRpcAdapterRef.current);
+          }}
+          onPerformUIAction={handlePerformUIAction}
+        />
+      </div>
       {/* Background elements */}
       <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
       <div className="absolute w-[25vw] h-[25vw] max-w-[353px] max-h-[353px] bottom-[-25vh] left-[-10vw] bg-[#336de6] rounded-full" />
@@ -141,7 +200,6 @@ export default function Page(): JSX.Element {
                         <MicButton
                           key="mic-button"
                           isVisible={true}
-                          isActive={true}
                         />
                       );
                     }

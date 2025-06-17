@@ -1,24 +1,50 @@
 // src/pages/your-page.tsx (or appropriate file path)
 
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { XIcon, ScreenShare } from "lucide-react";
+import TiptapEditor, { TiptapEditorHandle } from '../../components/TiptapEditor/TiptapEditor';
+import { StarterKit } from '@tiptap/starter-kit';
+import { HighlightExtension } from '@/components/TiptapEditor/HighlightExtension';
+import { Highlight } from '@/components/TiptapEditor/highlightInterface';
+import { Room, RoomEvent, RpcInvocationData } from 'livekit-client';
+import { getTokenEndpointUrl } from '@/config/services';
+import {
+  AgentToClientUIActionRequest,
+  ClientUIActionResponse,
+  ClientUIActionType,
+  HighlightRangeProto,
+} from '@/generated/protos/interaction';
 
 import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
 import { PreviousButton } from "@/components/ui/previous-button";
 import { NextButton } from "@/components/ui/next-button";
 import { PlayPauseButton } from "@/components/ui/playpause-button";
-
-// NEW: 1. Import the NotesButton, NotesPanel, and the Note type.
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
 import LiveKitSession from '@/components/LiveKitSession';
-import TiptapEditor from '@/components/TiptapEditor';
-import StarterKit from '@tiptap/starter-kit';
 
+// Helper functions for Base64
+function uint8ArrayToBase64(buffer: Uint8Array): string {
+  let binary = "";
+  const len = buffer.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(buffer[i]);
+  }
+  return btoa(binary);
+}
 
-// NEW: 2. Add mock data for the notes panel. You can fetch this from an API later.
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary_string = atob(base64);
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes;
+}
+
 const mockNotesData: Note[] = [
   {
     id: 1,
@@ -40,17 +66,106 @@ const mockNotesData: Note[] = [
   },
 ];
 
-
 export default function Page(): JSX.Element {
-  // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
-  // State to manage the play/pause status
-  const [isPaused, setIsPaused] = useState(false); // Default is playing
-
-  // NEW: 3. Add state to manage the visibility of the notes panel.
+  const [isPaused, setIsPaused] = useState(false);
   const [isNotesPanelVisible, setIsNotesPanelVisible] = useState(false);
 
-  // Handler functions for play/pause
+  const [room, setRoom] = useState<Room | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [highlightData, setHighlightData] = useState<Highlight[]>([]);
+  const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
+
+  const tiptapExtensions = [
+    StarterKit,
+    HighlightExtension
+  ];
+
+  const handlePerformUIAction = useCallback(async (rpcInvocationData: RpcInvocationData): Promise<string> => {
+    const payloadString = rpcInvocationData.payload as string | undefined;
+    let requestId = rpcInvocationData.requestId || "";
+    console.log("[ModellingCopyPage] B2F RPC received. Request ID:", requestId);
+
+    try {
+      if (!payloadString) throw new Error("No payload received.");
+
+      const request = AgentToClientUIActionRequest.fromJSON(JSON.parse(payloadString));
+      let success = true;
+      let message = "Action processed successfully.";
+
+      switch (request.actionType) {
+        case ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
+          if (request.highlightRangesPayload) {
+            // The payload is already the array of ranges, so we map over it directly.
+            const newHighlights: Highlight[] = request.highlightRangesPayload.map((range: any) => ({
+              start: range.from, // Map 'from' to 'start'
+              end: range.to,     // Map 'to' to 'end'
+              id: range.id,
+              type: 'highlight' // The type can be more specific later if needed
+            }));
+            console.log("Applying new highlights:", newHighlights);
+            setHighlightData(newHighlights);
+          } else {
+            success = false;
+            message = "Error: Missing highlightRangesPayload for HIGHLIGHT_TEXT_RANGES.";
+          }
+          break;
+        default:
+          success = false;
+          message = `Error: Unknown action_type '${request.actionType}'.`;
+          console.warn(`Unknown agent UI action: ${request.actionType}`);
+      }
+
+      const response = ClientUIActionResponse.create({ requestId, success, message });
+      return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+    } catch (innerError) {
+      console.error('Error handling Agent PerformUIAction:', innerError);
+      const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
+      const errResponse = ClientUIActionResponse.create({
+        requestId,
+        success: false,
+        message: `Client error processing UI action: ${errMessage}`
+      });
+      return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
+    }
+  }, []);
+
+  const connect = useCallback(async () => {
+    const roomName = "modelling-room";
+    const userName = "test-user";
+    try {
+      const response = await fetch(getTokenEndpointUrl(roomName, userName));
+      const { token } = await response.json();
+
+      const roomInstance = new Room();
+      setRoom(roomInstance);
+
+      await roomInstance.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+      setIsConnected(true);
+
+      roomInstance.on(RoomEvent.Disconnected, () => {
+        setIsConnected(false);
+        setRoom(null);
+      });
+
+      if (roomInstance.localParticipant) {
+        const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction";
+        roomInstance.localParticipant.registerRpcMethod(rpcMethodName, handlePerformUIAction);
+        console.log(`Client RPC Handler registered for: ${rpcMethodName}`);
+      }
+
+    } catch (error) {
+      console.error("Failed to connect to LiveKit:", error);
+    }
+  }, [handlePerformUIAction]);
+
+  useEffect(() => {
+    connect();
+    return () => {
+      room?.disconnect();
+    };
+  }, [connect]);
+
   const handlePlay = () => {
     console.log("Resuming explanation...");
     setIsPaused(false);
@@ -61,18 +176,14 @@ export default function Page(): JSX.Element {
     setIsPaused(true);
   };
   
-  // NEW: 4. Add a handler to toggle the notes panel.
   const handleToggleNotesPanel = () => {
     setIsNotesPanelVisible(prev => !prev);
   };
 
-
   return (
     <div className="w-full h-screen bg-white overflow-hidden relative">
-      {/* Background elements */}
       <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
       <div className="absolute w-[25vw] h-[25vw] max-w-[353px] max-h-[353px] bottom-[-25vh] left-[-10vw] bg-[#336de6] rounded-full" />
-      {/* Main content container with backdrop blur and union graphic */}
       <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[200px] [-webkit-backdrop-filter:blur(200px)_brightness(100%)]">
         <img
           className="absolute w-full max-w-[1336px] h-auto top-6 left-1/2 -translate-x-1/2 opacity-50"
@@ -81,12 +192,8 @@ export default function Page(): JSX.Element {
         />
       </div>
 
-      {/* Main Content Area */}
-      {/* MODIFIED: Constrained the main element to fit within the union graphic */}
       <main className="relative z-10 h-full flex flex-col w-full max-w-[1336px] mx-auto pt-16 px-12 pb-6">
-        {/* Placeholder for header/main content */}
         <div className={`flex-grow flex ${isNotesPanelVisible ? 'flex-row gap-4' : ''} overflow-hidden`}>
-          {/* Main content card (70% if notes panel is visible, 100% otherwise) */}
           <div
             className={`p-6 rounded-lg shadow-lg h-full overflow-y-auto bg-white 
                         ${isNotesPanelVisible ? 'flex-1' : 'w-full'}`}
@@ -96,30 +203,28 @@ export default function Page(): JSX.Element {
               <LiveKitSession roomName="modelling-room" userName="modelling-user" />
             </div>
             <div className="my-6">
-              <TiptapEditor
-                extensions={[StarterKit]}
-                onUpdate={(content: string) => {
-                  console.log("Editor content updated:", content);
-                }}
-                initialContent="<p>This is the <strong>Tiptap Editor</strong>. Start typing your model text here...</p>"
+              <TiptapEditor 
+                ref={tiptapEditorRef}
+                extensions={tiptapExtensions}
+                initialContent={`<p>This is the text that the agent will highlight.</p>`} 
+                isEditable={true}
+                highlightData={highlightData}
               />
             </div>
           </div>
 
-          {/* NotesPanel card (30% when visible) */}
           {isNotesPanelVisible && (
             <div className="w-[30%] h-full p-6 rounded-lg shadow-lg bg-white overflow-y-auto flex flex-col">
               <NotesPanel
-                isVisible={true} // Controlled by parent's conditional rendering
+                isVisible={true}
                 onClose={() => setIsNotesPanelVisible(false)}
                 notes={mockNotesData}
-                className="flex-grow" // NotesPanel component should fill this card container
+                className="flex-grow"
               />
             </div>
           )}
         </div>
 
-        {/* Footer section with conditional UI */}
         <div className="flex flex-col items-center gap-4 pb-5">
           <div className="relative top-5 z-30 inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
             <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
@@ -155,7 +260,6 @@ export default function Page(): JSX.Element {
                     onPause={handlePause}
                   />
                   
-                  {/* MODIFIED: NotesButton is now the 4th button */}
                   <NotesButton
                     isActive={isNotesPanelVisible}
                     onClick={handleToggleNotesPanel}
@@ -166,7 +270,6 @@ export default function Page(): JSX.Element {
 
                 <div className="flex items-center gap-4 mr-10">
                   
-                  {/* MODIFIED: ScreenShare is now the 6th button */}
                   <button
                     className="flex items-center justify-center w-12 h-12 bg-white/50 rounded-full hover:bg-white/80 transition-colors"
                     aria-label="Share Screen"

@@ -18,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={plusJakartaSans.className}>
+      <body className={`${plusJakartaSans.className} z-0`}>
         <AuthContextProvider>
           <Layout>{children}</Layout>
         </AuthContextProvider>

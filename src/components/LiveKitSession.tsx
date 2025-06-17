@@ -4,16 +4,10 @@ import {
   RoomContext,
   RoomAudioRenderer
 } from '@livekit/components-react';
-import { Room, Track, RoomEvent, LocalParticipant, RemoteParticipant, RpcError, RpcInvocationData } from 'livekit-client'; // Import necessary types
+import { Room, RoomEvent, LocalParticipant, RemoteParticipant, RpcError, RpcInvocationData, ConnectionState } from 'livekit-client'; // Import necessary types
 import { useEffect, useState, useCallback, useRef } from 'react';
-import AgentController from '@/components/AgentController';
-import LiveKitSessionUI from '@/components/LiveKitSessionUI';
 import { getTokenEndpointUrl, tokenServiceConfig } from '@/config/services';
-import '@livekit/components-styles';
-import '@/styles/figma-exact.css';
 import '@/styles/livekit-session-ui.css';
-
-import { PageType } from '@/components/LiveKitSessionUI';
 
 // --- RPC IMPORTS ---
 // NOTE: There is no 'livekit-rpc' package to import from for the client.
@@ -90,6 +84,27 @@ export class LiveKitRpcAdapter implements Rpc {
   }
 }
 
+export type PageType = 'default' | 'assessment' | 'practice' | 'custom'; // Define PageType
+
+let hasConnectedSuccessfully = false;
+let apiCallAttempted = false;
+let cachedTokenData: { studentToken: string; livekitUrl: string; roomName: string; [key: string]: any; } | null = null;
+
+// A single room instance, created once per page load, to survive React's Strict Mode re-mounts.
+const roomInstance = new Room({
+  adaptiveStream: true,
+  dynacast: true,
+  videoCaptureDefaults: {
+    resolution: { width: 640, height: 480, frameRate: 30 },
+  },
+  audioCaptureDefaults: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+  stopLocalTrackOnUnpublish: false,
+});
+
 interface LiveKitSessionProps {
   roomName: string;
   userName: string;
@@ -105,9 +120,15 @@ interface LiveKitSessionProps {
   aiAssistantEnabled?: boolean;
   showAvatar?: boolean;
   onRoomCreated?: (room: Room) => void;
+  onConnected?: (room: Room, rpcAdapter: LiveKitRpcAdapter) => void;
+  onPerformUIAction?: (data: RpcInvocationData) => Promise<string>;
 }
 
 export default function LiveKitSession({
+  // ... (props definition)
+  // Inserted log:
+  // console.log('[LiveKitSession] Component rendering with props:', { roomName, userName, questionText, sessionTitle, pageType, showTimer, timerDuration, hideVideo, hideAudio, aiAssistantEnabled, showAvatar });
+
   roomName,
   userName,
   questionText,
@@ -122,36 +143,54 @@ export default function LiveKitSession({
   aiAssistantEnabled = true,
   showAvatar = false,
   onRoomCreated,
-   // Destructure the new prop
+  onConnected,
+  onPerformUIAction,
 }: LiveKitSessionProps) {
+  console.log('[LiveKitSession] Component rendering. Props received:', { roomName, userName });
   // State for UI elements that might be controlled by React state
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");
   const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
+  const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
 
   const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Initializing session...");
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
   const [videoEnabled, setVideoEnabled] = useState<boolean>(!hideVideo);
   const [micHeartbeat, setMicHeartbeat] = useState<NodeJS.Timeout | null>(null);
   
-  const [roomInstance] = useState(() => new Room({
-    adaptiveStream: true,
-    dynacast: true,
-    videoCaptureDefaults: {
-      resolution: { width: 640, height: 480, frameRate: 30 }
-    },
-    audioCaptureDefaults: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-    stopLocalTrackOnUnpublish: false
-  }));
+
 
   // --- RPC STATE ---
   // We only need a ref for the typed service client.
   const agentServiceClientRef = useRef<AgentInteractionClientImpl | null>(null);
   const [rpcResponse, setRpcResponse] = useState<string>('');
+
+  // --- New UI States for Agent Control ---
+  type UiTimerStateType = {[timerId: string]: { isRunning: boolean; isPaused: boolean; timeLeft: number; totalDuration: number; timerType: string; }};
+  const [uiTimerState, setUiTimerState] = useState<UiTimerStateType>({});
+
+  type UiProgressStateType = {[indicatorId: string]: { currentStep: number; totalSteps: number; message?: string; }};
+  const [uiProgressState, setUiProgressState] = useState<UiProgressStateType>({});
+
+  type UiScoreStateType = {[displayId: string]: { scoreText: string; progressPercentage?: number; }};
+  const [uiScoreState, setUiScoreState] = useState<UiScoreStateType>({});
+
+  type UiButtonPropertiesType = {[buttonId: string]: { label?: string; disabled?: boolean; taskData?: any; styleClass?: string; }};
+  const [uiButtonProperties, setUiButtonProperties] = useState<UiButtonPropertiesType>({});
+
+  type UiButtonOptionsType = {[panelId: string]: Array<{label: string, actionContextUpdate: any}>};
+  const [uiButtonOptions, setUiButtonOptions] = useState<UiButtonOptionsType>({});
+
+  type UiAudioCueType = string | null;
+  const [uiAudioCue, setUiAudioCue] = useState<UiAudioCueType>(null);
+
+  type UiLoadingIndicatorsType = {[indicatorId: string]: { isLoading: boolean; message?: string; }};
+  const [uiLoadingIndicators, setUiLoadingIndicators] = useState<UiLoadingIndicatorsType>({});
+
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const handleLeave = useCallback(async () => {
     console.log('Leaving room...');
@@ -167,565 +206,308 @@ export default function LiveKitSession({
   const initializeAudio = useCallback(() => { /* ... (same as your original) ... */ }, [hideAudio, enableMicrophone]);
 
 
+    // Effect for fetching token and establishing initial connection
+  useEffect(() => {
+    console.log('[LiveKitSession] Main connection useEffect triggered. roomName:', roomName, 'userName:', userName);
+    let mounted = true; // To prevent state updates on unmounted component
+
+    const fetchTokenAndConnect = async () => {
+      if (!mounted) return;
+
+      // Critical: Ensure roomName and userName are present before proceeding
+      if (!roomName || !userName) {
+        console.error('[LiveKitSession] RoomName and UserName are required for connection.');
+        if (mounted) {
+          setConnectionError("RoomName and UserName are required.");
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Guard 1: If already successfully connected and room is in a connected state, do nothing.
+      if (hasConnectedSuccessfully && roomInstance.state === ConnectionState.Connected) {
+        console.log('[LiveKitSession] Already successfully connected. Skipping further action.');
+        if (mounted) setIsLoading(false); // Ensure loading is off if somehow still true
+        return;
+      }
+
+      // Guard 2: If a connection attempt is already in progress by this roomInstance, skip.
+      if (roomInstance.state === ConnectionState.Connecting) {
+        console.log('[LiveKitSession] Connection already in progress by this room instance. Skipping.');
+        return;
+      }
+
+      let currentTokenData = cachedTokenData;
+
+      if (!apiCallAttempted) {
+        console.log('[LiveKitSession] First attempt to fetch token in this component lifecycle for room:', roomName, 'user:', userName);
+        if (mounted) {
+          setIsLoading(true);
+          setConnectionError(null);
+        }
+        apiCallAttempted = true; // Mark that API call is being attempted for this page load/component lifecycle
+
+        try {
+          const backendUrl = new URL('http://localhost:8000/api/generate-token');
+          backendUrl.searchParams.append('roomName', roomName);
+          backendUrl.searchParams.append('userName', userName);
+
+          const requestHeaders: HeadersInit = {};
+          const pronityAuthToken = localStorage.getItem('authToken'); // Or your specific localStorage key for the auth token
+          if (pronityAuthToken) {
+            requestHeaders['Authorization'] = `Bearer ${pronityAuthToken}`;
+          }
+
+          const response = await fetch(backendUrl.toString(), {
+            method: 'GET',
+            headers: requestHeaders,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage = `Error fetching token: ${errorData.message || response.statusText}`;
+            console.error(`[LiveKitSession] ${errorMessage}`);
+            if (mounted) setConnectionError(errorMessage);
+            cachedTokenData = null; // Ensure no stale data on error
+            if (mounted) setIsLoading(false);
+            return;
+          }
+          const data = await response.json();
+          console.log('[LiveKitSession] Raw token API response data:', data);
+          cachedTokenData = data; // Cache successful token response
+          currentTokenData = data;
+          console.log('[LiveKitSession] Token received:', data.studentToken ? 'OK' : 'Missing', 'Room:', data.roomName);
+        } catch (error: any) {
+          const errorMessage = `Network error fetching token: ${error.message}`;
+          console.error(`[LiveKitSession] ${errorMessage}`, error);
+          if (mounted) setConnectionError(errorMessage);
+          cachedTokenData = null; // Ensure no stale data on error
+          if (mounted) setIsLoading(false);
+          return;
+        }
+      } else if (cachedTokenData) {
+        console.log('[LiveKitSession] API call previously attempted. Using cached token data for room:', cachedTokenData.roomName);
+        currentTokenData = cachedTokenData;
+        if (roomInstance.state === ConnectionState.Disconnected && mounted) {
+            setIsLoading(true);
+            setConnectionError(null); // Clear previous errors before new attempt
+        }
+      } else {
+        console.log('[LiveKitSession] API call previously attempted but failed to get token (no cached data). Not proceeding.');
+        if (mounted) {
+            if (!connectionError) setConnectionError('Previous attempt to fetch token failed. Please refresh.');
+            setIsLoading(false);
+        }
+        return;
+      }
+
+      if (!currentTokenData || !currentTokenData.studentToken) {
+        console.error('[LiveKitSession] No token available to connect.');
+        if (mounted) {
+            setConnectionError('No token available for connection.');
+            setIsLoading(false);
+        }
+        return;
+      }
+
+      if (roomInstance.state === ConnectionState.Disconnected) {
+        console.log(`[LiveKitSession] Attempting to connect with token for room: ${currentTokenData.roomName}`);
+        if (mounted && !isLoading) setIsLoading(true); // Ensure loading is true before connect
+        try {
+          const livekitWsUrl = currentTokenData.livekitUrl || process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880';
+          await roomInstance.connect(livekitWsUrl, currentTokenData.studentToken);
+          console.log('[LiveKitSession] roomInstance.connect call initiated. Waiting for connection events.');
+        } catch (error: any) {
+          const connectErrorMessage = `Error during roomInstance.connect call: ${error.message}`;
+          console.error(`[LiveKitSession] ${connectErrorMessage}`, error);
+          if (mounted) setConnectionError(connectErrorMessage);
+          hasConnectedSuccessfully = false;
+          if (mounted) setIsLoading(false);
+        }
+      } else {
+        console.log('[LiveKitSession] Room is not in Disconnected state, connect call skipped. Current state:', roomInstance.state);
+        if (isLoading && mounted) setIsLoading(false);
+      }
+    };
+
+    fetchTokenAndConnect();
+
+    return () => {
+      mounted = false;
+      if (micHeartbeat) {
+        clearInterval(micHeartbeat);
+      }
+    };
+  }, [roomName, userName]);
+  // Effect for managing room events, RPC client, and post-connection logic
   useEffect(() => {
     let mounted = true;
 
-    const setupRpcClient = () => {
-        if (roomInstance && roomInstance.state === 'connected' && roomInstance.localParticipant) {
-            if (!agentServiceClientRef.current) {
-                // This identity should match the one set in the Python agent (main.py)
-                // when the avatar is not enabled.
-                const AGENT_PARTICIPANT_IDENTITY = 'rox-custom-llm-agent';
-
-                if (!roomInstance.localParticipant) {
-                    console.warn('Local participant not available for RPC adapter setup. Cannot create LiveKitRpcAdapter.');
-                    return; // Exit if localParticipant is not yet available
-                }
-
-                console.log(`Attempting to set up RPC with agent: ${AGENT_PARTICIPANT_IDENTITY}`);
-                const livekitRpcAdapter = new LiveKitRpcAdapter(
-                    roomInstance.localParticipant, 
-                    AGENT_PARTICIPANT_IDENTITY
-                );
-                
-                // AgentInteractionClientImpl is the service client generated by ts-proto
-                agentServiceClientRef.current = new AgentInteractionClientImpl(livekitRpcAdapter);
-                console.log('LiveKit RPC client (AgentInteractionClient) initialized using LiveKitRpcAdapter.');
-            }
-        } else {
-            console.warn('Room not connected or local participant not available for RPC setup.');
+    // Helper function to set up the RPC adapter and notify the parent page.
+    // This prevents code duplication.
+    const setupRpcForAgent = (agentParticipant: RemoteParticipant) => {
+        if (!mounted || !roomInstance.localParticipant || liveKitRpcAdapterRef.current) {
+          // Don't set up if component unmounted, local user isn't present, or already set up.
+          return;
         }
-    };
 
-    const setupRoomEvents = () => {
-        roomInstance.on(RoomEvent.Connected, () => {
-            console.log('RoomEvent.Connected: Local participant available. Attempting RPC setup.');
-            setupRpcClient(); // Attempt to set up RPC client on connection
-        });
-        roomInstance.on(RoomEvent.Disconnected, () => {
-            console.log('RoomEvent.Disconnected: Clearing RPC client.');
-            agentServiceClientRef.current = null; // Clear client on disconnect
-        });
-        roomInstance.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
-          console.log(`Participant connected: ${participant.identity}`);
-        });
-        roomInstance.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-          // ... (your existing track subscription logic) ...
-        });
-    };
-
-    const connectToRoom = async () => {
-      if (token) return; 
-
-      try {
-        console.log(`Fetching token for room: ${roomName}, user: ${userName}`);
-        const tokenUrl = getTokenEndpointUrl(roomName, userName);
-        console.log('Attempting to fetch token from URL:', tokenUrl);
-        const fetchOptions: RequestInit = { headers: {} };
-        if (tokenServiceConfig.includeApiKeyInClient && tokenServiceConfig.apiKey) {
-          (fetchOptions.headers as Record<string, string>)['x-api-key'] = tokenServiceConfig.apiKey;
-        }
-        const resp = await fetch(tokenUrl, fetchOptions);
-        if (!resp.ok) throw new Error(`Failed to get token: ${resp.status} ${resp.statusText}`);
-        const data = await resp.json();
-
-        if (!mounted) return;
+        console.log(`[LiveKitSession] Found agent with identity: ${agentParticipant.identity}. Setting up RPC.`);
         
-        if (data.token) {
-          setToken(data.token);
-          console.log('Token received, connecting to LiveKit room...');
-          
-          setupRoomEvents(); // Setup event listeners before connecting
+        const adapter = new LiveKitRpcAdapter(
+            roomInstance.localParticipant,
+            agentParticipant.identity // Use the DISCOVERED identity
+        );
+        liveKitRpcAdapterRef.current = adapter;
 
-          await roomInstance.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL || data.wsUrl, data.token);
-          console.log('Successfully connected to LiveKit room.');
-          // RPC client setup is now triggered by RoomEvent.Connected
-
-          if (onRoomCreated) {
-            onRoomCreated(roomInstance);
-          }
-          fetch(`/api/agent?room=${roomName}`).catch(e => console.error('Error starting AI agent:', e));
-        } else {
-          console.error('Failed to get token from API (no token in response)');
+        // Now that the adapter is correctly configured, notify the parent component.
+        if (onConnected) {
+          onConnected(roomInstance, adapter);
         }
-      } catch (e) {
-        console.error('Error in connectToRoom process:', e);
+    };
+
+    const handleConnected = () => {
+      if (!mounted) return;
+      console.log(`[LiveKitSession] Successfully connected to LiveKit room: ${roomInstance.name}`);
+      setIsLoading(false);
+      setConnectionError(null);
+
+      // --- AGENT DISCOVERY LOGIC (from rox/page.tsx) ---
+      // Check if an agent is *already* in the room when we connect.
+      roomInstance.remoteParticipants.forEach(participant => {
+        // Simple heuristic: the first remote participant is the agent.
+        // You can make this more robust by checking metadata if needed.
+        if (!liveKitRpcAdapterRef.current) {
+           setupRpcForAgent(participant);
+        }
+      });
+      
+      // ... your other on-connection logic (mic enable, etc.) ...
+      if (!hideAudio) {
+        roomInstance.localParticipant?.setMicrophoneEnabled(true)
+          .then(() => { if (mounted) setAudioEnabled(true); });
       }
     };
-    
-    if ((audioInitialized || hideAudio) && !token) {
-        connectToRoom();
+
+    // This listener handles agents that join *after* we have connected.
+    const onParticipantConnected = (participant: RemoteParticipant) => {
+        console.log(`[LiveKitSession] Participant connected: ${participant.identity}`);
+        // If we haven't found an agent yet, this new participant must be it.
+        if (!liveKitRpcAdapterRef.current) {
+            setupRpcForAgent(participant);
+        }
+    };
+
+    const handleDisconnected = () => {
+      if (!mounted) return;
+      console.log('[LiveKitSession] Disconnected from LiveKit room.');
+      // Reset state on disconnect
+      liveKitRpcAdapterRef.current = null; 
+      setIsLoading(false);
+      setToken('');
+    };
+
+    roomInstance.on(RoomEvent.Connected, handleConnected);
+    roomInstance.on(RoomEvent.Disconnected, handleDisconnected);
+    roomInstance.on(RoomEvent.ParticipantConnected, onParticipantConnected);
+
+    // Initial check in case we are already connected (e.g., hot reload)
+    if (roomInstance.state === ConnectionState.Connected) {
+        handleConnected();
     }
-    
+
     return () => {
       mounted = false;
-      if (micHeartbeat) clearInterval(micHeartbeat);
-      roomInstance.disconnect().then(() => console.log('Disconnected from LiveKit room on cleanup.'));
-      agentServiceClientRef.current = null; // Clear ref on unmount
+      roomInstance.off(RoomEvent.Connected, handleConnected);
+      roomInstance.off(RoomEvent.Disconnected, handleDisconnected);
+      roomInstance.off(RoomEvent.ParticipantConnected, onParticipantConnected);
     };
-  }, [roomInstance, roomName, userName, audioInitialized, hideAudio, token, onRoomCreated, micHeartbeat, enableMicrophone]);
+  }, [onConnected, hideAudio]); // Simplified dependency array
 
 
-  const handleRpcButtonClick = async () => {
-    if (!agentServiceClientRef.current) {
-      console.error('Agent RPC service client not initialized. Are you connected to the room?');
-      setRpcResponse('RPC Client not ready. Ensure you are connected.');
-      return;
-    }
-    try {
-      const request = FrontendButtonClickRequest.create({
-        buttonId: "myDynamicTestButton",
-        customData: `Hello from ${userName} at ${new Date().toISOString()}`
-      });
-      console.log('Sending RPC request to agent:', request);
-      setRpcResponse('Sending RPC call...');
-
-      // The agent service is room-scoped, so no specific target participant is needed.
-      const response = await agentServiceClientRef.current.HandleFrontendButton(request);
-      
-      console.log('RPC Response from agent:', response);
-      setRpcResponse(`Agent says: ${response.statusMessage} (Payload: ${response.dataPayload || 'N/A'})`);
-    } catch (error) {
-      console.error('Error calling HandleFrontendButton RPC:', error);
-      setRpcResponse(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  // Define state for timer and progress indicators
-  const [timerState, setTimerState] = useState<{
-    isRunning: boolean;
-    isPaused: boolean;
-    timeLeft: number;
-    totalDuration: number;
-    timerType: string;
-  }>({
-    isRunning: false,
-    isPaused: false,
-    timeLeft: 0,
-    totalDuration: 0,
-    timerType: 'prep'
-  });
-  
-  const [progressState, setProgressState] = useState<{
-    currentStep: number;
-    totalSteps: number;
-    message?: string;
-  }>({
-    currentStep: 0,
-    totalSteps: 10,
-    message: ''
-  });
-  
-  const [scoreState, setScoreState] = useState<{
-    scoreText: string;
-    progressPercentage?: number;
-  }>({
-    scoreText: '',
-    progressPercentage: 0
-  });
-  
-  // New UI action states
-  const [buttonProperties, setButtonProperties] = useState<{[buttonId: string]: {
-    label?: string;
-    disabled?: boolean;
-    taskData?: any;
-    styleClass?: string;
-  }}>({});
-  const [buttonOptions, setButtonOptions] = useState<{[panelId: string]: Array<{label: string, actionContextUpdate: any}>}>({});
-  const [isLoading, setIsLoading] = useState<{[indicatorId: string]: {isLoading: boolean, message?: string}}>({});
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  
-  // Handler functions for timers and progress indicators
-  const handleTimerControl = (action: 'start' | 'stop' | 'pause' | 'reset', options?: any) => {
-    console.log(`[LiveKitSession] Timer action: ${action}`, options);
-    
-    switch (action) {
-      case 'start':
-        const duration = options?.durationSeconds || 60;
-        const timerType = options?.timerType || 'task';
-        setTimerState({
-          isRunning: true,
-          isPaused: false,
-          timeLeft: duration,
-          totalDuration: duration,
-          timerType: timerType
-        });
-        // In a real implementation, you would start a timer interval here
-        break;
-      case 'stop':
-        setTimerState(prev => ({
-          ...prev,
-          isRunning: false,
-          isPaused: false
-        }));
-        break;
-      case 'pause':
-        const pauseState = options?.pause !== undefined ? options.pause : !timerState.isPaused;
-        setTimerState(prev => ({
-          ...prev,
-          isPaused: pauseState
-        }));
-        break;
-      case 'reset':
-        setTimerState(prev => ({
-          ...prev,
-          timeLeft: prev.totalDuration,
-          isRunning: false,
-          isPaused: false
-        }));
-        break;
-    }
-  };
-  
-  const handleProgressUpdate = (currentStep: number, totalSteps: number, message?: string) => {
-    setProgressState({
-      currentStep,
-      totalSteps,
-      message
-    });
-  };
-  
-  const handleScoreUpdate = (scoreText: string, progressPercentage?: number) => {
-    setScoreState({
-      scoreText,
-      progressPercentage
-    });
-  };
-  
-  // New UI action handlers
-  const handleButtonPropertiesUpdate = (buttonId: string, properties: {
-    label?: string;
-    disabled?: boolean;
-    taskData?: any;
-    styleClass?: string;
-  }) => {
-    console.log(`[LiveKitSession] Button properties update:`, { buttonId, properties });
-    setButtonProperties(prev => ({
-      ...prev,
-      [buttonId]: {
-        ...prev[buttonId],
-        ...properties
-      }
-    }));
-  };
-  
-  const handleButtonOptionsUpdate = (panelId: string, buttons: Array<{label: string, actionContextUpdate: any}>) => {
-    console.log(`[LiveKitSession] Button options update:`, { panelId, buttons });
-    setButtonOptions(prev => ({
-      ...prev,
-      [panelId]: buttons
-    }));
-  };
-  
-  const handleInputFieldClear = (inputId: string) => {
-    console.log(`[LiveKitSession] Clearing input field:`, inputId);
-    // This would normally directly set the value of the input to empty string
-    // For complex components like editors, you'd need custom logic
-    const input = document.getElementById(inputId) as HTMLInputElement | HTMLTextAreaElement;
-    if (input) {
-      input.value = '';
-    }
-  };
-  
-  const handleEditorReadonlySections = (editorId: string, ranges: Array<{start: any, end: any, readOnly: boolean}>) => {
-    console.log(`[LiveKitSession] Setting editor readonly sections:`, { editorId, ranges });
-    // This would integrate with your specific editor implementation
-  };
-  
-  const handlePlayAudioCue = (soundName: string) => {
-    console.log(`[LiveKitSession] Playing audio cue:`, soundName);
-    // Map sound names to actual audio files
-    const soundMap: {[key: string]: string} = {
-      'correct_answer_ding': '/sounds/correct_answer_ding.mp3',
-      'error_buzz': '/sounds/error_buzz.mp3',
-      'notification_pop': '/sounds/notification_pop.mp3'
-    };
-    
-    // Play the audio if it exists in our map
-    if (soundMap[soundName]) {
-      if (!audioRef.current) {
-        audioRef.current = new Audio(soundMap[soundName]);
-      } else {
-        audioRef.current.src = soundMap[soundName];
-      }
-      audioRef.current.play().catch(err => console.error('Error playing audio:', err));
-    }
-  };
-  
-  const handleLoadingIndicator = (indicatorId: string, isLoading: boolean, message?: string) => {
-    console.log(`[LiveKitSession] Updating loading indicator:`, { indicatorId, isLoading, message });
-    setIsLoading(prev => ({
-      ...prev,
-      [indicatorId]: { isLoading, message }
-    }));
-  };
-
-  useEffect(() => {
+    useEffect(() => {
+    // This is the function that will be registered as the RPC handler.
     const handlePerformUIAction = async (
-      data: RpcInvocationData // Data object from LiveKit, includes payload
-    ): Promise<string> => { // LiveKit RPC handler must return Promise<string>
+      data: RpcInvocationData
+    ): Promise<string> => {
       console.log('[LiveKitSession] B2F RPC (handlePerformUIAction) invoked by agent.');
       
-      // Import ReactUIActions if not already imported
+      // If the parent page provided a custom handler, use it.
+      if (onPerformUIAction) {
+        console.log('[LiveKitSession] Delegating RPC handling to parent component.');
+        return onPerformUIAction(data);
+      }
+
+      // --- FALLBACK: If no handler is provided, run a default/legacy implementation ---
+      console.warn('[LiveKitSession] No onPerformUIAction handler provided by parent. Using fallback.');
       try {
-        // Create props object for ReactUIActions
-        const reactUIActionsProps = {
-          // Text content updaters
-          textStateUpdaters: {
-            'agentUpdatableText': setAgentUpdatableTextState,
-          },
-          // Visibility updaters
-          visibilityStateUpdaters: {
-            'agentToggleVisibilityElement': setIsAgentElementVisible,
-          },
-          // Timer control updaters
-          timerControlUpdaters: {
-            'speakingTaskTimer': handleTimerControl,
-          },
-          // Progress indicator updaters
-          progressIndicatorUpdaters: {
-            'drillProgressIndicator': handleProgressUpdate,
-          },
-          // Score updaters
-          scoreUpdaters: {
-            'drillScoreDisplay': handleScoreUpdate,
-          },
-          // New UI action handlers
-          buttonPropertiesUpdaters: {
-            'submitAnswerButton': (properties: any) => handleButtonPropertiesUpdate('submitAnswerButton', properties),
-            'startRecordingButton': (properties: any) => handleButtonPropertiesUpdate('startRecordingButton', properties),
-            'submitSpeakingTaskButton': (properties: any) => handleButtonPropertiesUpdate('submitSpeakingTaskButton', properties),
-            'roxStartRecommendedTaskButton': (properties: any) => handleButtonPropertiesUpdate('roxStartRecommendedTaskButton', properties),
-          },
-          buttonOptionsUpdaters: {
-            'feedbackOptionsPanel': (buttons: any) => handleButtonOptionsUpdate('feedbackOptionsPanel', buttons),
-            'p7NavigationPanel': (buttons: any) => handleButtonOptionsUpdate('p7NavigationPanel', buttons),
-          },
-          inputFieldClearers: {
-            'drillAnswerInputText': () => handleInputFieldClear('drillAnswerInputText'),
-          },
-          editorReadonlySectionsUpdaters: {
-            'scaffoldingFullEssayEditor': (ranges: any) => handleEditorReadonlySections('scaffoldingFullEssayEditor', ranges),
-          },
-          audioCuePlayers: {
-            'audio_player': (soundName: string) => handlePlayAudioCue(soundName),
-          },
-          loadingIndicatorUpdaters: {
-            'globalLoadingIndicator': (isLoading: boolean, message?: string) => handleLoadingIndicator('globalLoadingIndicator', isLoading, message),
-          },
-          // Enable logging
-          logActions: true
-        };
-        
-        // Use the imported handleReactUIAction function
-        const { handleReactUIAction } = await import('@/components/ui/ReactUIActions');
-        return await handleReactUIAction(data, reactUIActionsProps);
-      } catch (error) {
-        console.error('[LiveKitSession] Error using ReactUIActions:', error);
-        
-        // Fallback to legacy implementation
-        const payloadString = data.payload as string | undefined; // Assume data.payload is string | undefined (base64 encoded)
-        let requestId = "";
-        try {
-          if (!payloadString) {
-            console.error('Agent PerformUIAction: No payload received.');
-            const errResponse = ClientUIActionResponse.create({ success: false, message: "Error: No payload" });
-            return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-          }
-
-          const decodedPayload = base64ToUint8Array(payloadString);
-          const request = AgentToClientUIActionRequest.decode(decodedPayload);
-          requestId = request.requestId; // Store for response
-
-          console.log(`Agent PerformUIAction Request Received: `, request);
-
-          let success = true;
-          let message = "Action performed successfully.";
-
-          // --- Execute the UI Action ---
-          switch (request.actionType) {
-            case ClientUIActionType.SHOW_ALERT:
-              const alertMsg = request.parameters["message"] || "Agent alert!";
-              alert(`Agent Alert: ${alertMsg}`); // Simple alert for now
-              message = `Alert shown: ${alertMsg}`;
-              break;
-
-            case ClientUIActionType.UPDATE_TEXT_CONTENT:
-              const newText = request.parameters["text"];
-              if (request.targetElementId && newText !== undefined) {
-                // React way: Update state
-                if (request.targetElementId === "agentUpdatableText") { // Example mapping
-                    setAgentUpdatableTextState(newText);
-                    message = `Element '${request.targetElementId}' text updated (React state).`;
-                } else {
-                // Direct DOM manipulation (less ideal in React, but for generic elements):
-                  const element = document.getElementById(request.targetElementId);
-                  if (element) {
-                    element.innerText = newText;
-                    message = `Element '${request.targetElementId}' text updated.`;
-                  } else {
-                    success = false;
-                    message = `Error: Element '${request.targetElementId}' not found.`;
-                  }
-                }
-              } else {
-                success = false;
-                message = "Error: Missing targetElementId or text parameter for UPDATE_TEXT_CONTENT.";
-              }
-              break;
-
-            case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
-              if (request.targetElementId) {
-                // React way:
-                if (request.targetElementId === "agentToggleVisibilityElement") {
-                    setIsAgentElementVisible(prev => !prev); // Simple toggle
-                    message = `Element '${request.targetElementId}' visibility toggled (React state).`;
-                } else {
-                // Direct DOM manipulation:
-                  const element = document.getElementById(request.targetElementId);
-                  if (element) {
-                    element.style.display = element.style.display === 'none' ? '' : 'none';
-                    message = `Element '${request.targetElementId}' visibility toggled.`;
-                  } else {
-                    success = false;
-                    message = `Error: Element '${request.targetElementId}' not found.`;
-                  }
-                }
-              } else {
-                success = false;
-                message = "Error: Missing targetElementId for TOGGLE_ELEMENT_VISIBILITY.";
-              }
-              break;
-
-            default:
-              success = false;
-              message = `Error: Unknown action_type '${request.actionType}'.`;
-              console.warn(`Unknown agent UI action: ${request.actionType}`);
-          }
-
-          const response = ClientUIActionResponse.create({ requestId, success, message });
-          return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
-
-        } catch (innerError) {
-          console.error('Error handling Agent PerformUIAction:', innerError);
-          const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
-          const errResponse = ClientUIActionResponse.create({
-            requestId,
-            success: false,
-            message: `Client error processing UI action: ${errMessage}`
-          });
-          return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-        }
+        const response = ClientUIActionResponse.create({
+          requestId: data.requestId,
+          success: false,
+          message: "No specific UI action handler implemented on this page.",
+        });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+      } catch (e) {
+        // ... error handling ...
+        const errMessage = e instanceof Error ? e.message : String(e);
+        const errResponse = ClientUIActionResponse.create({ requestId: data.requestId, success: false, message: `Client error: ${errMessage}` });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
       }
     };
 
     // Register the handler when connected
     if (roomInstance && roomInstance.state === 'connected' && roomInstance.localParticipant) {
-      const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction"; // package.Service/Method
+      const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction";
       try {
+        // We register OUR `handlePerformUIAction`, which then delegates to the parent.
         roomInstance.localParticipant.registerRpcMethod(rpcMethodName, handlePerformUIAction);
-        console.log(`Client RPC Handler registered for: ${rpcMethodName}`);
+        console.log(`[LiveKitSession] Client RPC Handler registered for: ${rpcMethodName}`);
       } catch (e) {
-        // It might throw if already registered on hot-reload, handle gracefully
         if (e instanceof RpcError && e.message.includes("already registered")) {
-          console.warn(`RPC method ${rpcMethodName} already registered. This might be due to hot reload.`);
+          console.warn(`[LiveKitSession] RPC method ${rpcMethodName} already registered. This might be due to hot reload.`);
         } else {
-          console.error("Failed to register client-side RPC handler 'PerformUIAction':", e);
+          console.error("[LiveKitSession] Failed to register client-side RPC handler 'PerformUIAction':", e);
         }
       }
     }
 
-    // Cleanup (optional but good practice, though LiveKit might handle it on disconnect)
+    // Cleanup logic (optional but good practice)
     return () => {
-      // if (roomInstance && roomInstance.localParticipant) {
-      //   try {
-      //     roomInstance.localParticipant.unregisterRpcMethod("rox.interaction.ClientSideUI/PerformUIAction", handlePerformUIAction);
-      //   } catch (e) { /* ignore */ }
-      // }
+      // The unregister logic can be tricky with hot-reloads, so often it's left to the room disconnect to clean up.
     };
-  }, [roomInstance, roomInstance.state, roomInstance.localParticipant]); // Add dependencies
+  }, [roomInstance.state, roomInstance.localParticipant, onPerformUIAction]);
 
-  // ... (Your existing conditional rendering for audio initialization and loading states) ...
-  // Ensure this logic correctly leads to a state where `token` is set and `roomInstance` is connected.
-  if (!audioInitialized && !hideAudio) {
-    return (
-      <div className="figma-room-container">
-        <div className="figma-content">
-          Initializing audio... Please allow microphone access if prompted.
-        </div>
-      </div>
-    );
-  }
-  if (hideAudio && !audioInitialized) {
-      useEffect(() => {
-          if(hideAudio && !audioInitialized) {
-              setAudioInitialized(true);
-          }
-      }, [hideAudio, audioInitialized]);
-  }
-  if (token === '' && (audioInitialized || hideAudio) ) {
-     return <div className="figma-room-container"><div className="figma-content">Connecting to session...</div></div>;
-  }
-  if (!token && !audioInitialized && !hideAudio) {
-    return <div className="figma-room-container"><div className="figma-content">Initializing audio and connecting...</div></div>;
-  }
-  if (!token || (!audioInitialized && !hideAudio) || roomInstance.state !== 'connected') {
-      return <div className="figma-room-container"><div className="figma-content">Loading session... (State: {roomInstance.state})</div></div>;
-  }
+  // Effect to play audio cues
+  useEffect(() => {
+    if (uiAudioCue && audioPlayerRef.current) {
+      const soundMap: {[key: string]: string} = {
+        'correct_answer_ding': '/sounds/correct_answer_ding.mp3',
+        'error_buzz': '/sounds/error_buzz.mp3',
+        'notification_pop': '/sounds/notification_pop.mp3',
+        // Add more sound mappings as needed
+      };
+      if (soundMap[uiAudioCue]) {
+        audioPlayerRef.current.src = soundMap[uiAudioCue];
+        audioPlayerRef.current.play().catch(err => console.error('Error playing audio cue:', err));
+      }
+      setUiAudioCue(null); // Reset after attempting to play
+    }
+  }, [uiAudioCue]);
+
+
+
+
+
+
 
 
   return (
     <RoomContext.Provider value={roomInstance}>
-      <LiveKitSessionUI
-        token={token}
-        pageType={pageType}
-        sessionTitle={sessionTitle}
-        questionText={questionText}
-        userName={userName}
-        audioEnabled={audioEnabled}
-        videoEnabled={videoEnabled}
-        hideAudio={hideAudio}
-        hideVideo={hideVideo}
-        showTimer={showTimer}
-        timerDuration={timerDuration}
-        toggleAudio={toggleAudio}
-        toggleCamera={toggleCamera}
-        handleLeave={handleLeave} // Now correctly defined
-        customControls={customControls}
-      >
-        {aiAssistantEnabled && (audioInitialized || hideAudio) && (
-          <div className="hidden">
-            <AgentController 
-              roomName={roomName} 
-              pageType={pageType} 
-              showAvatar={showAvatar}
-            />
-          </div>
-        )}
-        
+      
         <RoomAudioRenderer />
 
-        {/* Elements for Agent to Target */}
-        <div style={{ border: '1px solid blue', padding: '10px', marginTop: '10px' }}>
-          <h4>Agent Controllable UI</h4>
-          <p id="agentUpdatableText">{agentUpdatableTextState}</p>
-          <div id="agentToggleVisibilityElement" style={{ background: 'lightgreen', padding: '5px', display: isAgentElementVisible ? 'block' : 'none' }}>
-            Agent can toggle my visibility.
-          </div>
-          <button id="agentTargetButton">Agent might click me later</button>
-        </div>
 
-        <div style={{ padding: '10px', background: '#f0f0f0', marginTop: '10px', textAlign: 'center', border: '1px solid #ccc' }}>
-          <h4>Agent RPC Test</h4>
-          <button onClick={handleRpcButtonClick} className="figma-button" disabled={!agentServiceClientRef.current || roomInstance.state !== 'connected'}>
-            Trigger Agent RPC
-          </button>
-          <p style={{ marginTop: '5px', fontSize: 'small', color: '#333' }}>
-            Agent RPC Response: <span style={{ fontWeight: 'bold' }}>{rpcResponse || '(No response yet)'}</span>
-          </p>
-        </div>
 
-      </LiveKitSessionUI>
+             
     </RoomContext.Provider>
   );
 }

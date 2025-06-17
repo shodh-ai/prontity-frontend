@@ -7,13 +7,14 @@ import Timer from './Timer';
 interface TimerControllerProps {
   visible?: boolean;
   room: Room | null;
+  initialDuration?: number; // Added initialDuration
   onTimerStarts?: () => void; // Callback for when timer starts
   onTimerEnds?: () => void;   // Callback for when timer ends
 }
 
-const TimerController: React.FC<TimerControllerProps> = ({ visible = true, room, onTimerStarts, onTimerEnds }) => {
+const TimerController: React.FC<TimerControllerProps> = ({ visible = true, room, initialDuration, onTimerStarts, onTimerEnds }) => {
   const [timerActive, setTimerActive] = useState(false);
-  const [timerDuration, setTimerDuration] = useState(45);
+  const [timerDuration, setTimerDuration] = useState(initialDuration || 45);
   const [timerLabel, setTimerLabel] = useState('Time Remaining');
   const [timerMode, setTimerMode] = useState<'preparation' | 'speaking'>('speaking');
 

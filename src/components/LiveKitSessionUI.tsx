@@ -43,6 +43,7 @@ export default function LiveKitSessionUI({
   hideAudio = false,
   hideVideo = false,
   showTimer = false,
+  timerDuration, // Added timerDuration here
   toggleAudio,
   toggleCamera,
   handleLeave,
@@ -50,57 +51,26 @@ export default function LiveKitSessionUI({
   children
 }: LiveKitSessionUIProps) {
   // Helper function to determine page-specific styles
-  const getPageSpecificClasses = () => {
-    switch (pageType) {
-      case 'speaking':
-        return 'speaking-page-container';
-      case 'writing':
-        return 'writing-page-container';
-      case 'vocab':
-        return 'vocab-page-container';
-      case 'reflection':
-        return 'reflection-page-container';
-      case 'rox':
-        return 'rox-page-container';
-      default:
-        return 'default-page-container';
-    }
-  };
 
   return (
-    <div className={`livekit-session-container ${getPageSpecificClasses()}`}>
-      {/* Header with session title */}
-      <div className="session-header">
-        <h2 className="session-title">{sessionTitle}</h2>
-        
-        {/* Display connection status */}
-        <div className="connection-status">
-          <span className={`status-indicator ${token ? 'connected' : 'disconnected'}`}>
-            {token ? 'Connected' : 'Connecting...'}
-          </span>
+    <div className={`livekit-session-ui-container page-type-${pageType}`}>
+      <header>
+        <h1>{sessionTitle}</h1>
+        {userName && <p>User: {userName}</p>}
+        {questionText && <p>Question: {questionText}</p>}
+      </header>
+      <main>
+        {children}
+      </main>
+      <footer>
+        <div className="controls">
+          {!hideAudio && <button onClick={toggleAudio}>{audioEnabled ? 'Mute' : 'Unmute'}</button>}
+          {!hideVideo && <button onClick={toggleCamera}>{videoEnabled ? 'Stop Camera' : 'Start Camera'}</button>}
+          {showTimer && <TimerController room={null} initialDuration={timerDuration || 60} />}
+          {customControls}
+          <button onClick={handleLeave}>Leave Session</button>
         </div>
-      </div>
-      
-      {/* Question display if provided */}
-      {questionText && (
-        <div className="question-container">
-          <h3 className="question-label">Question:</h3>
-          <p className="question-text">{questionText}</p>
-        </div>
-      )}
-      
-      {/* Timer display if enabled */}
-      {showTimer && token && (pageType === 'speaking' || pageType === 'speakingpage') && (
-        <div className="timer-container">
-          <TimerController visible={true} />
-        </div>
-      )}
-      
-      {/* Main conference container - now only contains controls */}
-
-      
-      {/* Additional content passed as children */}
-      {children}
+      </footer>
     </div>
   );
 }

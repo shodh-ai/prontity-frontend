@@ -105,18 +105,40 @@ export default function ModellingCopyPage() {
       switch (request.actionType) {
         case ClientUIActionType.HIGHLIGHT_TEXT_RANGES:
           if (request.highlightRangesPayload) {
-            // The payload is already the array of ranges, so we map over it directly.
+            // The payload is an array of ranges. We'll add them to our existing highlights.
             const newHighlights: Highlight[] = request.highlightRangesPayload.map((range: any) => ({
-              start: range.from, // Map 'from' to 'start'
-              end: range.to,     // Map 'to' to 'end'
+              start: range.from,
+              end: range.to,
               id: range.id,
-              type: 'highlight' // The type can be more specific later if needed
+              type: 'highlight'
             }));
-            console.log("Applying new highlights:", newHighlights);
-            setHighlightData(newHighlights);
+            console.log("Adding new highlights:", newHighlights);
+            setHighlightData(prevHighlights => {
+                const existingIds = new Set(prevHighlights.map(h => h.id));
+                const uniqueNewHighlights = newHighlights.filter(h => !existingIds.has(h.id));
+                if (uniqueNewHighlights.length < newHighlights.length) {
+                    console.warn("Filtered out duplicate highlight IDs.");
+                }
+                return [...prevHighlights, ...uniqueNewHighlights];
+            });
           } else {
             success = false;
             message = "Error: Missing highlightRangesPayload for HIGHLIGHT_TEXT_RANGES.";
+          }
+          break;
+
+        case ClientUIActionType.APPEND_TEXT_TO_EDITOR_REALTIME:
+          if (request.appendTextToEditorRealtimePayload?.textChunk && tiptapEditorRef.current?.editor) {
+            const editor = tiptapEditorRef.current.editor;
+            const textToAppend = request.appendTextToEditorRealtimePayload.textChunk;
+            // Append the text at the end of the document, adding a space for separation.
+            editor.chain().focus().insertContentAt(editor.state.doc.content.size, textToAppend + ' ').run();
+            console.log("Appended text to editor:", textToAppend);
+          } else {
+            success = false;
+            const errorMessage = "Error: Missing payload or editor instance for APPEND_TEXT_TO_EDITOR_REALTIME.";
+            message = errorMessage;
+            console.error(errorMessage);
           }
           break;
         default:
@@ -225,14 +247,14 @@ export default function ModellingCopyPage() {
                   liveKitRpcAdapterRef.current = rpcAdapter;
                   console.log("LiveKitRpcAdapter assigned in ModellingCopyPage:", liveKitRpcAdapterRef.current);
                 }}
-
+                onPerformUIAction={handlePerformUIAction}
               />
             </div>
             <div className="my-6">
               <TiptapEditor 
                 ref={tiptapEditorRef}
                 extensions={tiptapExtensions}
-                initialContent={`<p>This is the text that the agent will highlight.</p>`} 
+                initialContent={`<p></p>`} 
                 isEditable={true}
                 highlightData={highlightData}
               />

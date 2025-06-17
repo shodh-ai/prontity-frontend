@@ -15,6 +15,12 @@ import {
   ClientUIActionType,
   HighlightRangeProto,
 } from '@/generated/protos/interaction';
+import {
+  FrontendButtonClickRequest, // Existing F2B
+  AgentResponse, // Existing F2B
+  // Add these for B2F
+  NotifyPageLoadRequest,
+} from "@/generated/protos/interaction";
 
 import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
@@ -24,6 +30,8 @@ import { PlayPauseButton } from "@/components/ui/playpause-button";
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
 import LiveKitSession from '@/components/LiveKitSession';
+import { Button } from "@/components/ui/button";
+import { LiveKitRpcAdapter } from '@/components/LiveKitSession';
 
 // Helper functions for Base64
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -66,13 +74,14 @@ const mockNotesData: Note[] = [
   },
 ];
 
-export default function Page(): JSX.Element {
+export default function ModellingCopyPage() {
+  const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
+  const pageLoadNotifiedRef = useRef(false); // Flag to ensure NotifyPageLoad is sent only once
+  const [rpcCallStatus, setRpcCallStatus] = useState<string>("");
   const [isPopupVisible, setIsPopupVisible] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isNotesPanelVisible, setIsNotesPanelVisible] = useState(false);
 
-  const [room, setRoom] = useState<Room | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [highlightData, setHighlightData] = useState<Highlight[]>([]);
   const tiptapEditorRef = useRef<TiptapEditorHandle>(null);
 
@@ -130,41 +139,6 @@ export default function Page(): JSX.Element {
     }
   }, []);
 
-  const connect = useCallback(async () => {
-    const roomName = "modelling-room";
-    const userName = "test-user";
-    try {
-      const response = await fetch(getTokenEndpointUrl(roomName, userName));
-      const { token } = await response.json();
-
-      const roomInstance = new Room();
-      setRoom(roomInstance);
-
-      await roomInstance.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
-      setIsConnected(true);
-
-      roomInstance.on(RoomEvent.Disconnected, () => {
-        setIsConnected(false);
-        setRoom(null);
-      });
-
-      if (roomInstance.localParticipant) {
-        const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction";
-        roomInstance.localParticipant.registerRpcMethod(rpcMethodName, handlePerformUIAction);
-        console.log(`Client RPC Handler registered for: ${rpcMethodName}`);
-      }
-
-    } catch (error) {
-      console.error("Failed to connect to LiveKit:", error);
-    }
-  }, [handlePerformUIAction]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      room?.disconnect();
-    };
-  }, [connect]);
 
   const handlePlay = () => {
     console.log("Resuming explanation...");
@@ -179,7 +153,50 @@ export default function Page(): JSX.Element {
   const handleToggleNotesPanel = () => {
     setIsNotesPanelVisible(prev => !prev);
   };
+  const handleTestRpcCall = async () => {
+    if (!liveKitRpcAdapterRef.current) {
+      const errorMessage =
+        "LiveKitRpcAdapter not available. Cannot call HandleFrontendButton.";
+      console.error(errorMessage);
+      setRpcCallStatus(errorMessage);
+      return;
+    }
+    try {
+      setRpcCallStatus("Sending RPC call...");
+      
+      const requestMessage = FrontendButtonClickRequest.create({
+        buttonId: "test_rpc_button",
+        customData: "Hello from frontend via LiveKitRpcAdapter!",
+      });
+      const serializedRequest =
+        FrontendButtonClickRequest.encode(requestMessage).finish();
 
+      console.log(
+        "Calling RPC: Service 'rox.interaction.AgentInteraction', Method 'HandleFrontendButton' with request:",
+        requestMessage
+      );
+
+      const serializedResponse = await liveKitRpcAdapterRef.current.request(
+        "rox.interaction.AgentInteraction", // Fully qualified service name from proto package and service
+        "HandleFrontendButton",
+        serializedRequest
+      );
+
+      const responseMessage = AgentResponse.decode(serializedResponse);
+      console.log("RPC Response from HandleFrontendButton:", responseMessage);
+
+      const successMessage = `RPC call successful: ${
+        responseMessage.statusMessage || "No status message"
+      }. Data: ${responseMessage.dataPayload || "No data"}`;
+      setRpcCallStatus(successMessage);
+    } catch (e) {
+      const errorMessage = `Error calling HandleFrontendButton RPC: ${
+        e instanceof Error ? e.message : String(e)
+      }`;
+      console.error(errorMessage, e);
+      setRpcCallStatus(errorMessage);
+    }
+  };
   return (
     <div className="w-full h-screen bg-white overflow-hidden relative">
       <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
@@ -200,7 +217,16 @@ export default function Page(): JSX.Element {
           >
             <h2 className="text-xl font-semibold mb-4 text-gray-800">Speaking Modelling</h2>
             <div className="my-6">
-              <LiveKitSession roomName="modelling-room" userName="modelling-user" />
+              <LiveKitSession
+                roomName="modelling-room"
+                userName="modelling-user"
+                onConnected={(connectedRoom, rpcAdapter) => {
+                  console.log("LiveKit connected in ModellingCopyPage, room:", connectedRoom);
+                  liveKitRpcAdapterRef.current = rpcAdapter;
+                  console.log("LiveKitRpcAdapter assigned in ModellingCopyPage:", liveKitRpcAdapterRef.current);
+                }}
+
+              />
             </div>
             <div className="my-6">
               <TiptapEditor 
@@ -264,6 +290,12 @@ export default function Page(): JSX.Element {
                     isActive={isNotesPanelVisible}
                     onClick={handleToggleNotesPanel}
                   />
+              <Button
+              onClick={handleTestRpcCall}
+              variant="outline"
+              className="w-full px-3 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-md truncate">
+              Test RPC
+            </Button>
                   
                   <MicButton isVisible={true} />
                 </div>
@@ -284,6 +316,7 @@ export default function Page(): JSX.Element {
                   />
                 </div>
               </div>
+              
             ) : (
               <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
                 <input
@@ -293,6 +326,7 @@ export default function Page(): JSX.Element {
                   autoFocus
                 />
               </div>
+              
             )}
           </div>
         </div>

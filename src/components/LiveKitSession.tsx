@@ -120,6 +120,8 @@ interface LiveKitSessionProps {
   aiAssistantEnabled?: boolean;
   showAvatar?: boolean;
   onRoomCreated?: (room: Room) => void;
+  onConnected?: (room: Room, rpcAdapter: LiveKitRpcAdapter) => void;
+  onPerformUIAction?: (data: RpcInvocationData) => Promise<string>;
 }
 
 export default function LiveKitSession({
@@ -141,12 +143,14 @@ export default function LiveKitSession({
   aiAssistantEnabled = true,
   showAvatar = false,
   onRoomCreated,
-   // Destructure the new prop
+  onConnected,
+  onPerformUIAction,
 }: LiveKitSessionProps) {
   console.log('[LiveKitSession] Component rendering. Props received:', { roomName, userName });
   // State for UI elements that might be controlled by React state
   const [agentUpdatableTextState, setAgentUpdatableTextState] = useState("Initial text here. Agent can change me!");
   const [isAgentElementVisible, setIsAgentElementVisible] = useState(true);
+  const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
 
   const [token, setToken] = useState('');
   const [audioInitialized, setAudioInitialized] = useState<boolean>(false);
@@ -339,77 +343,74 @@ export default function LiveKitSession({
   useEffect(() => {
     let mounted = true;
 
+    // Helper function to set up the RPC adapter and notify the parent page.
+    // This prevents code duplication.
+    const setupRpcForAgent = (agentParticipant: RemoteParticipant) => {
+        if (!mounted || !roomInstance.localParticipant || liveKitRpcAdapterRef.current) {
+          // Don't set up if component unmounted, local user isn't present, or already set up.
+          return;
+        }
+
+        console.log(`[LiveKitSession] Found agent with identity: ${agentParticipant.identity}. Setting up RPC.`);
+        
+        const adapter = new LiveKitRpcAdapter(
+            roomInstance.localParticipant,
+            agentParticipant.identity // Use the DISCOVERED identity
+        );
+        liveKitRpcAdapterRef.current = adapter;
+
+        // Now that the adapter is correctly configured, notify the parent component.
+        if (onConnected) {
+          onConnected(roomInstance, adapter);
+        }
+    };
+
     const handleConnected = () => {
       if (!mounted) return;
       console.log(`[LiveKitSession] Successfully connected to LiveKit room: ${roomInstance.name}`);
       setIsLoading(false);
       setConnectionError(null);
 
-      if (agentServiceClientRef.current) {
-        console.log('[LiveKitSession] RPC client already exists on connect, skipping setup.');
-      } else if (roomInstance.localParticipant) {
-        const AGENT_PARTICIPANT_IDENTITY = 'rox-custom-llm-agent';
-        console.log(`[LiveKitSession] Setting up RPC with agent: ${AGENT_PARTICIPANT_IDENTITY}`);
-        const livekitRpcAdapter = new LiveKitRpcAdapter(
-            roomInstance.localParticipant,
-            AGENT_PARTICIPANT_IDENTITY
-        );
-        agentServiceClientRef.current = new AgentInteractionClientImpl(livekitRpcAdapter);
-        console.log('[LiveKitSession] LiveKit RPC client initialized.');
-      } else {
-        console.warn('[LiveKitSession] Local participant not available on connect, cannot set up RPC client.');
-      }
-
-      if (onRoomCreated) {
-        onRoomCreated(roomInstance);
-      }
-
+      // --- AGENT DISCOVERY LOGIC (from rox/page.tsx) ---
+      // Check if an agent is *already* in the room when we connect.
+      roomInstance.remoteParticipants.forEach(participant => {
+        // Simple heuristic: the first remote participant is the agent.
+        // You can make this more robust by checking metadata if needed.
+        if (!liveKitRpcAdapterRef.current) {
+           setupRpcForAgent(participant);
+        }
+      });
+      
+      // ... your other on-connection logic (mic enable, etc.) ...
       if (!hideAudio) {
         roomInstance.localParticipant?.setMicrophoneEnabled(true)
-          .then(() => {
-            if (mounted) {
-              console.log("[LiveKitSession] Microphone enabled post-connection.");
-              setAudioEnabled(true);
-              setAudioInitialized(true);
-            }
-          })
-          .catch(e => console.error('[LiveKitSession] Failed to enable microphone post-connection:', e));
-      } else {
-        if (mounted) setAudioInitialized(true);
+          .then(() => { if (mounted) setAudioEnabled(true); });
       }
+    };
 
-      console.log(`[LiveKitSession] Initial participants in room: ${roomInstance.numParticipants + 1}`);
-
-      // The /api/agent call was removed as agent interaction is now handled via LiveKit RPC.
+    // This listener handles agents that join *after* we have connected.
+    const onParticipantConnected = (participant: RemoteParticipant) => {
+        console.log(`[LiveKitSession] Participant connected: ${participant.identity}`);
+        // If we haven't found an agent yet, this new participant must be it.
+        if (!liveKitRpcAdapterRef.current) {
+            setupRpcForAgent(participant);
+        }
     };
 
     const handleDisconnected = () => {
       if (!mounted) return;
       console.log('[LiveKitSession] Disconnected from LiveKit room.');
-      setToken(''); // Clear token on disconnect
-      setIsLoading(false); // Stop loading if it was in progress
-      // setConnectionError("Disconnected from session."); // Optional: inform user
-      agentServiceClientRef.current = null;
-      setAudioEnabled(false);
-      setAudioInitialized(false); // Reset audio state
-    };
-
-    const onParticipantConnected = (participant: RemoteParticipant) => {
-      console.log(`[LiveKitSession] Participant connected: ${participant.identity}`);
-      console.log(`[LiveKitSession] Total participants in room: ${roomInstance.numParticipants + 1}`);
-    };
-
-    const onParticipantDisconnected = (participant: RemoteParticipant) => {
-      console.log(`[LiveKitSession] Participant disconnected: ${participant.identity}`);
-      console.log(`[LiveKitSession] Total participants in room: ${roomInstance.numParticipants + 1}`);
+      // Reset state on disconnect
+      liveKitRpcAdapterRef.current = null; 
+      setIsLoading(false);
+      setToken('');
     };
 
     roomInstance.on(RoomEvent.Connected, handleConnected);
     roomInstance.on(RoomEvent.Disconnected, handleDisconnected);
     roomInstance.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-    roomInstance.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
 
-    // Initial check in case already connected (e.g. hot reload preserves room state)
+    // Initial check in case we are already connected (e.g., hot reload)
     if (roomInstance.state === ConnectionState.Connected) {
         handleConnected();
     }
@@ -419,220 +420,61 @@ export default function LiveKitSession({
       roomInstance.off(RoomEvent.Connected, handleConnected);
       roomInstance.off(RoomEvent.Disconnected, handleDisconnected);
       roomInstance.off(RoomEvent.ParticipantConnected, onParticipantConnected);
-      roomInstance.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-      // Do not disconnect here if we want the room to persist across re-renders
     };
-  }, [roomInstance, hideAudio, aiAssistantEnabled, onRoomCreated, userName]); // userName for agent call
+  }, [onConnected, hideAudio]); // Simplified dependency array
 
 
-  useEffect(() => {
+    useEffect(() => {
+    // This is the function that will be registered as the RPC handler.
     const handlePerformUIAction = async (
-      data: RpcInvocationData // Data object from LiveKit, includes payload
-    ): Promise<string> => { // LiveKit RPC handler must return Promise<string>
+      data: RpcInvocationData
+    ): Promise<string> => {
       console.log('[LiveKitSession] B2F RPC (handlePerformUIAction) invoked by agent.');
       
-      // Import ReactUIActions if not already imported
+      // If the parent page provided a custom handler, use it.
+      if (onPerformUIAction) {
+        console.log('[LiveKitSession] Delegating RPC handling to parent component.');
+        return onPerformUIAction(data);
+      }
+
+      // --- FALLBACK: If no handler is provided, run a default/legacy implementation ---
+      console.warn('[LiveKitSession] No onPerformUIAction handler provided by parent. Using fallback.');
       try {
-        // Create props object for ReactUIActions
-        const reactUIActionsProps = {
-          textStateUpdaters: {
-            'agentUpdatableText': setAgentUpdatableTextState,
-          },
-          visibilityStateUpdaters: {
-            'agentToggleVisibilityElement': setIsAgentElementVisible,
-          },
-          timerControlUpdaters: {
-            'speakingTaskTimer': (action: 'start' | 'stop' | 'pause' | 'reset', options?: any) => {
-              console.log(`[LiveKitSession] Timer action for 'speakingTaskTimer': ${action}`, options);
-              setUiTimerState(prev => {
-                const currentTimer = prev['speakingTaskTimer'] || { isRunning: false, isPaused: false, timeLeft: 0, totalDuration: 0, timerType: 'task' };
-                switch (action) {
-                  case 'start':
-                    const duration = options?.durationSeconds || 60;
-                    const timerType = options?.timerType || 'task';
-                    return { ...prev, 'speakingTaskTimer': { isRunning: true, isPaused: false, timeLeft: duration, totalDuration: duration, timerType: timerType } };
-                  case 'stop':
-                    return { ...prev, 'speakingTaskTimer': { ...currentTimer, isRunning: false, isPaused: false } };
-                  case 'pause':
-                    const pauseState = options?.pause !== undefined ? options.pause : !currentTimer.isPaused;
-                    return { ...prev, 'speakingTaskTimer': { ...currentTimer, isPaused: pauseState } };
-                  case 'reset':
-                    return { ...prev, 'speakingTaskTimer': { ...currentTimer, timeLeft: currentTimer.totalDuration, isRunning: false, isPaused: false } };
-                  default: return prev;
-                }
-              });
-            },
-          },
-          progressIndicatorUpdaters: {
-            'drillProgressIndicator': (currentStep: number, totalSteps: number, message?: string) => 
-              setUiProgressState(prev => ({ ...prev, 'drillProgressIndicator': { currentStep, totalSteps, message } })),
-          },
-          scoreUpdaters: {
-            'drillScoreDisplay': (scoreText: string, progressPercentage?: number) => 
-              setUiScoreState(prev => ({ ...prev, 'drillScoreDisplay': { scoreText, progressPercentage } })),
-          },
-          buttonPropertiesUpdaters: {
-            'submitAnswerButton': (properties: any) => setUiButtonProperties(prev => ({ ...prev, 'submitAnswerButton': { ...(prev['submitAnswerButton'] || {}), ...properties }})),
-            'startRecordingButton': (properties: any) => setUiButtonProperties(prev => ({ ...prev, 'startRecordingButton': { ...(prev['startRecordingButton'] || {}), ...properties }})),
-            'submitSpeakingTaskButton': (properties: any) => setUiButtonProperties(prev => ({ ...prev, 'submitSpeakingTaskButton': { ...(prev['submitSpeakingTaskButton'] || {}), ...properties }})),
-            'roxStartRecommendedTaskButton': (properties: any) => setUiButtonProperties(prev => ({ ...prev, 'roxStartRecommendedTaskButton': { ...(prev['roxStartRecommendedTaskButton'] || {}), ...properties }})),
-          },
-          buttonOptionsUpdaters: {
-            'feedbackOptionsPanel': (buttons: any) => setUiButtonOptions(prev => ({ ...prev, 'feedbackOptionsPanel': buttons })),
-            'p7NavigationPanel': (buttons: any) => setUiButtonOptions(prev => ({ ...prev, 'p7NavigationPanel': buttons })),
-          },
-          inputFieldClearers: {
-            'drillAnswerInputText': () => {
-              const input = document.getElementById('drillAnswerInputText') as HTMLInputElement | HTMLTextAreaElement;
-              if (input) input.value = '';
-            },
-          },
-          editorReadonlySectionsUpdaters: {
-            'scaffoldingFullEssayEditor': (ranges: Array<{start: any, end: any, readOnly: boolean}>) => {
-              console.log('[LiveKitSession] Setting editor readonly sections for scaffoldingFullEssayEditor:', { ranges });
-              // Placeholder for actual editor integration. You might store `ranges` in a state if needed.
-            },
-          },
-          audioCuePlayers: {
-            'audio_player': (soundName: string) => {
-              console.log('[LiveKitSession] Requesting to play audio cue:', soundName);
-              setUiAudioCue(soundName); // Trigger useEffect to play the sound
-            },
-          },
-          loadingIndicatorUpdaters: {
-            'globalLoadingIndicator': (isLoading: boolean, message?: string) => 
-              setUiLoadingIndicators(prev => ({ ...prev, 'globalLoadingIndicator': { isLoading, message } })),
-          },
-          logActions: true
-        };
-        
-        // Use the imported handleReactUIAction function
-        const { handleReactUIAction } = await import('@/components/ui/ReactUIActions');
-        return await handleReactUIAction(data, reactUIActionsProps);
-      } catch (error) {
-        console.error('[LiveKitSession] Error using ReactUIActions:', error);
-        
-        // Fallback to legacy implementation
-        const payloadString = data.payload as string | undefined; // Assume data.payload is string | undefined (base64 encoded)
-        let requestId = "";
-        try {
-          if (!payloadString) {
-            console.error('Agent PerformUIAction: No payload received.');
-            const errResponse = ClientUIActionResponse.create({ success: false, message: "Error: No payload" });
-            return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-          }
-
-          const decodedPayload = base64ToUint8Array(payloadString);
-          const request = AgentToClientUIActionRequest.decode(decodedPayload);
-          requestId = request.requestId; // Store for response
-
-          console.log(`Agent PerformUIAction Request Received: `, request);
-
-          let success = true;
-          let message = "Action performed successfully.";
-
-          // --- Execute the UI Action ---
-          switch (request.actionType) {
-            case ClientUIActionType.SHOW_ALERT:
-              const alertMsg = request.parameters["message"] || "Agent alert!";
-              alert(`Agent Alert: ${alertMsg}`); // Simple alert for now
-              message = `Alert shown: ${alertMsg}`;
-              break;
-
-            case ClientUIActionType.UPDATE_TEXT_CONTENT:
-              const newText = request.parameters["text"];
-              if (request.targetElementId && newText !== undefined) {
-                // React way: Update state
-                if (request.targetElementId === "agentUpdatableText") { // Example mapping
-                    setAgentUpdatableTextState(newText);
-                    message = `Element '${request.targetElementId}' text updated (React state).`;
-                } else {
-                // Direct DOM manipulation (less ideal in React, but for generic elements):
-                  const element = document.getElementById(request.targetElementId);
-                  if (element) {
-                    element.innerText = newText;
-                    message = `Element '${request.targetElementId}' text updated.`;
-                  } else {
-                    success = false;
-                    message = `Error: Element '${request.targetElementId}' not found.`;
-                  }
-                }
-              } else {
-                success = false;
-                message = "Error: Missing targetElementId or text parameter for UPDATE_TEXT_CONTENT.";
-              }
-              break;
-
-            case ClientUIActionType.TOGGLE_ELEMENT_VISIBILITY:
-              if (request.targetElementId) {
-                // React way:
-                if (request.targetElementId === "agentToggleVisibilityElement") {
-                    setIsAgentElementVisible(prev => !prev); // Simple toggle
-                    message = `Element '${request.targetElementId}' visibility toggled (React state).`;
-                } else {
-                // Direct DOM manipulation:
-                  const element = document.getElementById(request.targetElementId);
-                  if (element) {
-                    element.style.display = element.style.display === 'none' ? '' : 'none';
-                    message = `Element '${request.targetElementId}' visibility toggled.`;
-                  } else {
-                    success = false;
-                    message = `Error: Element '${request.targetElementId}' not found.`;
-                  }
-                }
-              } else {
-                success = false;
-                message = "Error: Missing targetElementId for TOGGLE_ELEMENT_VISIBILITY.";
-              }
-              break;
-
-            default:
-              success = false;
-              message = `Error: Unknown action_type '${request.actionType}'.`;
-              console.warn(`Unknown agent UI action: ${request.actionType}`);
-          }
-
-          const response = ClientUIActionResponse.create({ requestId, success, message });
-          return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
-
-        } catch (innerError) {
-          console.error('Error handling Agent PerformUIAction:', innerError);
-          const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
-          const errResponse = ClientUIActionResponse.create({
-            requestId,
-            success: false,
-            message: `Client error processing UI action: ${errMessage}`
-          });
-          return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-        }
+        const response = ClientUIActionResponse.create({
+          requestId: data.requestId,
+          success: false,
+          message: "No specific UI action handler implemented on this page.",
+        });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
+      } catch (e) {
+        // ... error handling ...
+        const errMessage = e instanceof Error ? e.message : String(e);
+        const errResponse = ClientUIActionResponse.create({ requestId: data.requestId, success: false, message: `Client error: ${errMessage}` });
+        return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
       }
     };
 
     // Register the handler when connected
     if (roomInstance && roomInstance.state === 'connected' && roomInstance.localParticipant) {
-      const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction"; // package.Service/Method
+      const rpcMethodName = "rox.interaction.ClientSideUI/PerformUIAction";
       try {
+        // We register OUR `handlePerformUIAction`, which then delegates to the parent.
         roomInstance.localParticipant.registerRpcMethod(rpcMethodName, handlePerformUIAction);
-        console.log(`Client RPC Handler registered for: ${rpcMethodName}`);
+        console.log(`[LiveKitSession] Client RPC Handler registered for: ${rpcMethodName}`);
       } catch (e) {
-        // It might throw if already registered on hot-reload, handle gracefully
         if (e instanceof RpcError && e.message.includes("already registered")) {
-          console.warn(`RPC method ${rpcMethodName} already registered. This might be due to hot reload.`);
+          console.warn(`[LiveKitSession] RPC method ${rpcMethodName} already registered. This might be due to hot reload.`);
         } else {
-          console.error("Failed to register client-side RPC handler 'PerformUIAction':", e);
+          console.error("[LiveKitSession] Failed to register client-side RPC handler 'PerformUIAction':", e);
         }
       }
     }
 
-    // Cleanup (optional but good practice, though LiveKit might handle it on disconnect)
+    // Cleanup logic (optional but good practice)
     return () => {
-      // if (roomInstance && roomInstance.localParticipant) {
-      //   try {
-      //     roomInstance.localParticipant.unregisterRpcMethod("rox.interaction.ClientSideUI/PerformUIAction", handlePerformUIAction);
-      //   } catch (e) { /* ignore */ }
-      // }
+      // The unregister logic can be tricky with hot-reloads, so often it's left to the room disconnect to clean up.
     };
-  }, [roomInstance, roomInstance.state, roomInstance.localParticipant]); // Add dependencies
+  }, [roomInstance.state, roomInstance.localParticipant, onPerformUIAction]);
 
   // Effect to play audio cues
   useEffect(() => {

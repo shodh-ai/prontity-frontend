@@ -13,6 +13,7 @@ import { PlayPauseButton } from "@/components/ui/playpause-button";
 // NEW: 1. Import the NotesButton, NotesPanel, and the Note type.
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
+import MainLayout, { renderRoxAssistantFooter } from '@/components/layout/MainLayout';
 
 
 // NEW: 2. Add mock data for the notes panel. You can fetch this from an API later.
@@ -65,19 +66,7 @@ export default function Page(): JSX.Element {
 
 
   return (
-    <div className="w-full h-screen bg-white overflow-hidden relative">
-      {/* Background elements */}
-      <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
-      <div className="absolute w-[25vw] h-[25vw] max-w-[353px] max-h-[353px] bottom-[-25vh] left-[-10vw] bg-[#336de6] rounded-full" />
-      {/* Main content container with backdrop blur and union graphic */}
-      <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[200px] [-webkit-backdrop-filter:blur(200px)_brightness(100%)]">
-        <img
-          className="absolute w-full max-w-[1336px] h-auto top-6 left-1/2 -translate-x-1/2 opacity-50"
-          alt="Union"
-          src="https://c.animaapp.com/mbsxrl26lLrLIJ/img/union.svg"
-        />
-      </div>
-
+    <MainLayout>
       {/* Main Content Area */}
       {/* MODIFIED: Constrained the main element to fit within the union graphic */}
       <main className="relative z-10 h-full flex flex-col w-full max-w-[1336px] mx-auto pt-16 px-12 pb-6">
@@ -118,21 +107,7 @@ export default function Page(): JSX.Element {
 
         {/* Footer section with conditional UI */}
         <div className="flex flex-col items-center gap-4 pb-5">
-          <div className="relative top-5 z-30 inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
-            <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
-              Hello. I am Rox, your AI Assistant!
-            </p>
-          </div>
-          <div className="w-[90px] h-[90px] z-20">
-            <div className="relative w-full h-full">
-              <div className="absolute w-[70%] h-[70%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#566fe9] rounded-full blur-[50px]" />
-              <img
-                className="absolute w-full h-full top-7 left-2 object-contain"
-                alt="Rox AI Assistant"
-                src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
-              />
-            </div>
-          </div>
+          {renderRoxAssistantFooter()}
           <div className="w-full max-w-lg">
             {!isPopupVisible ? (
               <div className="flex items-center justify-between w-full">
@@ -193,6 +168,6 @@ export default function Page(): JSX.Element {
       </main>
 
       {/* NotesPanel component has been moved into the main content layout above */}
-    </div>
+    </MainLayout>
   );
 }

@@ -12,6 +12,7 @@ import {
   ClientUIActionResponse,
 } from '@/generated/protos/interaction';
 import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession';
+import MainLayout,{ renderRoxAssistantFooter } from "@/components/layout/MainLayout";
 
 // Helper function for Base64 encoding
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -88,6 +89,7 @@ export default function Page(): JSX.Element {
   ];
 
   return (
+    <MainLayout>
     <div className="w-full h-screen bg-white overflow-hidden relative">
       <div style={{ display: 'none' }}>
         <LiveKitSession
@@ -173,22 +175,7 @@ export default function Page(): JSX.Element {
 
         {/* Footer section with conditional UI */}
         <div className="flex flex-col items-center gap-4 pb-5">
-          {/* MOVED THIS BUBBLE DOWN to reduce the gap with the avatar below */}
-          <div className="relative top-5 z-30 inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
-            <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)]">
-              Hello. I am Rox, your AI Assistant!
-            </p>
-          </div>
-          <div className="w-[90px] h-[90px] z-20">
-            <div className="relative w-full h-full">
-              <div className="absolute w-[70%] h-[70%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#566fe9] rounded-full blur-[50px]" />
-              <img
-                className="absolute w-full h-full top-7 left-2 object-contain"
-                alt="Rox AI Assistant"
-                src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
-              />
-            </div>
-          </div>
+          {renderRoxAssistantFooter()}
           <div className="w-full max-w-lg">
             {!isPopupVisible ? (
               <div className="flex items-center justify-between w-full">
@@ -269,6 +256,6 @@ export default function Page(): JSX.Element {
           </div>
         </div>
       </main>
-    </div>
+    </MainLayout>
   );
 }

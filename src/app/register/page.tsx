@@ -2,8 +2,13 @@
 
 import Image from "next/image";
 import { useState, FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import ShodhAIHero from "@/components/common/ShodhAIHero";
+import type { RegisterResponsePayload } from "@/types/register-payload";
+import type { ErrorPayload } from "@/types/error-payload";
 
 export default function Register() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,9 +20,25 @@ export default function Register() {
     setError("");
 
     try {
-      // Simulate API call with 10 second delay
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-      console.log("Registration successful");
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json(); // We'll type this based on response.ok
+
+      if (!response.ok) {
+        const errorData = data as ErrorPayload;
+        throw new Error(
+          errorData.message || `HTTP error! status: ${response.status}`
+        );
+      }
+      const successData = data as RegisterResponsePayload;
+      localStorage.setItem("authToken", successData.data);
+      router.push("/confirm-register");
     } catch (err: any) {
       setError(err.message || "An error occurred during registration");
     } finally {
@@ -27,18 +48,7 @@ export default function Register() {
 
   return (
     <div className="w-full h-full flex items-center justify-center flex-col p-4">
-      <div className="flex flex-col justify-center items-center gap-2 sm:gap-3">
-        <Image
-          src="/logo-full.png"
-          alt="Shodh Logo"
-          height={42}
-          width={176}
-          className="h-auto w-[150px] sm:w-[176px]"
-        />
-        <div className="text-xs sm:text-sm text-center">
-          AI-Powered Insights for Smarter Learning.
-        </div>
-      </div>
+      <ShodhAIHero />
       {/* Registration Form */}
       <form
         className="flex flex-col mt-4 sm:mt-6 w-full max-w-md"

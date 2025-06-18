@@ -8,9 +8,7 @@ import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
 import { PreviousButton } from "@/components/ui/previous-button";
 import { NextButton } from "@/components/ui/next-button";
-import { PlayPauseButton } from "@/components/ui/playpause-button";
-
-// NEW: 1. Import the NotesButton, NotesPanel, and the Note type.
+// The PlayPauseButton import has been removed.
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
 import MainLayout from '@/components/layout/layout';
@@ -43,22 +41,12 @@ const mockNotesData: Note[] = [
 export default function Page(): JSX.Element {
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
-  // State to manage the play/pause status
-  const [isPaused, setIsPaused] = useState(false); // Default is playing
+  // State for play/pause has been removed as the button is no longer present.
 
   // NEW: 3. Add state to manage the visibility of the notes panel.
   const [isNotesPanelVisible, setIsNotesPanelVisible] = useState(false);
 
-  // Handler functions for play/pause
-  const handlePlay = () => {
-    console.log("Resuming explanation...");
-    setIsPaused(false);
-  };
-
-  const handlePause = () => {
-    console.log("Pausing explanation...");
-    setIsPaused(true);
-  };
+  // Handler functions for play/pause have been removed.
   
   // NEW: 4. Add a handler to toggle the notes panel.
   const handleToggleNotesPanel = () => {
@@ -78,7 +66,7 @@ export default function Page(): JSX.Element {
               className={`p-6 rounded-lg shadow-lg h-full overflow-y-auto bg-white 
                           ${isNotesPanelVisible ? 'flex-1' : 'w-full'}`}
             >
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Speaking Modelling</h2>
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Feedback</h2>
               <p className="text-gray-700 mb-3">
                 Over the last few years, education has become increasingly important for making progress in both personal and professional lives. Students are now expected to understand complex topics at a much earlier age than before, and the pressure to perform well has never been higher.
               </p>
@@ -124,13 +112,7 @@ export default function Page(): JSX.Element {
                   isVisible={true}
                   onNext={() => console.log("Next button clicked")}
                 />
-                <PlayPauseButton
-                  isVisible={true}
-                  isPaused={isPaused}
-                  onPlay={handlePlay}
-                  onPause={handlePause}
-                />
-                
+                {/* The PlayPauseButton (3rd button) has been removed. */}
                 <NotesButton
                   isActive={isNotesPanelVisible}
                   onClick={handleToggleNotesPanel}

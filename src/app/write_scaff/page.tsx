@@ -1,64 +1,26 @@
 "use client";
-import React, { useState, useRef, useCallback } from "react";
+
+import React, { useState, useRef } from "react";
+import MainLayout from '@/components/layout/layout';
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // --- MODIFICATION: Added more Card components for the new Chat Card ---
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { MicButton } from "@/components/ui/mic";
-import { RpcInvocationData } from 'livekit-client';
-import {
-  AgentToClientUIActionRequest,
-  ClientUIActionResponse,
-} from '@/generated/protos/interaction';
-import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession';
-import MainLayout,{ renderRoxAssistantFooter } from "@/components/layout/MainLayout";
+import { RecordingBar } from "@/components/ui/record";
 import RoxFooterContent from "@/components/layout/RoxFooterContent";
-import { NotesPanel } from "@/components/ui/NotesPanel";
+import { NotesButton } from "@/components/ui/NotesButton";
+import { NotesPanel, Note } from "@/components/ui/NotesPanel";
+import { MessageButton } from "@/components/ui/message-button";
+import { ChatButton } from "@/components/ui/ChatButton";
+// --- MODIFICATION: Added Input for the new Chat Card ---
+import { Input } from "@/components/ui/input";
 
-// Helper function for Base64 encoding
-function uint8ArrayToBase64(buffer: Uint8Array): string {
-  let binary = "";
-  const len = buffer.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(buffer[i]);
-  }
-  return btoa(binary);
-}
+// --- MODIFICATION: The ChatPanel component is no longer needed as an import
+// import { ChatPanel } from "@/components/ui/ChatPanel";
 
-export default function Page(): JSX.Element {
-  const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
-
-  const handlePerformUIAction = useCallback(async (rpcInvocationData: RpcInvocationData): Promise<string> => {
-    const payloadString = rpcInvocationData.payload as string | undefined;
-    let requestId = rpcInvocationData.requestId || "";
-    console.log("[ScaffSpeakPage] B2F RPC received. Request ID:", requestId);
-
-    try {
-      if (!payloadString) throw new Error("No payload received.");
-
-      const request = AgentToClientUIActionRequest.fromJSON(JSON.parse(payloadString));
-      let success = true;
-      let message = "Action processed successfully.";
-
-      console.log(`[ScaffSpeakPage] Received action: ${request.actionType}`, request);
-      // This page doesn't have complex UI elements like an editor,
-      // so we'll just log the action for now.
-
-      const response = ClientUIActionResponse.create({ requestId, success, message });
-      return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
-    } catch (innerError) {
-      console.error('[ScaffSpeakPage] Error handling Agent PerformUIAction:', innerError);
-      const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
-      const errResponse = ClientUIActionResponse.create({
-        requestId,
-        success: false,
-        message: `Client error processing UI action: ${errMessage}`
-      });
-      return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-    }
-  }, []);
-  // State to manage the visibility of the pop-up/chat input
+export default function DashRoxPage(): JSX.Element {
   const [isPopupVisible, setIsPopupVisible] = useState(false);
   const [showRecordingBar, setShowRecordingBar] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
@@ -93,38 +55,8 @@ export default function Page(): JSX.Element {
 
   return (
     <MainLayout>
-    <div className="w-full h-screen bg-white overflow-hidden relative">
-      <div style={{ display: 'none' }}>
-        <LiveKitSession
-          roomName="scaff-speak-room"
-          userName="scaff-speak-user"
-          onConnected={(connectedRoom, rpcAdapter) => {
-            console.log("LiveKit connected in ScaffSpeakPage, room:", connectedRoom);
-            liveKitRpcAdapterRef.current = rpcAdapter;
-            console.log("LiveKitRpcAdapter assigned in ScaffSpeakPage:", liveKitRpcAdapterRef.current);
-          }}
-          onPerformUIAction={handlePerformUIAction}
-        />
-      </div>
-      {/* Background elements */}
-      <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
-      <div className="absolute w-[25vw] h-[25vw] max-w-[353px] max-h-[353px] bottom-[-25vh] left-[-10vw] bg-[#336de6] rounded-full" />
-      {/* Main content container with backdrop blur and union graphic */}
-      <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[200px] [-webkit-backdrop-filter:blur(200px)_brightness(100%)]">
-        <img
-          className="absolute w-full max-w-[1336px] h-auto top-6 left-1/2 -translate-x-1/2 opacity-50"
-          alt="Union"
-          src="https://c.animaapp.com/mbsxrl26lLrLIJ/img/union.svg"
-        />
-      </div>
-
-      {/* Main Content Area */}
-      <main className="relative z-10 h-full flex flex-col pl-8 pr-12 py-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-1 right-2 h-6 w-6 p-0 z-20"
-        >
+      <div className="relative h-full w-full">
+        <Button variant="ghost" size="icon" className="absolute top-1 right-2 h-6 w-6 p-0 z-20">
           <XIcon className="h-6 w-6" />
         </Button>
         <div className="absolute top-0 left-0 right-0 z-10 pl-8 pr-12">
@@ -187,39 +119,26 @@ export default function Page(): JSX.Element {
          <div className="w-full max-w-lg">
             {!isPopupVisible ? (
               <div className="flex items-center justify-between w-full">
-                {/* Left Group */}
-                <div className="flex items-center gap-4 -ml-20">
-                  {controlButtons.slice(0, 4).map((button) => {
-                    if (button.alt === "Mic") {
-                      return (
-                        <MicButton
-                          key="mic-button"
-                          isVisible={true}
-                        />
-                      );
-                    }
-                    return (
-                      <Button
-                        key={button.alt}
-                        variant="outline"
-                        size="icon"
-                        className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
-                      >
-                        {button.type === "background" && button.icon ? (
-                          <div
-                            className="w-6 h-6 bg-cover"
-                            style={{ backgroundImage: `url(${button.icon})` }}
-                          />
-                        ) : (
-                          <img
-                            className="w-6 h-6"
-                            alt={button.alt}
-                            src={button.icon}
-                          />
-                        )}
-                      </Button>
-                    );
-                  })}
+                <div className={`flex items-center gap-4 ${!showRecordingBar ? '-ml-20' : ''}`}>
+                  {showRecordingBar ? (
+                    <RecordingBar onStop={stopRecording} />
+                  ) : (
+                    <>
+                      {controlButtons.map((button) => {
+                        if (button.alt === "Camera") {
+                          return ( <Button key={button.alt} variant="outline" size="icon" className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors" onClick={startRecording}> <img className="w-6 h-6" alt={button.alt} src={button.icon} /> </Button> );
+                        }
+                        if (button.alt === "Mic") {
+                          return <MicButton key="mic-button" isVisible={true} isActive={isMicActive} />;
+                        }
+                        // --- MODIFICATION: Button logic points to the new Chat button handler ---
+                        if (button.alt === "Chat") {
+                          return ( <ChatButton key="chat-button" isActive={isChatPanelOpen} onClick={handleToggleChatPanel} /> );
+                        }
+                        return null;
+                      })}
+                    </>
+                  )}
                 </div>
                 {!showRecordingBar && (
                   <div className="flex items-center gap-4 mr-10">
@@ -259,9 +178,12 @@ export default function Page(): JSX.Element {
 
         {/* The Notes panel remains a slide-out overlay */}
         <NotesPanel
-          isVisible={isNotesPanelOpen}
+          isOpen={isNotesPanelOpen}
           onClose={() => setIsNotesPanelOpen(false)}
           notes={notes}
+          onAddNote={handleAddNote}
+          onUpdateNote={handleUpdateNote}
+          onDeleteNote={handleDeleteNote}
         />
         {/* --- MODIFICATION: The old ChatPanel component call is removed from here --- */}
       </div>

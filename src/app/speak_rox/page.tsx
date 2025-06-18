@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useCallback } from "react";
+import MainLayout from "@/components/layout/MainLayout"; // The layout component
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,9 +15,7 @@ import {
 import LiveKitSession, { LiveKitRpcAdapter } from "@/components/LiveKitSession";
 import InlineTimerButton from "@/components/ui/InlineTimerButton";
 import { RecordingBar } from "@/components/ui/record";
-import MainLayout, {
-  renderRoxAssistantFooter,
-} from "@/components/layout/MainLayout";
+import { renderRoxAssistantFooter } from "@/components/layout/MainLayout";
 
 // Helper function for Base64 encoding
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -86,8 +85,9 @@ export default function Page(): JSX.Element {
   const [isMicActive, setIsMicActive] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  // Data for control buttons
+
   const startRecording = async () => {
+    // ... (no changes to this function)
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -146,7 +146,7 @@ export default function Page(): JSX.Element {
     },
     {
       icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame-1.svg",
-      alt: "Message", // This button triggers the chat input
+      alt: "Message",
     },
   ];
 

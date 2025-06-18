@@ -27,8 +27,8 @@ export const NotesButton = ({ isActive, onClick, className }: NotesButtonProps):
       type="button"
     >
       <img 
-        src="/doubt.svg" 
-        alt="Doubt icon" 
+        src="/notes.svg" 
+        alt="Notes icon" 
         // --- CHANGES FOR THE IMAGE ---
         // 1. Set width and height to 100% of the parent (the button)
         // 2. Added object-cover to maintain aspect ratio and fill the space

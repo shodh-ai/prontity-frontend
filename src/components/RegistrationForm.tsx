@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, MicIcon, Square, Play, Pause, HeadphonesIcon } from "lucide-react";
+import { MicIcon, Square, Play, Pause, HeadphonesIcon } from "lucide-react";
 import React, {
   useState,
   useEffect,
@@ -8,7 +8,6 @@ import React, {
 } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
-import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 
 const progressSteps = [
@@ -615,59 +614,51 @@ export const RegistrationForm = () => {
   };
 
   return (
-    <main className="bg-white flex flex-row justify-center w-full min-h-screen">
-      <div className="bg-white overflow-hidden w-full max-w-[90rem] h-[51.25rem] relative">
-        <div className="absolute w-[47.0625rem] h-[47.0625rem] top-[-53.6875rem] right-[-35.75rem] bg-[#566fe9] rounded-full" />
-        <div className="absolute w-[22.0625rem] h-[22.0625rem] bottom-[-29rem] left-[-2.25rem] bg-[#336de6] rounded-full" />
-        <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[12.5rem]">
-          <img
-            className="absolute w-[87rem] h-[46.625rem] top-[1.5rem] left-[1.5rem]"
-            alt="Background shape"
-            src="/union.svg"
-          />
-        </div>
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-2.5 z-10">
+    <div className="bg-white">
+      <header className="fixed top-0 left-0 w-full z-20">
+        <div className="max-w-lg w-full mx-auto flex items-center justify-center gap-2.5 p-4">
           <Button
             variant="ghost"
             size="sm"
             onClick={handlePrevious}
             disabled={currentStep === 0}
-            className="p-1 h-auto hover:bg-transparent disabled:opacity-30"
+            className="p-1 h-auto hover:bg-gray-100 disabled:opacity-30"
           >
-            <ArrowLeftIcon className="w-6 h-6 text-[#566fe9]" />
+            {/* 
+              Replace the src with the path to your image file.
+              You can put your image in the `public` folder of your Next.js project.
+              For example, if you have `public/back-arrow.svg`, the src would be "/back-arrow.svg".
+            */}
+            <img 
+              src="/frame-1.svg" // <-- UPDATE THIS PATH
+              alt="Go back to the previous step"
+              className="w-6 h-6"
+            />
           </Button>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 w-full">
             {updatedProgressSteps.map((step, index) => (
               <div
                 key={index}
-                className={`w-[5.625rem] h-2.5 rounded transition-colors duration-300 ${
+                className={`w-full h-2.5 rounded transition-colors duration-300 ${
                   step.active ? "bg-[#566fe9]" : "bg-[#566fe926]"
                 }`}
               />
             ))}
           </div>
         </div>
-        <div className="absolute w-[5.625rem] h-[5.625rem] bottom-[4.6875rem] left-1/2 -translate-x-1/2">
-          <div className="relative h-[5.625rem]">
-            <div className="absolute w-[3.9375rem] h-[3.9375rem] top-3.5 left-3.5 bg-[#566fe9] rounded-[1.96875rem] blur-[3.125rem]" />
-            <img
-              className="absolute w-[5.625rem] h-[5.625rem] top-0 left-0"
-              alt="Rox avatar"
-              src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
-            />
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 w-full h-full flex flex-col items-center justify-center">
-          <Card className="border-none shadow-none bg-transparent w-full max-w-[31.25rem]">
-            <CardContent className="p-0 space-y-3">
-              <div className="font-label-extra-large font-[600] text-black text-[0.875rem] leading-[170%] tracking-normal transition-opacity duration-300">
-                {currentFormStep.title} <br />
+      </header>
+
+      <main className="flex items-center justify-center w-full min-h-[50vh] p-4 pt-24">
+        <div className="relative w-full max-w-lg space-y-8">
+          <div className="w-full p-6 sm:p-8 space-y-4">
+              <div className="font-semibold text-gray-800 text-base leading-relaxed transition-opacity duration-300">
+                <p className="text-xl font-bold text-gray-900 mb-2">{currentFormStep.title}</p>
                 {currentFormStep.subtitle}
               </div>
               {currentFormStep.inputType === "voice" ? (
-                <div className="space-y-4">
+                <div className="space-y-4 pt-4">
                   {renderInput()}
-                  <div className="flex justify-end">
+                  <div className="flex justify-end pt-2">
                     <Button
                       className="h-12 w-12 p-0 bg-[#566fe9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center transition-colors duration-200 disabled:opacity-50"
                       aria-label="Continue"
@@ -691,7 +682,7 @@ export const RegistrationForm = () => {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center w-full space-x-2">
+                <div className="flex items-center w-full space-x-2 pt-4">
                   {renderInput()}
                   <Button
                     className="p-0 w-12 h-12 bg-[#566FE9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center shrink-0 disabled:opacity-50"
@@ -715,17 +706,17 @@ export const RegistrationForm = () => {
                   </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
+          
           {isSubmitting && (
-            <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-20">
+            <div className="absolute inset-0 bg-white/70 flex items-center justify-center z-20 backdrop-blur-sm rounded-lg">
               <p className="text-lg font-semibold p-4 bg-white rounded shadow-lg">
                 Submitting...
               </p>
             </div>
           )}
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 };

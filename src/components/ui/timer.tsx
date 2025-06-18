@@ -52,27 +52,26 @@ const Timer = forwardRef<TimerHandle, TimerProps>(({
     }
   }));
 
-  // Style variations based on the 'default' variant
+  // Style variations
   const getBgColor = () => {
-    if (variant === 'inline') return 'bg-transparent'; // No background for inline
+    if (variant === 'inline') return 'bg-transparent';
     if (!isRunning) return 'bg-gray-100';
     if (mode === 'preparation') return 'bg-blue-100';
-    // UPDATED: Changed green background to the specified hex code
     return seconds <= 10 ? 'bg-red-100' : 'bg-[#566FE91A]';
   };
 
   const getTextColor = () => {
-    // Text color can remain as it provides good feedback
     if (!isRunning) return 'text-gray-700';
     if (mode === 'preparation') return 'text-blue-700';
-    // UPDATED: Changed green text color to match the new background base color
     return seconds <= 10 ? 'text-red-700' : 'text-[#566FE9]';
   };
   
-  // Conditionally apply container classes based on variant
+  // *** FIX: THE MAIN CHANGE IS HERE ***
+  // For the 'inline' variant, we make the container a flexbox that justifies its
+  // content to the end (the right side). This forces expansion to the left.
   const containerClasses = variant === 'default'
     ? 'p-4 rounded-lg shadow mb-4 transition-all w-64 h-20 flex flex-col justify-center items-center'
-    : 'transition-all'; // Inline variant has minimal container styling
+    : 'flex justify-end transition-all'; // This is the key change
 
   const formatTime = (secs: number): string => {
     const minutes = Math.floor(secs / 60);
@@ -113,15 +112,17 @@ const Timer = forwardRef<TimerHandle, TimerProps>(({
 
   return (
     <div className={`${containerClasses} ${getBgColor()}`}>
-      <div className="text-center">
+      {/* The inner content div no longer needs complex alignment classes,
+          as the parent 'justify-end' handles the positioning. We can keep
+          text-right for perfect digit alignment as a best practice. */}
+      <div className="text-right">
         {/* Only show the label for the default variant */}
         {variant === 'default' && <div className="font-semibold">{label}</div>}
-        {/* UPDATED: Removed font-bold from the time display */}
-        <div className={`text-xl pr-5 tabular-nums ${getTextColor()}`}>
+        {/* We no longer need padding-right (pr-5) here */}
+        <div className={`text-xl tabular-nums ${getTextColor()}`}>
           {formatTime(seconds)}
         </div>
       </div>
-       {/* You can also conditionally render these messages based on variant if desired */}
     </div>
   );
 });

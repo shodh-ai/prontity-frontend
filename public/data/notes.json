@@ -1,0 +1,75 @@
+{
+  "message": "Notes retrieved successfully",
+  "notes": [
+    {
+      "id": "c38342fc-ea35-4d0f-94e6-7f30f3db39f6",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Eloquent",
+      "content": "**Eloquent** *(adj.)* — fluent or persuasive in speaking or writing.\n\n📝 *Her speech was both **eloquent** and moving.*",
+      "createdAt": "2025-06-14T11:13:46.444Z"
+    },
+    {
+      "id": "14f9f2e1-6a5c-4ce5-bf3f-2ddda0b89f1f",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Ephemeral",
+      "content": "**Ephemeral** *(adj.)* — lasting for a very short time.\n\n📝 *Fame in the age of social media is often ephemeral.*",
+      "createdAt": "2025-06-15T13:22:15.122Z"
+    },
+    {
+      "id": "f238c37f-27ab-4c90-97ef-8d63f76f4c60",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Parallel Structure",
+      "content": "Use **parallel structure** in lists or comparisons.\n\n✅ *She likes running, swimming, and biking.*\n\n❌ *She likes running, to swim, and biking.*",
+      "createdAt": "2025-06-15T09:47:20.093Z"
+    },
+    {
+      "id": "e1257c2b-e645-4a06-b159-1c2ea2333d5f",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Ubiquitous",
+      "content": "**Ubiquitous** *(adj.)* — present, appearing, or found **everywhere**.\n\n📝 *Smartphones have become ubiquitous in modern society.*",
+      "createdAt": "2025-06-15T11:11:11.882Z"
+    },
+    {
+      "id": "a2c9eb0d-53b1-4e30-b0c6-85482a49f23f",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Modifiers",
+      "content": "Place **modifiers** close to the word they describe.\n\n✅ *She nearly drove her car for ten hours.*\n\n❌ *She drove her car nearly for ten hours.*",
+      "createdAt": "2025-06-15T14:29:30.224Z"
+    },
+    {
+      "id": "82c2e3c2-58cb-4cde-9f48-d1844c91d4f5",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Comma Splices",
+      "content": "Avoid using a **comma** to join two **independent clauses**.\n\n✅ *She went home. She was tired.*\n\n❌ *She went home, she was tired.*",
+      "createdAt": "2025-06-16T10:07:49.981Z"
+    },
+    {
+      "id": "d0f0cc3a-dc64-4388-ae4f-f04e38c7e50d",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Subject-Verb Agreement",
+      "content": "**Singular subjects** take **singular verbs**, and **plural subjects** take **plural verbs**.\n\n✅ *The list is long.*\n\n❌ *The list are long.*",
+      "createdAt": "2025-06-16T13:42:02.613Z"
+    },
+    {
+      "id": "2f18c5f4-16c2-4b76-85e6-c65d8dbd7a45",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Pragmatic",
+      "content": "**Pragmatic** *(adj.)* — dealing with things sensibly and realistically.\n\n📝 *She took a pragmatic approach to the problem.*",
+      "createdAt": "2025-06-17T08:25:19.700Z"
+    },
+    {
+      "id": "5b9b765b-430e-4f3c-bdcc-1229b690f576",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Tense Consistency",
+      "content": "Maintain the **same tense** throughout a sentence or paragraph.\n\n✅ *She walked into the room and sat down.*\n\n❌ *She walks into the room and sat down.*",
+      "createdAt": "2025-06-17T12:10:40.541Z"
+    },
+    {
+      "id": "8b3fe239-d560-4f0d-a55d-913e42b8e6ff",
+      "userId": "b8e76870-532e-4f9f-bb0f-1f812313867c",
+      "heading": "Brevity",
+      "content": "**Brevity** *(noun)* — concise and exact use of words in writing or speech.\n\n📝 *The essay's strength lies in its clarity and brevity.*",
+      "createdAt": "2025-06-18T07:59:33.106Z"
+    }
+  ]
+}

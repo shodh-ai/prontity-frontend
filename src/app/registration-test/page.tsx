@@ -1,16 +1,10 @@
 "use client";
 
 import { RegistrationForm } from "../../components/RegistrationForm";
-import MainLayout from '@/components/layout/layout';
-import RoxFooterContent from "@/components/layout/RoxFooterContent";
 
 export default function RegistrationTestPage() {
+  // The return statement should wrap multi-line JSX in parentheses
   return (
-    <MainLayout>
-      <div className="flex justify-center items-center">
-        <RegistrationForm />
-      </div>
-      <RoxFooterContent />
-    </MainLayout>
+    <RegistrationForm />
   );
 }

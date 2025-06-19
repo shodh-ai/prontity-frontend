@@ -11,9 +11,7 @@ import { NextButton } from "@/components/ui/next-button";
 // The PlayPauseButton import has been removed.
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
-import MainLayout from '@/components/layout/layout';
-import RoxFooterContent from "@/components/layout/RoxFooterContent";
-
+// MainLayout and RoxFooterContent imports have been removed.
 
 // NEW: 2. Add mock data for the notes panel. You can fetch this from an API later.
 const mockNotesData: Note[] = [
@@ -56,48 +54,45 @@ export default function Page(): JSX.Element {
 
   return (
     <>
-      <MainLayout>
-        {/* Main Content Area */}
-        <main className="relative z-10 h-full flex flex-col w-full max-w-[1336px] mx-auto pt-16 px-12 pb-28">
-          {/* Placeholder for header/main content */}
-          <div className={`flex-grow flex ${isNotesPanelVisible ? 'flex-row gap-4' : ''} overflow-hidden`}>
-            {/* Main content card (70% if notes panel is visible, 100% otherwise) */}
-            <div
-              className={`p-6 rounded-lg shadow-lg h-full overflow-y-auto bg-white 
-                          ${isNotesPanelVisible ? 'flex-1' : 'w-full'}`}
-            >
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">Feedback</h2>
-              <p className="text-gray-700 mb-3">
-                Over the last few years, education has become increasingly important for making progress in both personal and professional lives. Students are now expected to understand complex topics at a much earlier age than before, and the pressure to perform well has never been higher.
-              </p>
-              <p className="text-gray-700 mb-3">
-                Many learners struggle with expressing their ideas fluently, especially in academic writing. It's not unusual to see phrases like "He go to the university every day" or "She don't have any time" in essays. These might seem like small mistakes, but they can significantly affect how a reader perceives the clarity and credibility of your argument.
-              </p>
-              <p className="text-gray-700 mb-3">
-                Additionally, vocabulary development is often overlooked. Some students rely on very simple words which are not always suitable for formal contexts. Instead of saying something like 'This idea is nice," "This idea is compelling" might sound more academic and specific.
-              </p>
-              <p className="text-gray-700">
-                Some people believe that technology is make our life more easier making our lives easier, while others argue it causes more distractions than benefits. The truth probably lies somewhere in between. For example, smartphones have enabled people to communicates quickly with communicate quickly with others, but they've also made it difficult to focus for long periods of time.
-              </p>
-            </div>
-
-            {/* NotesPanel card (30% when visible) */}
-            {isNotesPanelVisible && (
-              <div className="w-[30%] h-full p-6 rounded-lg shadow-lg bg-white overflow-y-auto flex flex-col">
-                <NotesPanel
-                  isVisible={true} // Controlled by parent's conditional rendering
-                  onClose={() => setIsNotesPanelVisible(false)}
-                  notes={mockNotesData}
-                  className="flex-grow" // NotesPanel component should fill this card container
-                />
-              </div>
-            )}
+      {/* Main Content Area */}
+      <main className="relative z-10 h-full flex flex-col w-full max-w-[1336px] mx-auto pt-16 px-12 pb-28">
+        {/* Placeholder for header/main content */}
+        <div className={`flex-grow flex ${isNotesPanelVisible ? 'flex-row gap-4' : ''} overflow-hidden`}>
+          {/* Main content card (70% if notes panel is visible, 100% otherwise) */}
+          <div
+            className={`p-6 rounded-lg shadow-lg h-full overflow-y-auto bg-white 
+                        ${isNotesPanelVisible ? 'flex-1' : 'w-full'}`}
+          >
+            <h2 className="text-xl font-semibold mb-4 text-gray-800">Feedback</h2>
+            <p className="text-gray-700 mb-3">
+              Over the last few years, education has become increasingly important for making progress in both personal and professional lives. Students are now expected to understand complex topics at a much earlier age than before, and the pressure to perform well has never been higher.
+            </p>
+            <p className="text-gray-700 mb-3">
+              Many learners struggle with expressing their ideas fluently, especially in academic writing. It's not unusual to see phrases like "He go to the university every day" or "She don't have any time" in essays. These might seem like small mistakes, but they can significantly affect how a reader perceives the clarity and credibility of your argument.
+            </p>
+            <p className="text-gray-700 mb-3">
+              Additionally, vocabulary development is often overlooked. Some students rely on very simple words which are not always suitable for formal contexts. Instead of saying something like 'This idea is nice," "This idea is compelling" might sound more academic and specific.
+            </p>
+            <p className="text-gray-700">
+              Some people believe that technology is make our life more easier making our lives easier, while others argue it causes more distractions than benefits. The truth probably lies somewhere in between. For example, smartphones have enabled people to communicates quickly with communicate quickly with others, but they've also made it difficult to focus for long periods of time.
+            </p>
           </div>
-        </main>
-        <RoxFooterContent />
-      </MainLayout>
+
+          {/* NotesPanel card (30% when visible) */}
+          {isNotesPanelVisible && (
+            <div className="w-[30%] h-full p-6 rounded-lg shadow-lg bg-white overflow-y-auto flex flex-col">
+              <NotesPanel
+                isVisible={true} // Controlled by parent's conditional rendering
+                onClose={() => setIsNotesPanelVisible(false)}
+                notes={mockNotesData}
+                className="flex-grow" // NotesPanel component should fill this card container
+              />
+            </div>
+          )}
+        </div>
+      </main>
       
-      {/* Footer section with conditional UI, fixed to the bottom */}
+      {/* Footer section with conditional UI, fixed to the bottom of the page */}
       <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center gap-4 pb-5">
         <div className="w-full max-w-lg">
           {!isPopupVisible ? (

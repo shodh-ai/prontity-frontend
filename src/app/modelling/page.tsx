@@ -1,4 +1,4 @@
-// src/pages/your-page.tsx (or appropriate file path)
+
 
 "use client";
 import React, { useState } from "react";
@@ -10,14 +10,12 @@ import { PreviousButton } from "@/components/ui/previous-button";
 import { NextButton } from "@/components/ui/next-button";
 import { PlayPauseButton } from "@/components/ui/playpause-button";
 
-// NEW: 1. Import the NotesButton, NotesPanel, and the Note type.
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
-import MainLayout from '@/components/layout/layout';
-import RoxFooterContent from "@/components/layout/RoxFooterContent";
 
 
-// NEW: 2. Add mock data for the notes panel. You can fetch this from an API later.
+
+
 const mockNotesData: Note[] = [
   {
     id: 1,
@@ -68,7 +66,7 @@ export default function Page(): JSX.Element {
 
   return (
     <>
-      <MainLayout>
+      
         {/* Main Content Area */}
         <main className="relative z-10 h-full flex flex-col w-full max-w-[1336px] mx-auto pt-16 px-12 pb-28">
           {/* Placeholder for header/main content */}
@@ -106,8 +104,7 @@ export default function Page(): JSX.Element {
             )}
           </div>
         </main>
-        <RoxFooterContent />
-      </MainLayout>
+     
       
       {/* Footer section with conditional UI, fixed to the bottom */}
       <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center gap-4 pb-5">

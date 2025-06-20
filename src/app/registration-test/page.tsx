@@ -3,5 +3,8 @@
 import { RegistrationForm } from "../../components/RegistrationForm";
 
 export default function RegistrationTestPage() {
-  return <RegistrationForm />;
+  // The return statement should wrap multi-line JSX in parentheses
+  return (
+    <RegistrationForm />
+  );
 }

@@ -523,7 +523,7 @@ export const RegistrationForm = () => {
     if (currentFormStep.inputType === "voice") {
       return (
         <div className="w-full space-y-4">
-          <div className="flex flex-col items-center space-y-6 p-6 border border-[#566fe933] rounded-lg bg-white/50">
+          <div className="flex flex-col items-center space-y-6 p-6 border border-gray-200 rounded-lg bg-white/50">
             <div className="flex items-center space-x-4">
               {!isRecording ? (
                 <Button
@@ -596,7 +596,7 @@ export const RegistrationForm = () => {
     return (
       <div className="relative w-full">
         <Input
-          className="h-12 border border-gray-300 rounded-md px-3 pr-12 text-sm flex-grow leading-[3rem]"
+          className="h-12 border border-gray-300 rounded-md px-3 pr-12 text-sm flex-grow leading-[3rem] bg-white"
           placeholder={currentFormStep.placeholder}
           type={currentFormStep.inputType}
           value={currentInput}
@@ -615,49 +615,33 @@ export const RegistrationForm = () => {
   };
 
   return (
-    <main className="bg-white flex flex-row justify-center w-full min-h-screen">
-      <div className="bg-white overflow-hidden w-full max-w-[90rem] h-[51.25rem] relative">
-        <div className="absolute w-[47.0625rem] h-[47.0625rem] top-[-53.6875rem] right-[-35.75rem] bg-[#566fe9] rounded-full" />
-        <div className="absolute w-[22.0625rem] h-[22.0625rem] bottom-[-29rem] left-[-2.25rem] bg-[#336de6] rounded-full" />
-        <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[12.5rem]">
-          <img
-            className="absolute w-[87rem] h-[46.625rem] top-[1.5rem] left-[1.5rem]"
-            alt="Background shape"
-            src="/union.svg"
-          />
-        </div>
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-2.5 z-10">
+    <main className="bg-transparent flex items-center justify-center w-full min-h-screen p-4">
+      <div className="w-full max-w-lg mx-auto flex flex-col justify-center min-h-[40rem] relative">
+
+        <div className="absolute top-8 left-0 right-0 flex items-center justify-center gap-2.5 z-10">
           <Button
             variant="ghost"
             size="sm"
             onClick={handlePrevious}
             disabled={currentStep === 0}
-            className="p-1 h-auto hover:bg-transparent disabled:opacity-30"
+            className="p-1 h-auto hover:bg-gray-100 disabled:opacity-30"
           >
             <ArrowLeftIcon className="w-6 h-6 text-[#566fe9]" />
           </Button>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 w-full max-w-sm">
             {updatedProgressSteps.map((step, index) => (
               <div
                 key={index}
-                className={`w-[5.625rem] h-2.5 rounded transition-colors duration-300 ${
-                  step.active ? "bg-[#566fe9]" : "bg-[#566fe926]"
+                className={`w-full h-2.5 rounded transition-colors duration-300 ${
+                  step.active ? "bg-[#566fe9]" : "bg-gray-200"
                 }`}
               />
             ))}
           </div>
+          <div className="w-6 h-6 p-1"></div> {/* Spacer to balance the back button */}
         </div>
-        <div className="absolute w-[5.625rem] h-[5.625rem] bottom-[4.6875rem] left-1/2 -translate-x-1/2">
-          <div className="relative h-[5.625rem]">
-            <div className="absolute w-[3.9375rem] h-[3.9375rem] top-3.5 left-3.5 bg-[#566fe9] rounded-[1.96875rem] blur-[3.125rem]" />
-            <img
-              className="absolute w-[5.625rem] h-[5.625rem] top-0 left-0"
-              alt="Rox avatar"
-              src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
-            />
-          </div>
-        </div>
-        <div className="absolute top-0 left-0 w-full h-full flex flex-col items-center justify-center">
+
+        <div className="w-full flex flex-col items-center justify-center">
           <Card className="border-none shadow-none bg-transparent w-full max-w-[31.25rem]">
             <CardContent className="p-0 space-y-3">
               <div className="font-label-extra-large font-[600] text-black text-[0.875rem] leading-[170%] tracking-normal transition-opacity duration-300">
@@ -718,7 +702,7 @@ export const RegistrationForm = () => {
             </CardContent>
           </Card>
           {isSubmitting && (
-            <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-20">
+            <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-20 backdrop-blur-sm">
               <p className="text-lg font-semibold p-4 bg-white rounded shadow-lg">
                 Submitting...
               </p>

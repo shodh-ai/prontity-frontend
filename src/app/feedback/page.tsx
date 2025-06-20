@@ -1,19 +1,16 @@
-// src/pages/your-page.tsx (or appropriate file path)
-
 "use client";
 import React, { useState } from "react";
-import { XIcon, ScreenShare } from "lucide-react";
+import { ScreenShare } from "lucide-react";
 
 import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
 import { PreviousButton } from "@/components/ui/previous-button";
 import { NextButton } from "@/components/ui/next-button";
-// The PlayPauseButton import has been removed.
+import { DoubtButton } from "@/components/ui/doubt";
+
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
-// MainLayout and RoxFooterContent imports have been removed.
 
-// NEW: 2. Add mock data for the notes panel. You can fetch this from an API later.
 const mockNotesData: Note[] = [
   {
     id: 1,
@@ -37,18 +34,18 @@ const mockNotesData: Note[] = [
 
 
 export default function Page(): JSX.Element {
-  // State to manage the visibility of the pop-up/chat input
-  const [isPopupVisible, setIsPopupVisible] = useState(false);
-  // State for play/pause has been removed as the button is no longer present.
-
-  // NEW: 3. Add state to manage the visibility of the notes panel.
+  // State to manage the visibility of the notes panel.
   const [isNotesPanelVisible, setIsNotesPanelVisible] = useState(false);
 
-  // Handler functions for play/pause have been removed.
-  
-  // NEW: 4. Add a handler to toggle the notes panel.
+  // Handler to toggle the notes panel.
   const handleToggleNotesPanel = () => {
     setIsNotesPanelVisible(prev => !prev);
+  };
+
+  // Placeholder handler for the message button click.
+  const handleMessageClick = () => {
+    // TODO: Implement the desired action for the message button.
+    console.log("Message button clicked!");
   };
 
 
@@ -82,67 +79,46 @@ export default function Page(): JSX.Element {
           {isNotesPanelVisible && (
             <div className="w-[30%] h-full p-6 rounded-lg shadow-lg bg-white overflow-y-auto flex flex-col">
               <NotesPanel
-                isVisible={true} // Controlled by parent's conditional rendering
+                isVisible={true}
                 onClose={() => setIsNotesPanelVisible(false)}
                 notes={mockNotesData}
-                className="flex-grow" // NotesPanel component should fill this card container
+                className="flex-grow"
               />
             </div>
           )}
         </div>
       </main>
       
-      {/* Footer section with conditional UI, fixed to the bottom of the page */}
+      {/* Footer section with controls, fixed to the bottom of the page */}
       <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center gap-4 pb-5">
         <div className="w-full max-w-lg">
-          {!isPopupVisible ? (
-            <div className="flex items-center justify-center md:justify-between w-full gap-4 md:gap-0 px-4 md:px-0">
-              {/* Left group of buttons */}
-              <div className="flex items-center gap-4 md:-ml-40">
-                <PreviousButton
-                  isVisible={true}
-                  onPrevious={() => console.log("Previous button clicked")}
-                />
-                <NextButton
-                  isVisible={true}
-                  onNext={() => console.log("Next button clicked")}
-                />
-                {/* The PlayPauseButton (3rd button) has been removed. */}
-                <NotesButton
-                  isActive={isNotesPanelVisible}
-                  onClick={handleToggleNotesPanel}
-                />
-                
-                <MicButton isVisible={true} />
-              </div>
-
-              {/* Right group of buttons */}
-              <div className="flex items-center gap-4 md:mr-10">
-                
-                <button
-                  className="flex items-center justify-center w-12 h-12 bg-white/50 rounded-full hover:bg-white/80 transition-colors"
-                  aria-label="Share Screen"
-                  onClick={() => console.log("Screen Share clicked")}
-                >
-                  <ScreenShare className="w-6 h-6 text-gray-800" />
-                </button>
-
-                <MessageButton
-                  isVisible={true}
-                  onClick={() => setIsPopupVisible(true)}
-                /> 
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
-              <input
-                type="text"
-                placeholder="Ask Rox anything..."
-                className="flex-grow bg-transparent border-none focus:outline-none focus:ring-0 px-4 text-black text-sm"
-                autoFocus
+          <div className="flex items-center justify-center md:justify-between w-full gap-4 md:gap-0 px-4 md:px-0">
+            {/* Left group of buttons */}
+            <div className="flex items-center gap-4 md:-ml-40">
+              <PreviousButton
+                isVisible={true}
+                onPrevious={() => console.log("Previous button clicked")}
               />
+              <NextButton
+                isVisible={true}
+                onNext={() => console.log("Next button clicked")}
+              />
+              <NotesButton
+                isActive={isNotesPanelVisible}
+                onClick={handleToggleNotesPanel}
+              />
+              <MicButton isVisible={true} />
             </div>
-          )}
+
+            {/* FIXED: Right group of buttons are now correctly wrapped in a div */}
+            <div className="flex items-center gap-4 md:mr-10">
+              <DoubtButton  isVisible={true} />
+              <MessageButton
+                isVisible={true}
+                onClick={handleMessageClick} // Updated onClick handler
+              /> 
+            </div>
+          </div>
         </div>
       </div>
     </>

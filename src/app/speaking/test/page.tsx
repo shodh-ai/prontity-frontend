@@ -159,7 +159,7 @@ export default function Page(): JSX.Element {
         />
       </div>
 
-      <main className="relative z-10 h-full flex flex-col pl-8 pr-12 py-6 pb-32 overflow-y-auto">
+      <main className="relative z-10 h-full flex flex-col pl-6 pr-14 py-6 pb-32 overflow-y-auto">
         <Button
           variant="ghost"
           size="icon"
@@ -167,7 +167,7 @@ export default function Page(): JSX.Element {
         >
           <XIcon className="h-6 w-6" />
         </Button>
-        <div className="flex items-center justify-between pt-6 pl-9">
+        <div className="flex items-center justify-between pt-6">
           <div className="flex-1">
             <h2 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base whitespace-nowrap">
               Speaking practice session
@@ -209,63 +209,58 @@ export default function Page(): JSX.Element {
       </main>
 
       <footer className="fixed bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-4 p-5">
-        <div className="w-full max-w-lg">
-          <div className="flex items-center justify-between w-full">
-            {/* Left-side buttons */}
-            <div
-              className={`flex items-center gap-4 ${
-                !showRecordingBar ? "-ml-20" : ""
-              }`}
-            >
-              {showRecordingBar ? (
-                <RecordingBar onStop={stopRecording} />
-              ) : (
-                <>
-                  {controlButtons.map((button) => {
-                    if (button.alt === "Camera") {
-                      return (
-                        <Button
-                          key={button.alt}
-                          variant="outline"
-                          size="icon"
-                          className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
-                          onClick={startRecording}
-                        >
-                          <img
-                            className="w-6 h-6"
-                            alt={button.alt}
-                            src={button.icon}
-                          />
-                        </Button>
-                      );
-                    }
-                    if (button.alt === "Mic") {
-                      return (
-                        <MicButton
-                          key="mic-button"
-                          isVisible={true}
-                          isActive={isMicActive}
-                        />
-                      );
-                    }
-                    if (button.alt === "Settings") {
-                      return <InlineTimerButton key="inline-timer-button" />;
-                    }
-                    return null;
-                  })}
-                </>
-              )}
+        <div className="w-full max-w-[700px]">
+          {showRecordingBar ? (
+            <div className="flex items-center justify-center w-full">
+              <RecordingBar onStop={stopRecording} />
             </div>
+          ) : (
+            <div className="flex items-center w-full">
+              {/* Left group of buttons */}
+              <div className="flex items-center gap-4">
+                {controlButtons.map((button) => {
+                  if (button.alt === "Camera") {
+                    return (
+                      <Button
+                        key={button.alt}
+                        variant="outline"
+                        size="icon"
+                        className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
+                        onClick={startRecording}
+                      >
+                        <img
+                          className="w-6 h-6"
+                          alt={button.alt}
+                          src={button.icon}
+                        />
+                      </Button>
+                    );
+                  }
+                  if (button.alt === "Mic") {
+                    return (
+                      <MicButton
+                        key="mic-button"
+                        isVisible={true}
+                        isActive={isMicActive}
+                      />
+                    );
+                  }
+                  if (button.alt === "Settings") {
+                    return <InlineTimerButton key="inline-timer-button" />;
+                  }
+                  return null;
+                })}
+              </div>
 
-            {/* Right-side button with a placeholder action */}
-            {!showRecordingBar && (
-              <MessageButton
-                isVisible={true}
-                className="mr-10"
-                onClick={() => console.log("Message button clicked!")}
-              />
-            )}
-          </div>
+              {/* Right-side button, with an even larger right margin */}
+              <div className="ml-auto mr-40">
+                <MessageButton
+                  isVisible={true}
+                  onClick={() => console.log("Message button clicked!")}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </footer>
     </div>

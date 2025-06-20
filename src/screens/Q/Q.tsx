@@ -1,12 +1,13 @@
-import React, { useState } from "react";
+"use client";
+import React from "react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { MessageButton } from "../../components/ui/message-button";
 import { MicButton } from "../../components/ui/mic";
 
 export const Q = (): JSX.Element => {
-  // State to manage the visibility of the pop-up/chat input
-  const [isPopupVisible, setIsPopupVisible] = useState(false);
+  // REMOVED: State to manage the pop-up/chat input is no longer needed.
+  // const [isPopupVisible, setIsPopupVisible] = useState(false);
 
   // Data for suggestion cards remains as it is specific to this page
   const suggestionCards = [
@@ -24,7 +25,7 @@ export const Q = (): JSX.Element => {
     },
   ];
 
-  // Data for navigation items (re-added from original)
+  // Data for navigation items
   const navItems = [
     {
       active: true,
@@ -41,9 +42,15 @@ export const Q = (): JSX.Element => {
     { active: false, icon: "/vector.svg" },
   ];
 
+  const handleMessageClick = () => {
+    // TODO: Add the functionality for the message button here.
+    // For example, opening a chat modal or sending a predefined query.
+    console.log("Message button clicked!");
+  };
+
   return (
     <div>
-      {/* Sidebar - no changes needed, functionality is self-contained */}
+      {/* Sidebar */}
       <div className="group fixed left-0 top-0 h-full z-20 w-4">
         <nav className="flex flex-col h-full items-center justify-between px-1.5 py-3.5 absolute left-0 top-0 z-10 opacity-0 -translate-x-full group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 ease-in-out">
           {/* Logo */}
@@ -88,12 +95,6 @@ export const Q = (): JSX.Element => {
 
       {/* Suggestion cards */}
       <div className="absolute top-[25vh] sm:top-[30vh] left-1/2 -translate-x-1/2 w-full max-w-[90vw] px-4">
-        {/*
-          RESPONSIVE CHANGE 1: Added `flex-wrap` and adjusted gap.
-          - `flex-wrap` allows the cards to wrap onto the next line on smaller screens
-            instead of overflowing and causing a horizontal scroll.
-          - Changed gap to a single `gap-4` for more consistent spacing across all screen sizes.
-        */}
         <div className="flex flex-wrap items-center justify-center gap-4">
           {suggestionCards.map((card, index) => (
             <Card
@@ -118,34 +119,13 @@ export const Q = (): JSX.Element => {
 
       {/* Bottom controls */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 z-20">
-        {!isPopupVisible ? (
-          // Initial controls view
-          /*
-            RESPONSIVE CHANGE 2: Replaced fixed gap with `justify-between`.
-            - `justify-between` distributes the space between the two buttons automatically.
-            - This prevents the buttons from being pushed too close together or off-screen on
-              narrower viewports, which was an issue with the large, fixed `gap-x-32`.
-          */
-          <div className="flex items-center justify-between w-full max-w-[280px] sm:max-w-[320px] md:max-w-[360px] mx-auto">
-            <MicButton isVisible={!isPopupVisible} />
-            <MessageButton
-              isVisible={!isPopupVisible}
-              onClick={() => setIsPopupVisible(true)}
-            />
-          </div>
-        ) : (
-          <div className="w-full">
-            {/* Chat input view (already responsive) */}
-            <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
-              <input
-                type="text"
-                defaultValue="Can you tell me about my course summary and course insights till now?"
-                className="flex-grow bg-transparent border-none focus:outline-none focus:ring-0 px-2 text-black text-sm"
-                autoFocus
-              />
-            </div>
-          </div>
-        )}
+        {/*
+          MODIFIED: Removed the conditional rendering. The view with both buttons is now permanent.
+        */}
+        <div className="flex items-center justify-between w-full max-w-[280px] sm:max-w-[320px] md:max-w-[360px] mx-auto">
+          <MicButton isVisible={true} />
+          <MessageButton isVisible={true} onClick={handleMessageClick} />
+        </div>
       </div>
     </div>
   );

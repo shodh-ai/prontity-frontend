@@ -1,4 +1,11 @@
-import { ArrowLeftIcon, MicIcon, Square, Play, Pause, HeadphonesIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  MicIcon,
+  Square,
+  Play,
+  Pause,
+  HeadphonesIcon,
+} from "lucide-react";
 import React, {
   useState,
   useEffect,
@@ -122,10 +129,6 @@ export const RegistrationForm = () => {
       ) {
         setCurrentInput(savedData[firstStepKey]);
       }
-      // Note: Restoring voice recording state (audioBlob, audioUrl) from localStorage is complex
-      // as Blob objects aren't directly JSON-serializable. This example focuses on text inputs
-      // and a placeholder/URL for voice if it was saved.
-      // If a saved audioUrl exists for the voice step, you might want to set it.
       const voiceStepIndex = formSteps.findIndex(
         (step) => step.inputType === "voice"
       );
@@ -137,8 +140,6 @@ export const RegistrationForm = () => {
           savedData[voiceStepKey] &&
           typeof savedData[voiceStepKey] === "string"
         ) {
-          // If you stored a persistent URL or identifier, you could use it here.
-          // If it was a blob URL, it's likely expired. For simplicity, we don't restore audio playback state here.
         }
       }
     }
@@ -223,13 +224,12 @@ export const RegistrationForm = () => {
         if (dataToSubmit.hasOwnProperty(key)) {
           if (key === voiceStepPlaceholderKey) {
             console.log(`Skipping voice data key: ${key}`);
-            continue; // Skip the voice recording placeholder/data
+            continue;
           }
 
           let targetKey = key;
           let value = dataToSubmit[key];
 
-          // Rename keys as requested
           if (key === "i_want_to_improve_speaking_fluency") {
             targetKey = "goal";
           } else if (key === "speaking_and_writing_still_makes_me_nervous") {
@@ -237,7 +237,6 @@ export const RegistrationForm = () => {
           } else if (key === "a_bit_nervous_but_ready_to_try") {
             targetKey = "confidence";
           }
-          // Assuming 'Name' placeholder correctly becomes 'name' key from dataToSubmit
 
           submissionPayload[targetKey] = value;
           console.log(`Added to submissionPayload: ${targetKey} = ${value}`);
@@ -279,12 +278,10 @@ export const RegistrationForm = () => {
       const result = await response.json();
       console.log("Backend response:", result);
 
-      // Now, also send data to the LangGraph backend
       const userId = result.user.id;
       console.log("User ID for AI backend submission:", userId);
       if (!userId) {
         alert("Could not find user ID for AI backend submission.");
-        // Decide if this is a critical error. For now, we'll allow continuing.
       } else {
         const langgraphPayload = {
           ...submissionPayload,
@@ -305,7 +302,6 @@ export const RegistrationForm = () => {
           });
 
           if (!langgraphResponse.ok) {
-            // Log the error but don't block the user
             const errorData = await langgraphResponse
               .json()
               .catch(() => ({ message: "Failed to submit to AI backend." }));
@@ -329,10 +325,6 @@ export const RegistrationForm = () => {
       }
 
       router.push("/dash_rox");
-
-      // Optional: Clear form, navigate, remove from localStorage if it was a temporary store
-      // localStorage.removeItem('registrationFormData');
-      // setCurrentStep(0); setFormData({}); setCurrentInput(""); setAudioBlob(null); setAudioUrl(""); setRecordingTime(0);
     } catch (error) {
       console.error("Error submitting form:", error);
       alert(
@@ -357,8 +349,6 @@ export const RegistrationForm = () => {
         console.warn("Attempting to proceed on voice step without audio.");
         return;
       }
-      // Store a placeholder in formData state if a live audioBlob exists, or the audioUrl if not.
-      // The actual audioBlob is used for submission.
       entryValue = audioBlob ? "recorded_audio_placeholder" : audioUrl;
     } else {
       if (!currentInput.trim()) {
@@ -385,18 +375,13 @@ export const RegistrationForm = () => {
         setCurrentInput("");
         const savedAudioData = newFormData[nextStepKeyFromState];
         if (savedAudioData === "recorded_audio_placeholder") {
-          // If audioUrl is already set (e.g. from a previous recording in this session for this step), keep it for playback.
-          // audioBlob should also be available if this placeholder was set due to a live recording.
-          // If navigating to a step that had a recording, and audioUrl is not set, but we have audioBlob, set audioUrl.
           if (audioBlob && !audioUrl)
             setAudioUrl(URL.createObjectURL(audioBlob));
-          // If no audioBlob, but placeholder exists, it implies an issue or prior state not fully restored for playback.
-          // For simplicity, we rely on audioUrl being set if playback is possible.
         } else if (
           typeof savedAudioData === "string" &&
           savedAudioData.startsWith("blob:")
         ) {
-          setAudioUrl(savedAudioData); // This was likely from localStorage load
+          setAudioUrl(savedAudioData);
           setAudioBlob(null);
           setRecordingTime(MAX_RECORDING_TIME);
         } else {
@@ -408,7 +393,6 @@ export const RegistrationForm = () => {
         setCurrentInput("");
       }
     } else {
-      // Last step: Submit to backend
       console.log("Form data to be submitted from handleNext:", newFormData);
       handleSubmitToBackend(newFormData);
     }
@@ -426,17 +410,15 @@ export const RegistrationForm = () => {
       if (prevStepInfo.inputType === "text") {
         setCurrentInput(formData[stepKey] || "");
       } else if (prevStepInfo.inputType === "voice") {
-        setCurrentInput(""); // Clear text input field
-        // Restore audio state if available in formData
+        setCurrentInput("");
         const savedAudioData = formData[stepKey];
         if (
           typeof savedAudioData === "string" &&
           savedAudioData.startsWith("blob:")
         ) {
           setAudioUrl(savedAudioData);
-          // As with handleNext, re-creating Blob is tricky. User might need to re-record.
           setAudioBlob(null);
-          setRecordingTime(MAX_RECORDING_TIME); // Indicate loaded audio
+          setRecordingTime(MAX_RECORDING_TIME);
         } else {
           setAudioUrl("");
           setAudioBlob(null);
@@ -451,8 +433,7 @@ export const RegistrationForm = () => {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleNext();
   };
-  
-  // Speech-to-text functionality
+
   const toggleSpeechToText = () => {
     if (isListening) {
       stopSpeechToText();
@@ -462,42 +443,48 @@ export const RegistrationForm = () => {
   };
 
   const startSpeechToText = () => {
-    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
-      // @ts-ignore - TypeScript doesn't have built-in types for webkit prefixed APIs
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (
+      typeof window !== "undefined" &&
+      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
+    ) {
+      // @ts-ignore
+      const SpeechRecognition =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
-      
+
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
-      
+      recognition.lang = "en-US";
+
       recognition.onresult = (event: any) => {
-        let transcript = '';
+        let transcript = "";
         for (let i = 0; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript + ' ';
+          transcript += event.results[i][0].transcript + " ";
         }
         setCurrentInput(transcript.trim());
       };
-      
+
       recognition.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
+        console.error("Speech recognition error", event.error);
         setIsListening(false);
       };
-      
+
       recognition.onend = () => {
         setIsListening(false);
       };
-      
+
       recognitionRef.current = recognition;
-      
+
       try {
         recognition.start();
         setIsListening(true);
       } catch (error) {
-        console.error('Error starting speech recognition:', error);
+        console.error("Error starting speech recognition:", error);
       }
     } else {
-      alert('Speech recognition is not supported in this browser. Try Chrome or Edge.');
+      alert(
+        "Speech recognition is not supported in this browser. Try Chrome or Edge."
+      );
     }
   };
 
@@ -506,7 +493,7 @@ export const RegistrationForm = () => {
       try {
         recognitionRef.current.stop();
       } catch (error) {
-        console.error('Error stopping speech recognition:', error);
+        console.error("Error stopping speech recognition:", error);
       }
       setIsListening(false);
     }
@@ -518,6 +505,8 @@ export const RegistrationForm = () => {
   }));
   const canProceed =
     currentStep === 4 ? audioBlob !== null : currentInput.trim() !== "";
+
+  const name = formData["name"];
 
   const renderInput = () => {
     if (currentFormStep.inputType === "voice") {
@@ -560,6 +549,7 @@ export const RegistrationForm = () => {
               </div>
             )}
             {audioUrl && !isRecording && (
+              // CHANGE: The send button is now inside this container
               <div className="flex items-center space-x-4">
                 <Button
                   onClick={isPlaying ? pauseRecording : playRecording}
@@ -574,6 +564,19 @@ export const RegistrationForm = () => {
                 <span className="text-sm text-gray-600">
                   Recording saved • {formatTime(recordingTime)}
                 </span>
+                {/* The "Send" button has been moved here */}
+                <Button
+                  className="h-12 w-12 p-3 bg-[#566FE9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center transition-colors duration-200 disabled:opacity-50"
+                  aria-label="Continue"
+                  onClick={handleNext}
+                  disabled={!canProceed || isSubmitting}
+                >
+                  <img
+                    src="/frame.svg"
+                    alt="Continue"
+                    className="w-full h-full"
+                  />
+                </Button>
               </div>
             )}
             <div className="text-center text-sm text-gray-600 max-w-md">
@@ -605,7 +608,11 @@ export const RegistrationForm = () => {
         />
         <button
           type="button"
-          className={`absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center ${isListening ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+          className={`absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center ${
+            isListening
+              ? "bg-blue-100 text-blue-600"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+          }`}
           onClick={toggleSpeechToText}
         >
           <HeadphonesIcon className="w-4 h-4" />
@@ -615,10 +622,9 @@ export const RegistrationForm = () => {
   };
 
   return (
-    <main className="bg-transparent flex items-center justify-center w-full min-h-screen p-4">
-      <div className="w-full max-w-lg mx-auto flex flex-col justify-center min-h-[40rem] relative">
-
-        <div className="absolute top-8 left-0 right-0 flex items-center justify-center gap-2.5 z-10">
+    <div className="flex flex-col min-h-screen bg-transparent">
+      <div className="w-full flex justify-center p-4 pt-8">
+        <div className="flex items-center justify-center gap-2.5 w-full max-w-lg">
           <Button
             variant="ghost"
             size="sm"
@@ -626,7 +632,7 @@ export const RegistrationForm = () => {
             disabled={currentStep === 0}
             className="p-1 h-auto hover:bg-gray-100 disabled:opacity-30"
           >
-            <ArrowLeftIcon className="w-6 h-6 text-[#566fe9]" />
+            <img src="/frame-1.svg" alt="Back" className="w-6 h-6" />
           </Button>
           <div className="flex items-center gap-1 w-full max-w-sm">
             {updatedProgressSteps.map((step, index) => (
@@ -638,78 +644,57 @@ export const RegistrationForm = () => {
               />
             ))}
           </div>
-          <div className="w-6 h-6 p-1"></div> {/* Spacer to balance the back button */}
+          <div className="w-6 h-6 p-1"></div>
         </div>
+      </div>
 
-        <div className="w-full flex flex-col items-center justify-center">
-          <Card className="border-none shadow-none bg-transparent w-full max-w-[31.25rem]">
+      <main className="flex-grow flex items-center justify-center p-4">
+        <div className="w-full max-w-lg">
+          <Card className="border-none shadow-none bg-transparent w-full">
             <CardContent className="p-0 space-y-3">
               <div className="font-label-extra-large font-[600] text-black text-[0.875rem] leading-[170%] tracking-normal transition-opacity duration-300">
-                {currentFormStep.title} <br />
+                {currentStep === 1 && name ? (
+                  <>
+                    Nice to meet you,{" "}
+                    <span className="text-[#566FE9]">{name}</span>!
+                  </>
+                ) : (
+                  currentFormStep.title
+                )}{" "}
+                <br />
                 {currentFormStep.subtitle}
               </div>
               {currentFormStep.inputType === "voice" ? (
-                <div className="space-y-4">
-                  {renderInput()}
-                  <div className="flex justify-end">
-                    <Button
-                      className="h-12 w-12 p-0 bg-[#566fe9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center transition-colors duration-200 disabled:opacity-50"
-                      aria-label="Continue"
-                      onClick={handleNext}
-                      disabled={!canProceed || isSubmitting}
-                    >
-                      <svg
-                        width="40"
-                        height="40"
-                        viewBox="0 0 32 32"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                      >
-                        <rect width="40" height="40" rx="4" fill="#566FE9" />
-                        <path
-                          d="M22.2075 9.79251C22.0818 9.66685 21.9248 9.57697 21.7528 9.53215C21.5807 9.48733 21.3998 9.48918 21.2288 9.53751H21.2194L9.22313 13.1775C9.02838 13.2336 8.85528 13.3476 8.72677 13.5044C8.59826 13.6611 8.52041 13.8532 8.50353 14.0551C8.48666 14.2571 8.53155 14.4594 8.63227 14.6353C8.73299 14.8112 8.88477 14.9523 9.06751 15.04L14.375 17.625L16.9563 22.9294C17.0365 23.1007 17.1642 23.2455 17.3241 23.3466C17.484 23.4477 17.6696 23.501 17.8588 23.5C17.8875 23.5 17.9163 23.4988 17.945 23.4963C18.1468 23.4799 18.3388 23.4022 18.4952 23.2737C18.6516 23.1451 18.765 22.9717 18.82 22.7769L22.4575 10.7806C22.4575 10.7775 22.4575 10.7744 22.4575 10.7713C22.5065 10.6006 22.5091 10.42 22.4652 10.248C22.4212 10.076 22.3323 9.91878 22.2075 9.79251ZM17.8644 22.4906L17.8613 22.4994V22.495L15.3575 17.3513L18.3575 14.3513C18.4473 14.2567 18.4966 14.1309 18.495 14.0005C18.4933 13.8701 18.4408 13.7455 18.3486 13.6533C18.2564 13.5611 18.1318 13.5086 18.0014 13.5069C17.871 13.5052 17.7452 13.5546 17.6506 13.6444L14.6506 16.6444L9.50501 14.1406H9.50063H9.50938L21.5 10.5L17.8644 22.4906Z"
-                          fill="white"
-                        />
-                      </svg>
-                    </Button>
-                  </div>
-                </div>
+                // CHANGE: The send button is now inside renderInput, so we don't need a wrapper here
+                renderInput()
               ) : (
                 <div className="flex items-center w-full space-x-2">
                   {renderInput()}
                   <Button
-                    className="p-0 w-12 h-12 bg-[#566FE9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center shrink-0 disabled:opacity-50"
+                    className="w-12 h-12 p-3 bg-[#566FE9] hover:bg-[#4a5ed1] rounded-md flex items-center justify-center shrink-0 disabled:opacity-50"
                     aria-label="Submit"
                     onClick={handleNext}
                     disabled={!canProceed || isSubmitting}
                   >
-                    <svg
-                      width="40"
-                      height="40"
-                      viewBox="0 0 32 32"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <rect width="40" height="40" rx="4" fill="#566FE9" />
-                      <path
-                        d="M22.2075 9.79251C22.0818 9.66685 21.9248 9.57697 21.7528 9.53215C21.5807 9.48733 21.3998 9.48918 21.2288 9.53751H21.2194L9.22313 13.1775C9.02838 13.2336 8.85528 13.3476 8.72677 13.5044C8.59826 13.6611 8.52041 13.8532 8.50353 14.0551C8.48666 14.2571 8.53155 14.4594 8.63227 14.6353C8.73299 14.8112 8.88477 14.9523 9.06751 15.04L14.375 17.625L16.9563 22.9294C17.0365 23.1007 17.1642 23.2455 17.3241 23.3466C17.484 23.4477 17.6696 23.501 17.8588 23.5C17.8875 23.5 17.9163 23.4988 17.945 23.4963C18.1468 23.4799 18.3388 23.4022 18.4952 23.2737C18.6516 23.1451 18.765 22.9717 18.82 22.7769L22.4575 10.7806C22.4575 10.7775 22.4575 10.7744 22.4575 10.7713C22.5065 10.6006 22.5091 10.42 22.4652 10.248C22.4212 10.076 22.3323 9.91878 22.2075 9.79251ZM17.8644 22.4906L17.8613 22.4994V22.495L15.3575 17.3513L18.3575 14.3513C18.4473 14.2567 18.4966 14.1309 18.495 14.0005C18.4933 13.8701 18.4408 13.7455 18.3486 13.6533C18.2564 13.5611 18.1318 13.5086 18.0014 13.5069C17.871 13.5052 17.7452 13.5546 17.6506 13.6444L14.6506 16.6444L9.50501 14.1406H9.50063H9.50938L21.5 10.5L17.8644 22.4906Z"
-                        fill="white"
-                      />
-                    </svg>
+                    <img
+                      src="/frame.svg"
+                      alt="Submit"
+                      className="w-full h-full"
+                    />
                   </Button>
                 </div>
               )}
             </CardContent>
           </Card>
           {isSubmitting && (
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-20 backdrop-blur-sm">
+            <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-20 backdrop-blur-sm">
               <p className="text-lg font-semibold p-4 bg-white rounded shadow-lg">
                 Submitting...
               </p>
             </div>
           )}
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 };

@@ -1,8 +1,6 @@
-
-
 "use client";
 import React, { useState } from "react";
-import { XIcon, ScreenShare } from "lucide-react";
+import { XIcon } from "lucide-react";
 
 import { MessageButton } from "@/components/ui/message-button";
 import { MicButton } from "@/components/ui/mic";
@@ -12,6 +10,7 @@ import { PlayPauseButton } from "@/components/ui/playpause-button";
 
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
+import { DoubtButton } from "@/components/ui/doubt"; // Import the DoubtButton component
 
 
 
@@ -39,8 +38,6 @@ const mockNotesData: Note[] = [
 
 
 export default function Page(): JSX.Element {
-  // State to manage the visibility of the pop-up/chat input
-  const [isPopupVisible, setIsPopupVisible] = useState(false);
   // State to manage the play/pause status
   const [isPaused, setIsPaused] = useState(false); // Default is playing
 
@@ -106,63 +103,49 @@ export default function Page(): JSX.Element {
         </main>
      
       
-      {/* Footer section with conditional UI, fixed to the bottom */}
+      {/* Footer section with buttons, fixed to the bottom */}
       <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center gap-4 pb-5">
         <div className="w-full max-w-lg">
-          {!isPopupVisible ? (
-            <div className="flex items-center justify-center md:justify-between w-full gap-4 md:gap-0 px-4 md:px-0">
-              {/* Left group of buttons */}
-              <div className="flex items-center gap-4 md:-ml-40">
-                <PreviousButton
-                  isVisible={true}
-                  onPrevious={() => console.log("Previous button clicked")}
-                />
-                <NextButton
-                  isVisible={true}
-                  onNext={() => console.log("Next button clicked")}
-                />
-                <PlayPauseButton
-                  isVisible={true}
-                  isPaused={isPaused}
-                  onPlay={handlePlay}
-                  onPause={handlePause}
-                />
-                
-                <NotesButton
-                  isActive={isNotesPanelVisible}
-                  onClick={handleToggleNotesPanel}
-                />
-                
-                <MicButton isVisible={true} />
-              </div>
-
-              {/* Right group of buttons */}
-              <div className="flex items-center gap-4 md:mr-10">
-                
-                <button
-                  className="flex items-center justify-center w-12 h-12 bg-white/50 rounded-full hover:bg-white/80 transition-colors"
-                  aria-label="Share Screen"
-                  onClick={() => console.log("Screen Share clicked")}
-                >
-                  <ScreenShare className="w-6 h-6 text-gray-800" />
-                </button>
-
-                <MessageButton
-                  isVisible={true}
-                  onClick={() => setIsPopupVisible(true)}
-                /> 
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
-              <input
-                type="text"
-                placeholder="Ask Rox anything..."
-                className="flex-grow bg-transparent border-none focus:outline-none focus:ring-0 px-4 text-black text-sm"
-                autoFocus
+          <div className="flex items-center justify-center md:justify-between w-full gap-4 md:gap-0 px-4 md:px-0">
+            {/* Left group of buttons */}
+            <div className="flex items-center gap-4 md:-ml-40">
+              <PreviousButton
+                isVisible={true}
+                onPrevious={() => console.log("Previous button clicked")}
               />
+              <NextButton
+                isVisible={true}
+                onNext={() => console.log("Next button clicked")}
+              />
+              <PlayPauseButton
+                isVisible={true}
+                isPaused={isPaused}
+                onPlay={handlePlay}
+                onPause={handlePause}
+              />
+              
+              <NotesButton
+                isActive={isNotesPanelVisible}
+                onClick={handleToggleNotesPanel}
+              />
+              
+              <MicButton isVisible={true} />
             </div>
-          )}
+
+            {/* Right group of buttons */}
+            <div className="flex items-center gap-4 md:mr-10">
+              
+              <DoubtButton
+                isVisible={true}
+                onClick={() => console.log("Doubt button clicked")}
+              />
+
+              <MessageButton
+                isVisible={true}
+                onClick={() => console.log("Message button clicked")}
+              /> 
+            </div>
+          </div>
         </div>
       </div>
     </>

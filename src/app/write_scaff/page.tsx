@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import MainLayout from '@/components/layout/layout';
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 // --- MODIFICATION: Added more Card components for the new Chat Card ---
@@ -9,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Progress } from "@/components/ui/progress";
 import { MicButton } from "@/components/ui/mic";
 import { RecordingBar } from "@/components/ui/record";
-import RoxFooterContent from "@/components/layout/RoxFooterContent";
 import { NotesButton } from "@/components/ui/NotesButton";
 import { NotesPanel, Note } from "@/components/ui/NotesPanel";
 import { MessageButton } from "@/components/ui/message-button";
@@ -54,26 +52,28 @@ export default function DashRoxPage(): JSX.Element {
   ];
 
   return (
-    <MainLayout>
-      <div className="relative h-full w-full">
+    <>
+      {/* FIX: Use h-screen and overflow-hidden to prevent page scrolling */}
+      <div className="relative h-screen w-full overflow-hidden">
         <Button variant="ghost" size="icon" className="absolute top-1 right-2 h-6 w-6 p-0 z-20">
           <XIcon className="h-6 w-6" />
         </Button>
         <div className="absolute top-0 left-0 right-0 z-10 pl-8 pr-12">
           <div className="flex items-center justify-between pt-6 pl-9">
-            <div className="flex-1"><h2 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base whitespace-nowrap">Speaking practice session</h2></div>
+            <div className="flex-1"><h2 className="font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base whitespace-nowrap">Writing Scaffolding</h2></div>
             <div className="w-full max-w-xl px-4"><Progress value={28} className="h-2.5 [&>div]:bg-[#566FE9]" /></div>
             <div className="flex-1" />
           </div>
         </div>
         
-        {/* --- MODIFICATION: Main content area now uses flex to handle the 60/30 split --- */}
-        <div className="h-full w-full flex items-start justify-center pt-28 pb-32 px-12 gap-8">
+        {/* FIX: Removed items-start to allow content to stretch vertically */}
+        <div className="h-full w-full flex justify-center pt-28 pb-32 px-12 gap-8">
           
           {/* --- MODIFICATION: Passage card now has dynamic width --- */}
           <div className={`transition-all duration-300 ease-in-out ${isChatPanelOpen ? 'w-[60%]' : 'w-full max-w-[700px]'}`}>
-            <Card className="bg-transparent border-none shadow-none">
-              <CardContent className="px-0">
+            {/* FIX: Card now fills available height and its content can scroll */}
+            <Card className="h-full flex flex-col bg-transparent border-none shadow-none">
+              <CardContent className="px-0 overflow-y-auto">
                 <h3 className="opacity-60 font-['Plus_Jakarta_Sans',Helvetica] font-semibold text-black text-base mb-3">Read the passage</h3>
                 <p className="font-['Plus_Jakarta_Sans',Helvetica] font-normal text-black text-base leading-relaxed">
                   With the rise of automation and artificial intelligence, the future of work is a topic of much debate. Many fear widespread job displacement as machines become capable of performing tasks once done by humans. However, others see this technological shift as an opportunity for humanity to focus on more creative and strategic endeavors. The transition will undoubtedly require significant societal adjustments, including a greater emphasis on lifelong learning and the development of new skills.
@@ -92,7 +92,8 @@ export default function DashRoxPage(): JSX.Element {
                     <XIcon className="h-4 w-4" />
                   </Button>
                 </CardHeader>
-                <CardContent className="flex-grow">
+                {/* FIX: Card content is now scrollable if messages overflow */}
+                <CardContent className="flex-grow overflow-y-auto">
                   {/* Placeholder for chat messages */}
                   <div className="space-y-4 text-sm">
                     <div className="p-3 rounded-lg bg-gray-100 max-w-xs">
@@ -187,8 +188,6 @@ export default function DashRoxPage(): JSX.Element {
         />
         {/* --- MODIFICATION: The old ChatPanel component call is removed from here --- */}
       </div>
-
-      <RoxFooterContent />
-    </MainLayout>
+    </>
   );
 }

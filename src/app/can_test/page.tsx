@@ -1,9 +1,10 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { XIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { MessageButton } from "@/components/ui/message-button";
+import { MicButton } from "@/components/ui/mic";
+import { PreviousButton } from "@/components/ui/previous-button";
+import { NextButton } from "@/components/ui/next-button";
+import { PlayPauseButton } from "@/components/ui/playpause-button";
 import loadCommand from "@/api/loadCommand";
 import LessonData from "@/types/command";
 import {
@@ -16,12 +17,15 @@ import {
 import Vara from "vara";
 import rough from "roughjs";
 import Konva from "konva";
-import { RpcInvocationData } from 'livekit-client';
+import { RpcInvocationData } from "livekit-client";
 import {
   AgentToClientUIActionRequest,
   ClientUIActionResponse,
-} from '@/generated/protos/interaction';
-import LiveKitSession, { LiveKitRpcAdapter } from '@/components/LiveKitSession';
+} from "@/generated/protos/interaction";
+import LiveKitSession, {
+  LiveKitRpcAdapter,
+} from "@/components/LiveKitSession";
+import { ScreenShare } from "lucide-react"; // FIXED: Imported missing icon component
 
 // Helper function for Base64 encoding
 function uint8ArrayToBase64(buffer: Uint8Array): string {
@@ -35,62 +39,77 @@ function uint8ArrayToBase64(buffer: Uint8Array): string {
 
 export default function Page(): JSX.Element {
   const liveKitRpcAdapterRef = useRef<LiveKitRpcAdapter | null>(null);
+  // Refs for DOM elements
+  const mainContentRef = useRef<HTMLElement | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<Konva.Stage | null>(null);
+  const layerRef = useRef<Konva.Layer | null>(null);
 
-  const handlePerformUIAction = useCallback(async (rpcInvocationData: RpcInvocationData): Promise<string> => {
-    const payloadString = rpcInvocationData.payload as string | undefined;
-    let requestId = rpcInvocationData.requestId || "";
-    console.log("[CanTestPage] B2F RPC received. Request ID:", requestId);
+  const handlePerformUIAction = useCallback(
+    async (rpcInvocationData: RpcInvocationData): Promise<string> => {
+      const payloadString = rpcInvocationData.payload as string | undefined;
+      let requestId = rpcInvocationData.requestId || "";
+      console.log("[CanTestPage] B2F RPC received. Request ID:", requestId);
 
-    try {
-      if (!payloadString) throw new Error("No payload received.");
+      try {
+        if (!payloadString) throw new Error("No payload received.");
 
-      const request = AgentToClientUIActionRequest.fromJSON(JSON.parse(payloadString));
-      let success = true;
-      let message = "Action processed successfully.";
+        const request = AgentToClientUIActionRequest.fromJSON(
+          JSON.parse(payloadString)
+        );
+        let success = true;
+        let message = "Action processed successfully.";
 
-      console.log(`[CanTestPage] Received action: ${request.actionType}`, request);
-      // This page doesn't have complex UI elements like an editor,
-      // so we'll just log the action for now.
+        console.log(
+          `[CanTestPage] Received action: ${request.actionType}`,
+          request
+        );
 
-      const response = ClientUIActionResponse.create({ requestId, success, message });
-      return uint8ArrayToBase64(ClientUIActionResponse.encode(response).finish());
-    } catch (innerError) {
-      console.error('[CanTestPage] Error handling Agent PerformUIAction:', innerError);
-      const errMessage = innerError instanceof Error ? innerError.message : String(innerError);
-      const errResponse = ClientUIActionResponse.create({
-        requestId,
-        success: false,
-        message: `Client error processing UI action: ${errMessage}`
-      });
-      return uint8ArrayToBase64(ClientUIActionResponse.encode(errResponse).finish());
-    }
-  }, []);
+        const response = ClientUIActionResponse.create({
+          requestId,
+          success,
+          message,
+        });
+        return uint8ArrayToBase64(
+          ClientUIActionResponse.encode(response).finish()
+        );
+      } catch (innerError) {
+        console.error(
+          "[CanTestPage] Error handling Agent PerformUIAction:",
+          innerError
+        );
+        const errMessage =
+          innerError instanceof Error ? innerError.message : String(innerError);
+        const errResponse = ClientUIActionResponse.create({
+          requestId,
+          success: false,
+          message: `Client error processing UI action: ${errMessage}`,
+        });
+        return uint8ArrayToBase64(
+          ClientUIActionResponse.encode(errResponse).finish()
+        );
+      }
+    },
+    []
+  );
+
   // State to manage the visibility of the pop-up/chat input
   const [isPopupVisible, setIsPopupVisible] = useState(false);
-  // Data for control buttons
-  const controlButtons = [
-    {
-      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame.svg",
-      alt: "Settings",
-    },
-    {
-      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame-2.svg",
-      alt: "Camera",
-    },
-    {
-      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/mic-on.svg",
-      type: "background",
-      alt: "Mic",
-    },
-    {
-      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame.svg", // Re-using settings icon as an example
-      alt: "New Button",
-    },
-    {
-      icon: "https://c.animaapp.com/mbsxrl26lLrLIJ/img/frame-1.svg",
-      alt: "Message", // This button triggers the chat input
-    },
-  ];
+  // FIXED: Added missing state and handlers for the PlayPauseButton
+  const [isPaused, setIsPaused] = useState(true);
+
+  const handlePlay = () => {
+    // TODO: Implement logic to start or resume the lesson animation.
+    // This requires significant refactoring of the animation loop in useEffect.
+    console.log("Play button clicked");
+    setIsPaused(false);
+  };
+
+  const handlePause = () => {
+    // TODO: Implement logic to pause the lesson animation.
+    console.log("Pause button clicked");
+    setIsPaused(true);
+  };
 
   const [lessonData, setLessonData] = useState<LessonData | null>(null);
 
@@ -105,9 +124,6 @@ export default function Page(): JSX.Element {
     };
     loadLessonData();
   }, []);
-
-  const stageRef = useRef<Konva.Stage | null>(null);
-  const layerRef = useRef<Konva.Layer | null>(null);
 
   function checkCollision(
     boxA: { x: number; y: number; width: number; height: number },
@@ -133,7 +149,6 @@ export default function Page(): JSX.Element {
   ): { x: number; y: number } | null {
     const canvasWidth = canvasDimensions.width;
     const canvasHeight = canvasDimensions.height;
-
     for (let y = padding; y < canvasHeight - newHeight - padding; y += 10) {
       for (let x = padding; x < canvasWidth - newWidth - padding; x += 10) {
         const proposedBbox = { x, y, width: newWidth, height: newHeight };
@@ -170,6 +185,7 @@ export default function Page(): JSX.Element {
     return new Promise((resolve) => {
       const temp = document.createElement("div");
       temp.style.fontFamily = "Satisfy, cursive";
+      // FIXED: Correctly uses template literal
       temp.style.fontSize = `${fontSize}px`;
       temp.style.position = "absolute";
       temp.style.left = "-9999px";
@@ -177,7 +193,6 @@ export default function Page(): JSX.Element {
       temp.style.whiteSpace = "nowrap";
       temp.innerHTML = text;
       document.body.appendChild(temp);
-
       requestAnimationFrame(() => {
         const { width, height } = temp.getBoundingClientRect();
         document.body.removeChild(temp);
@@ -188,14 +203,10 @@ export default function Page(): JSX.Element {
 
   useEffect(() => {
     if (!lessonData) return;
+    const canvasElement = canvasContainerRef.current;
+    const mainContent = mainContentRef.current;
 
-    const canvasElement = document.getElementById("canvas");
-    const unionContainer = document.getElementById(
-      "union-container"
-    ) as HTMLImageElement;
-
-    if (!canvasElement || !unionContainer) {
-      console.error("Required elements (canvas, union-container) not found.");
+    if (!canvasElement || !mainContent) {
       return;
     }
 
@@ -209,19 +220,19 @@ export default function Page(): JSX.Element {
     ) => {
       if (isCancelled) return;
 
-      if (canvasElement) {
-        const varaContainers = canvasElement.querySelectorAll('div[id^="vara-"]');
-        varaContainers.forEach((container) => container.remove());
-      }
+      const varaContainers =
+        canvasElement.querySelectorAll('div[id^="vara-"]');
+      varaContainers.forEach((container) => container.remove());
       stageRef.current?.destroy();
 
       currentCanvasDimensions = { width, height };
       canvasElement.style.width = `${width}px`;
       canvasElement.style.height = `${height}px`;
       canvasElement.style.backgroundColor = "transparent";
+      canvasElement.style.borderRadius = "16px";
 
       const stage = new Konva.Stage({
-        container: "canvas",
+        container: canvasElement,
         width: width,
         height: height,
       });
@@ -285,17 +296,19 @@ export default function Page(): JSX.Element {
 
     const resizeCanvas = () => {
       if (isCancelled || !lessonData) return;
-      const unionRect = unionContainer.getBoundingClientRect();
 
-      let newCanvasWidth, newCanvasHeight;
+      const mainStyle = window.getComputedStyle(mainContent);
+      const paddingTop = parseFloat(mainStyle.paddingTop);
+      const paddingBottom = parseFloat(mainStyle.paddingBottom);
+      const paddingLeft = parseFloat(mainStyle.paddingLeft);
+      const paddingRight = parseFloat(mainStyle.paddingRight);
 
-      if (unionRect.width > 0 && unionRect.height > 0) {
-        newCanvasWidth = unionRect.width * 0.95;
-        newCanvasHeight = unionRect.height * 0.85;
-      } else {
-        newCanvasWidth = lessonData.canvasDimensions.width;
-        newCanvasHeight = lessonData.canvasDimensions.height;
-      }
+      const contentWidth = mainContent.clientWidth - paddingLeft - paddingRight;
+      const contentHeight =
+        mainContent.clientHeight - paddingTop - paddingBottom;
+
+      const newCanvasWidth = contentWidth * 0.95;
+      const newCanvasHeight = contentHeight * 0.95;
 
       const scaleFactors = {
         x: newCanvasWidth / lessonData.canvasDimensions.width,
@@ -305,12 +318,9 @@ export default function Page(): JSX.Element {
       setupAndRunLesson(newCanvasWidth, newCanvasHeight, scaleFactors);
     };
 
-    if (unionContainer.complete) {
-      resizeCanvas();
-    } else {
-      unionContainer.onload = resizeCanvas;
-    }
 
+
+    resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
 
     return () => {
@@ -325,11 +335,11 @@ export default function Page(): JSX.Element {
     x: number,
     y: number
   ): HTMLElement | null {
+    // FIXED: Correctly uses template literal
     const containerId = `vara-${id}`;
-    const canvasElement = document.getElementById("canvas");
-
+    const canvasElement = canvasContainerRef.current;
     if (!canvasElement) {
-      console.error("Canvas element not found!");
+      console.error("Canvas element ref not available!");
       return null;
     }
 
@@ -353,7 +363,6 @@ export default function Page(): JSX.Element {
     return new Promise(async (resolve, reject) => {
       try {
         let position = step.payload.position;
-
         const scaledFontSize =
           (step.payload.varaOptions.fontSize || 24) *
           Math.min(scaleFactors.x, scaleFactors.y);
@@ -410,8 +419,10 @@ export default function Page(): JSX.Element {
 
         vara.ready(() => {
           setTimeout(() => {
+            const canvasElement = canvasContainerRef.current;
+            if (!canvasElement) return;
             const clientRect = container.getBoundingClientRect();
-            const canvasRect = document.getElementById("canvas")!.getBoundingClientRect();
+            const canvasRect = canvasElement.getBoundingClientRect();
             elementMap.set(step.id, {
               element: vara,
               x: clientRect.left - canvasRect.left,
@@ -437,7 +448,6 @@ export default function Page(): JSX.Element {
     scaleFactors: { x: number; y: number }
   ) {
     if (!layerRef.current) return;
-
     try {
       const generator = rough.generator();
       let drawable;
@@ -446,8 +456,9 @@ export default function Page(): JSX.Element {
         x: p.x * scaleFactors.x,
         y: p.y * scaleFactors.y,
       }));
-      const scaledStrokeWidth = (step.payload.roughOptions.strokeWidth || 2) * Math.min(scaleFactors.x, scaleFactors.y);
-
+      const scaledStrokeWidth =
+        (step.payload.roughOptions.strokeWidth || 2) *
+        Math.min(scaleFactors.x, scaleFactors.y);
 
       switch (step.payload.shapeType) {
         case "line":
@@ -473,7 +484,14 @@ export default function Page(): JSX.Element {
 
       layerRef.current.add(path);
       const { x, y, width, height } = path.getClientRect();
-      elementMap.set(step.id, { element: path, x, y, width, height, type: "rough-shape" });
+      elementMap.set(step.id, {
+        element: path,
+        x,
+        y,
+        width,
+        height,
+        type: "rough-shape",
+      });
     } catch (error) {
       console.error("Error creating shape:", error);
     }
@@ -487,19 +505,28 @@ export default function Page(): JSX.Element {
     if (!layerRef.current) return;
     const targetData = elementMap.get(step.payload.targetId);
     if (!targetData) return;
-
     try {
-      const targetBox = { x: targetData.x, y: targetData.y, width: targetData.width, height: targetData.height };
+      const targetBox = {
+        x: targetData.x,
+        y: targetData.y,
+        width: targetData.width,
+        height: targetData.height,
+      };
       const x = targetBox.x + targetBox.width / 2;
       const y = targetBox.y + targetBox.height / 2;
       const radius = Math.max(targetBox.width, targetBox.height) * 0.7;
-      
-      const scaledStrokeWidth = (step.payload.roughOptions.strokeWidth || 2) * Math.min(scaleFactors.x, scaleFactors.y);
+
+      const scaledStrokeWidth =
+        (step.payload.roughOptions.strokeWidth || 2) *
+        Math.min(scaleFactors.x, scaleFactors.y);
       const generator = rough.generator();
       let drawable;
 
       if (step.payload.annotationType === "circle") {
-        drawable = generator.circle(x, y, radius * 2, { ...step.payload.roughOptions, strokeWidth: scaledStrokeWidth });
+        drawable = generator.circle(x, y, radius * 2, {
+          ...step.payload.roughOptions,
+          strokeWidth: scaledStrokeWidth,
+        });
       } else {
         return;
       }
@@ -514,7 +541,14 @@ export default function Page(): JSX.Element {
 
       layerRef.current.add(annotation);
       const { x: rectX, y: rectY, width, height } = annotation.getClientRect();
-      elementMap.set(step.id, { element: annotation, x: rectX, y: rectY, width, height, type: "annotation" });
+      elementMap.set(step.id, {
+        element: annotation,
+        x: rectX,
+        y: rectY,
+        width,
+        height,
+        type: "annotation",
+      });
     } catch (error) {
       console.error("Error creating annotation:", error);
     }
@@ -526,8 +560,8 @@ export default function Page(): JSX.Element {
     currentCanvasDimensions: { width: number; height: number },
     scaleFactors: { x: number; y: number }
   ): Promise<void> {
-    if (!layerRef.current) return Promise.reject(new Error("Konva Layer not initialized"));
-
+    if (!layerRef.current)
+      return Promise.reject(new Error("Konva Layer not initialized"));
     return new Promise<void>((resolve, reject) => {
       Konva.Image.fromURL(
         step.payload.svgUrl,
@@ -542,25 +576,28 @@ export default function Page(): JSX.Element {
             const desiredHeight = step.payload.desiredSize?.height;
 
             if (desiredWidth && desiredHeight) {
-                finalWidth = desiredWidth * scaleFactors.x;
-                finalHeight = desiredHeight * scaleFactors.y;
+              finalWidth = desiredWidth * scaleFactors.x;
+              finalHeight = desiredHeight * scaleFactors.y;
             } else if (desiredWidth) {
-                finalWidth = desiredWidth * scaleFactors.x;
-                finalHeight = (naturalHeight / naturalWidth) * finalWidth;
+              finalWidth = desiredWidth * scaleFactors.x;
+              finalHeight = (naturalHeight / naturalWidth) * finalWidth;
             } else if (desiredHeight) {
-                finalHeight = desiredHeight * scaleFactors.y;
-                finalWidth = (naturalWidth / naturalHeight) * finalHeight;
+              finalHeight = desiredHeight * scaleFactors.y;
+              finalWidth = (naturalWidth / naturalHeight) * finalHeight;
             } else {
-                finalWidth = naturalWidth * scaleFactors.x;
-                finalHeight = naturalHeight * scaleFactors.y;
+              finalWidth = naturalWidth * scaleFactors.x;
+              finalHeight = naturalHeight * scaleFactors.y;
             }
-            
+
             imageNode.width(finalWidth);
             imageNode.height(finalHeight);
 
             let position = step.payload.position;
             if (position) {
-              position = { x: position.x * scaleFactors.x, y: position.y * scaleFactors.y };
+              position = {
+                x: position.x * scaleFactors.x,
+                y: position.y * scaleFactors.y,
+              };
             } else {
               const spot = findEmptySpot(
                 finalWidth,
@@ -594,146 +631,92 @@ export default function Page(): JSX.Element {
             reject(error);
           }
         },
-        (error) => {
-          reject(new Error(`Failed to load image/SVG from ${step.payload.svgUrl}`));
+        () => {
+          reject(
+            new Error(`Failed to load image/SVG from ${step.payload.svgUrl}`)
+          );
         }
       );
     });
   }
 
   return (
-    <div className="w-full h-screen bg-white overflow-hidden relative">
-      <div style={{ display: 'none' }}>
+    <div className="w-full h-screen bg-transparent overflow-hidden flex flex-col">
+      <div style={{ display: "none" }}>
         <LiveKitSession
           roomName="can-test-room"
           userName="can-test-user"
           onConnected={(connectedRoom, rpcAdapter) => {
-            console.log("LiveKit connected in CanTestPage, room:", connectedRoom);
+            console.log(
+              "LiveKit connected in CanTestPage, room:",
+              connectedRoom
+            );
             liveKitRpcAdapterRef.current = rpcAdapter;
-            console.log("LiveKitRpcAdapter assigned in CanTestPage:", liveKitRpcAdapterRef.current);
+            console.log(
+              "LiveKitRpcAdapter assigned in CanTestPage:",
+              liveKitRpcAdapterRef.current
+            );
           }}
           onPerformUIAction={handlePerformUIAction}
         />
       </div>
-      <div className="absolute w-[40vw] h-[40vw] max-w-[753px] max-h-[753px] top-[-20vh] right-[-30vw] bg-[#566fe9] rounded-full" />
-      <div className="absolute w-[25vw] h-[25vw] max-w-[353px] max-h-[353px] bottom-[-25vh] left-[-10vw] bg-[#336de6] rounded-full" />
-      <div className="absolute inset-0 bg-[#ffffff99] backdrop-blur-[200px] [-webkit-backdrop-filter:blur(200px)_brightness(100%)]">
-        <div className="absolute w-full h-full flex justify-center items-center">
-          <div className="relative w-full max-w-[1336px] h-auto flex justify-center items-center p-4">
-            <img
-              id="union-container"
-              className="w-full h-auto opacity-50"
-              alt="Union"
-              src="https://c.animaapp.com/mbsxrl26lLrLIJ/img/union.svg"
-            />
-            <div
-              id="canvas"
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[55%]"
-              style={{ background: 'rgba(255, 255, 255, 0.7)' }}
-            >
-              {/* Konva and Vara will populate this div */}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <main className="relative z-10 h-full flex flex-col pl-8 pr-12 py-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-1 right-2 h-6 w-6 p-0 z-20"
-        >
-          <XIcon className="h-6 w-6" />
-        </Button>
-
-        <div className="flex items-center justify-between pt-6 pl-9">
-          <div className="flex-1"></div>
-          <div className="flex-1" />
-        </div>
-
-        <div className="flex-grow flex items-center justify-center py-8 gap-4">
-          {/* This space is now empty as content is within the union backdrop */}
-        </div>
-
-        <div className="flex flex-col items-center gap-1 pb-6 mt-4">
-          <div className="inline-flex items-center justify-center gap-2.5 px-5 py-2.5 bg-[#566fe91a] rounded-[50px] backdrop-blur-sm">
-            <p className="font-paragraph-extra-large font-[number:var(--paragraph-extra-large-font-weight)] text-black text-[length:var(--paragraph-extra-large-font-size)] text-center tracking-[var(--paragraph-extra-large-letter-spacing)] leading-[var(--paragraph-extra-large-line-height)] ">
-              Hello. I am Rox, your AI Assistant!
-            </p>
-          </div>
-          <div className="w-[90px] h-[90px] z-20">
-            <div className="relative w-full h-full">
-              <div className="absolute w-[70%] h-[70%] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#566fe9] rounded-full blur-[50px]" />
-              {/* MODIFICATION HERE: Changed top-0 to top-2 to shift the image down. */}
-              <img
-                className="absolute w-full h-full top-2 left-2 object-contain"
-                alt="Rox AI Assistant"
-                src="/screenshot-2025-06-09-at-2-47-05-pm-2.png"
-              />
-            </div>
-          </div>
-          <div className="w-full max-w-lg">
-            {!isPopupVisible ? (
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-4 -ml-20">
-                  {controlButtons.slice(0, 4).map((button, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      size="icon"
-                      className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors"
-                    >
-                      {button.type === "background" ? (
-                        <div
-                          className="w-6 h-6 bg-cover"
-                          style={{ backgroundImage: `url(${button.icon})` }}
-                        />
-                      ) : (
-                        <img
-                          className="w-6 h-6"
-                          alt={button.alt}
-                          src={button.icon}
-                        />
-                      )}
-                    </Button>
-                  ))}
-                </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="w-14 h-14 p-4 bg-[#566fe91a] rounded-[36px] border-none hover:bg-[#566fe930] transition-colors mr-10"
-                  onClick={() => setIsPopupVisible(true)}
-                >
-                  <img
-                    className="w-6 h-6"
-                    alt={controlButtons[4].alt}
-                    src={controlButtons[4].icon}
-                  />
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
-                <input
-                  type="text"
-                  placeholder="Ask Rox anything..."
-                  className="flex-grow bg-transparent border-none focus:outline-none focus:ring-0 px-4 text-black text-sm"
-                  autoFocus
-                />
-                <Button
-                  size="icon"
-                  className="flex-shrink-0 bg-[#566fe9] hover:bg-[#4a5fcf] rounded-full w-9 h-9"
-                  onClick={() => {
-                    console.log("Message Sent!");
-                    setIsPopupVisible(false);
-                  }}
-                >
-                  <img className="w-5 h-5" alt="Send" src="/send.svg" />
-                </Button>
-              </div>
-            )}
-          </div>
+      {/* Main content area with padding at the bottom to avoid the fixed footer */}
+      <main
+        ref={mainContentRef}
+        className="flex-grow relative flex justify-center items-center p-4 pb-32"
+      >
+        <div ref={canvasContainerRef} id="canvas">
+          {/* Konva and Vara will populate this div */}
         </div>
       </main>
+
+      <div className="fixed bottom-0 left-0 right-0 z-40 flex flex-col items-center gap-4 pb-5">
+        <div className="w-full max-w-lg">
+          {!isPopupVisible ? (
+            <div className="flex items-center justify-center md:justify-between w-full gap-4 md:gap-0 px-4 md:px-0">
+              {/* Left group of buttons */}
+              <div className="flex items-center gap-4 md:-ml-40">
+                <PreviousButton
+                  isVisible={true}
+                  onPrevious={() => console.log("Previous button clicked")}
+                />
+                <NextButton
+                  isVisible={true}
+                  onNext={() => console.log("Next button clicked")}
+                />
+                
+
+                <MicButton isVisible={true} />
+              </div>
+
+              {/* Right group of buttons */}
+              <div className="flex items-center gap-4 md:mr-10">
+                <button
+                  className="flex items-center justify-center w-12 h-12 bg-white/50 rounded-full hover:bg-white/80 transition-colors"
+                  aria-label="Share Screen"
+                  onClick={() => console.log("Screen Share clicked")}
+                >
+                  <ScreenShare className="w-6 h-6 text-gray-800" />
+                </button>
+
+                <MessageButton
+                  isVisible={true}
+                  onClick={() => setIsPopupVisible(true)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 w-full p-2 rounded-full bg-white/80 backdrop-blur-lg shadow-md border border-gray-200/80">
+              <input
+                type="text"
+                placeholder="Ask Rox anything..."
+                className="flex-grow bg-transparent border-none focus:outline-none focus:ring-0 px-4 text-black text-sm"
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
